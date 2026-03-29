@@ -6,9 +6,15 @@ from telegram.ext import ContextTypes
 from bot.database import role_can_report
 from bot.settings import PROFILE_FIELDS
 
-from .common import field_label_for_key, profile_from_row, user_row
+from .common import (
+    field_label_for_key,
+    missing_required_fields,
+    profile_from_row,
+    user_row,
+)
 
 ADMIN_PROFILE_TARGET_UD = "admin_profile_target"
+LENGKAPI_DONE_KEY = "__lengkapi_done"
 
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
@@ -17,6 +23,21 @@ def _conn(context: ContextTypes.DEFAULT_TYPE):
 
 def _db(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["db"]
+
+
+def _is_lengkapi_done(profile: dict) -> bool:
+    return bool(profile.get(LENGKAPI_DONE_KEY))
+
+
+async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
+    row = await user_row(conn, db, telegram_id)
+    if not row:
+        return
+    profile = profile_from_row(row)
+    if _is_lengkapi_done(profile):
+        return
+    if not missing_required_fields(profile, row["role"]):
+        await db.set_profile_partial(conn, telegram_id, {LENGKAPI_DONE_KEY: True})
 
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -57,7 +78,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if step.startswith("TEXT_LC:"):
         field_key = step.split(":", 1)[1]
+        profile = profile_from_row(row)
+        if _is_lengkapi_done(profile):
+            await db.set_onboarding_step(conn, uid, None)
+            await update.message.reply_text("/lengkapi sudah ditutup. Gunakan /ubah.")
+            return
         await db.set_profile_partial(conn, uid, {field_key: text})
+        await _mark_lengkapi_done_if_complete(conn, db, uid)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
