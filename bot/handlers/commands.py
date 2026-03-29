@@ -50,7 +50,6 @@ from .common import (
 
 MULTI_UD_KEY = "multi_select"
 ADMIN_TARGET_KEY = "admin_profile_target"
-LENGKAPI_DONE_KEY = "__lengkapi_done"
 
 
 def _multi_clear(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -82,21 +81,6 @@ def _conn(context: ContextTypes.DEFAULT_TYPE):
 
 def _db(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["db"]
-
-
-def _is_lengkapi_done(profile: dict) -> bool:
-    return bool(profile.get(LENGKAPI_DONE_KEY))
-
-
-async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
-    row = await user_row(conn, db, telegram_id)
-    if not row:
-        return
-    profile = profile_from_row(row)
-    if _is_lengkapi_done(profile):
-        return
-    if not missing_required_fields(profile, row["role"]):
-        await db.set_profile_partial(conn, telegram_id, {LENGKAPI_DONE_KEY: True})
 
 
 async def _revalidate_filtered_choice_fields(
@@ -180,7 +164,7 @@ def help_for_role(role: str) -> str:
         "*Perintah umum*",
         "/start — Daftar & sinkron profil Telegram",
         "/profile — Profil & total Agra",
-        "/lengkapi — Isi data wajib awal (sekali)",
+        "/lengkapi — Isi data wajib bertahap",
         "_Mahasiswa: isi Fakultas sebelum Jurusan._",
         "/ubah — Ajukan perubahan (disetujui admin)",
         "/hadir — Presensi ke sesi yang dibuka",
@@ -330,19 +314,9 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     profile = profile_from_row(row)
     role = row["role"]
-    if _is_lengkapi_done(profile):
-        await update.message.reply_text(
-            "Data awal sudah dilengkapi. Untuk perubahan pakai /ubah."
-        )
-        return
     miss = missing_required_fields(profile, role)
-    if not miss:
-        await db.set_profile_partial(conn, uid, {LENGKAPI_DONE_KEY: True})
-        await update.message.reply_text(
-            "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
-        )
-        return
-    target_fields = miss
+    applicable = fields_for_role(role)
+    target_fields = miss if miss else applicable
 
     await update.message.reply_text(
         "Pilih data yang ingin diisi / diperbarui (langsung tersimpan):",
@@ -674,9 +648,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
-        if _is_lengkapi_done(profile_u):
-            await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
-            return
         opts = filtered_choice_items(fdef, profile_u)
         if not opts:
             hint = (
@@ -706,11 +677,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         if not fdef:
             await q.edit_message_text("Field tidak valid.")
-            return
-        row_u = await user_row(conn, db, uid)
-        profile_u = profile_from_row(row_u) if row_u else {}
-        if _is_lengkapi_done(profile_u):
-            await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
             return
         await db.set_onboarding_step(conn, uid, f"TEXT_LC:{field_key}")
         await q.edit_message_text(
@@ -776,9 +742,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         row = await user_row(conn, db, uid)
         profile = profile_from_row(row) if row else {}
-        if _is_lengkapi_done(profile):
-            await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
-            return
         _multi_init(context, field_key, "lc", profile)
         sel = context.user_data[MULTI_UD_KEY]["ids"]
         kb = keyboard_for_multi_choices(
@@ -867,13 +830,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         field_key = data.split(":", 1)[1]
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
-        profile_now = profile_from_row(step_row) if step_row else {}
         m = context.user_data.get(MULTI_UD_KEY)
-        if _is_lengkapi_done(profile_now):
-            await q.answer()
-            await q.edit_message_text("/lengkapi sudah ditutup. Gunakan /ubah.")
-            _multi_clear(context)
-            return
         if not step.startswith("MULTI_LC:") or step.split(":", 1)[1] != field_key:
             await q.answer()
             await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
@@ -891,7 +848,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         await q.answer()
         await db.set_profile_partial(conn, uid, {field_key: ids_list})
-        await _mark_lengkapi_done_if_complete(conn, db, uid)
         _multi_clear(context)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
@@ -979,10 +935,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         _, field_key, choice_id = data.split(":", 2)
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
-        profile_now = profile_from_row(step_row) if step_row else {}
-        if _is_lengkapi_done(profile_now):
-            await q.edit_message_text("/lengkapi sudah ditutup. Gunakan /ubah.")
-            return
         if not step.startswith("PICK_LC:") or step.split(":", 1)[1] != field_key:
             await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
             return
@@ -996,7 +948,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             return
         await db.set_profile_partial(conn, uid, {field_key: choice_id})
-        await _mark_lengkapi_done_if_complete(conn, db, uid)
         await _revalidate_filtered_choice_fields(conn, db, uid)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
