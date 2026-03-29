@@ -1,0 +1,64 @@
+# type: text | choice | multi_choice
+# roles: daftar peran yang field ini dipakai (jika tidak ada = semua peran)
+# filter_by_field: untuk choice — filter opsi berdasarkan field lain di profil
+
+fields:
+  - key: full_name
+    label: Nama lengkap
+    type: text
+    required: true
+
+  - key: faculty
+    label: Fakultas
+    type: choice
+    choices_key: faculties
+    roles: [student]
+    required: true
+
+  - key: major
+    label: Jurusan
+    type: choice
+    choices_key: majors
+    filter_by_field: faculty
+    roles: [student]
+    required: true
+
+  - key: class_enrolled
+    label: Kelas
+    type: multi_choice
+    choices_key: classes
+    roles: [student]
+    required: true
+
+  - key: student_id
+    label: NIM
+    type: text
+    roles: [student]
+    required: false
+
+  - key: position
+    label: Jabatan
+    type: choice
+    choices_key: positions
+    roles: [owner, admin, lecturer, staff]
+    required: true
+
+  - key: teaching_classes
+    label: Kelas yang diampu
+    type: multi_choice
+    choices_key: classes
+    roles: [lecturer]
+    required: false
+
+profile_display:
+  - telegram_name
+  - username
+  - full_name
+  - faculty
+  - major
+  - class_enrolled
+  - student_id
+  - position
+  - teaching_classes
+  - role
+  - agra_total

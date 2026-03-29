@@ -1,0 +1,93 @@
+# Pilihan dropdown. `id` disimpan di profil; `label` tampil di bot.
+# Untuk jurusan: isi `faculty` dengan id fakultas agar hanya muncul jika fakultas itu dipilih.
+
+faculties:
+  - id: fmipa
+    label: Matematika & Ilmu Pengetahuan Alam
+  - id: ftik
+    label: Teknik & Ilmu Komputer
+  - id: fib
+    label: Ilmu Budaya
+  - id: feb
+    label: Ekonomi & Bisnis
+
+majors:
+  - id: if
+    label: Ilmu Fisika
+    faculty: fmipa
+  - id: ik
+    label: Ilmu Kimia
+    faculty: fmipa
+  - id: dt
+    label: Data Terapan
+    faculty: ftik
+  - id: ki
+    label: Keamanan Informasi
+    faculty: ftik
+  - id: im
+    label: Industri Musik
+    faculty: fib
+  - id: iv
+    label: Industri Visual
+    faculty: fib
+  - id: ie
+    label: Ilmu Ekonomi
+    faculty: feb
+  - id: ib
+    label: Ilmu Bisnis
+    faculty: feb
+
+classes:
+  - id: fisika
+    label: Fisika
+    majors: if
+  - id: kimia
+    label: Kimia
+    majors: ik
+  - id: data
+    label: Data Science
+    majors: dt
+  - id: keamanan
+    label: Cybersecurity
+    majors: ki
+  - id: musik
+    label: Musik
+    majors: im
+  - id: visual
+    label: Desain
+    majors: iv
+  - id: ekonomi
+    label: Ekonomi
+    majors: ie
+  - id: bisnis
+    label: Bisnis
+    majors: ib
+
+# Jabatan (non-mahasiswa) — ubah sesuai kampus
+positions:
+  - id: rektor
+    label: Adhipati अधिपति
+  - id: sekre
+    label: Sachiva सचिव
+  - id: warek1
+    label: Kuladhipati I कुलाधीपति
+  - id: warek2
+    label: Kuladhipati II कुलाधीपति
+  - id: warek3
+    label: Kuladhipati III कुलाधीपति
+  - id: dekan
+    label: Pradhanāchārya प्रधानाचार्य
+  - id: kajur
+    label: Prāchārya प्रचार्य
+  - id: dosen
+    label: Āchārya आचार्य
+  - id: coach
+    label: Āchāryaka आचार्यक
+  - id: pembina
+    label: Āchāryata आचार्यता
+  - id: staf_umum
+    label: Upāchārya उपचर्या
+  - id: staf_mp
+    label: Parichārya परिचर्या
+  - id: lainnya
+    label: Lainnya
