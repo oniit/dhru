@@ -24,6 +24,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("admin_data", commands.cmd_admin_data))
     application.add_handler(CommandHandler("pending", commands.cmd_pending))
     application.add_handler(CommandHandler("log", commands.cmd_log))
+    application.add_handler(CommandHandler("tagall", commands.cmd_tagall))
+    application.add_handler(CommandHandler("all", commands.cmd_tagall))
     application.add_handler(CommandHandler("buka_presensi", attendance.cmd_buka_presensi))
     application.add_handler(CommandHandler("tutup_presensi", attendance.cmd_tutup_presensi))
     application.add_handler(CommandHandler("hadir", attendance.cmd_hadir))
@@ -32,6 +34,13 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("sesi", attendance.cmd_sesi_aktif))
 
     application.add_handler(CallbackQueryHandler(commands.on_callback))
+    application.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS & ~filters.StatusUpdate.ALL,
+            messages.track_group_activity,
+        ),
+        group=0,
+    )
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,

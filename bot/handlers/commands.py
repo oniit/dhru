@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ from bot.database import (
     role_can_approve_profile,
     role_can_open_presensi,
     role_can_report,
+    role_can_tag_all,
     role_can_view_sensitive_logs,
 )
 from bot.settings import (
@@ -86,6 +88,26 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 
 def _is_lengkapi_done(profile: dict) -> bool:
     return bool(profile.get(LENGKAPI_DONE_KEY))
+
+
+def _display_name_from_row(row) -> str:
+    if not row:
+        return "—"
+    profile = profile_from_row(row)
+    return (
+        profile.get("full_name")
+        or f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+        or (f"@{row['username']}" if row["username"] else str(row["telegram_id"]))
+    )
+
+
+def _profile_request_status_text(
+    original_text: str,
+    *,
+    status: str,
+    decided_by_name: str,
+) -> str:
+    return f"{original_text}\n\nStatus: {status}.\nOleh: {decided_by_name}"
 
 
 async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
@@ -246,9 +268,19 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "*Daftar pengguna*",
-                "`/daftar fakultas <id>` · `/daftar jurusan <id>` · `/daftar kelas <id>`",
-                "`/daftar admin` (owner & admin) · `/daftar staf` (staf biasa) · `/daftar dosen`",
+                "`/daftar all`",
+                "`/daftar id all`",
+                "`/daftar <unit> <id>`",
                 "_Hanya nama & username; data besar dipecah beberapa pesan._",
+                "",
+            ]
+        )
+    if role_can_tag_all(role):
+        lines.extend(
+            [
+                "*Mention grup*",
+                "/tagall — Mention semua user",
+                "/all <pesan> — Kirim pesan + mention semua user",
                 "",
             ]
         )
@@ -1044,6 +1076,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             conn, int(rid_s), approve=(dec == "1"), decided_by=uid
         )
         if not ok:
+            req = await db.get_profile_request(conn, int(rid_s))
+            if not req:
+                await q.edit_message_text("Permintaan tidak tersedia.")
+                return
+            if req["status"] in ("approved", "rejected"):
+                decided_by_row = await user_row(conn, db, int(req["decided_by"] or 0))
+                decided_by_name = _display_name_from_row(decided_by_row)
+                final_status = "disetujui" if req["status"] == "approved" else "ditolak"
+                original_text = q.message.text or f"Pengajuan #{rid_s}"
+                await q.edit_message_text(
+                    _profile_request_status_text(
+                        original_text,
+                        status=final_status,
+                        decided_by_name=decided_by_name,
+                    )
+                )
+                return
             await q.edit_message_text("Permintaan tidak tersedia.")
             return
         await db.add_audit(
@@ -1054,8 +1103,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         status = "disetujui" if dec == "1" else "ditolak"
         original_text = q.message.text or f"Pengajuan #{rid_s}"
+        decided_by_name = _display_name_from_row(row_u)
         await q.edit_message_text(
-            f"{original_text}\n\nStatus: {status}."
+            _profile_request_status_text(
+                original_text,
+                status=status,
+                decided_by_name=decided_by_name,
+            )
         )
         if tid and dec == "1":
             await _revalidate_filtered_choice_fields(conn, db, tid)
@@ -1311,18 +1365,16 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if len(parts) < 2:
         await update.message.reply_text(
             "Daftar pengguna (nama + username)\n\n"
-            "/daftar id fakultas <id>\n"
-            "/daftar id jurusan <id>\n"
-            "/daftar id kelas <id>\n"
-            "/daftar id admin\n"
-            "/daftar id staf\n"
-            "/daftar id dosen\n"
+            "/daftar all\n"
+            "/daftar mhs\n"
             "/daftar fakultas <id>\n"
             "/daftar jurusan <id>\n"
             "/daftar kelas <id>\n"
-            "/daftar admin — owner & admin\n"
-            "/daftar staf — staf biasa (bukan dosen)\n"
-            "/daftar dosen\n\n"
+            "/daftar admin\n"
+            "/daftar staf\n"
+            "/daftar dosen\n"
+            "/daftar all_staf\n\n"
+            "Gunakan /daftar id <jenis> untuk sertakan Telegram ID di output.\n"
             "Data panjang otomatis dipecah ke beberapa pesan (~40 baris tiap pesan, "
             "jeda singkat antarpesan mengurangi risiko flood limit Telegram)."
         )
@@ -1358,10 +1410,27 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if r["role"] in (ROLE_OWNER, ROLE_ADMIN):
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
+    elif kind == "all":
+        title = "Daftar semua user"
+        for r in all_rows:
+            p = json.loads(r["profile_json"] or "{}")
+            push_row(r, p)
+    elif kind == "mhs":
+        title = "Daftar semua mahasiswa"
+        for r in all_rows:
+            if r["role"] == ROLE_STUDENT:
+                p = json.loads(r["profile_json"] or "{}")
+                push_row(r, p)
     elif kind == "staf":
         title = "Daftar staf (non-dosen)"
         for r in all_rows:
             if r["role"] == ROLE_STAFF:
+                p = json.loads(r["profile_json"] or "{}")
+                push_row(r, p)
+    elif kind == "all_staf":
+        title = "Daftar staf (admin + dosen + non-dosen)"
+        for r in all_rows:
+            if r["role"] in (ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF):
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
     elif kind == "dosen":
@@ -1614,6 +1683,71 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
     await update.message.reply_text(
         "\n".join(lines)[:4000], parse_mode="Markdown"
+    )
+
+
+async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+    if update.effective_chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("/tagall hanya bisa dipakai di grup.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+    actor = update.effective_user.id
+    row = await user_row(conn, db, actor)
+    role = row["role"] if row else ROLE_STUDENT
+    if not role_can_tag_all(role):
+        await update.message.reply_text("Hanya owner/sekre/staf/dosen yang bisa /tagall.")
+        return
+
+    all_ids = await db.list_group_seen_user_ids(conn, update.effective_chat.id)
+    ids = [tid for tid in all_ids if tid != actor]
+    if not ids:
+        await update.message.reply_text(
+            "Belum ada user yang terdeteksi bot di grup ini."
+        )
+        return
+
+    raw_text = (update.message.text or "").strip()
+    parts = raw_text.split(maxsplit=1)
+    custom_body = parts[1].strip() if len(parts) > 1 else ""
+    custom_body_html = html.escape(custom_body)
+
+    batch_size = 40
+    pause_sec = 0.8
+    chunks = [ids[i : i + batch_size] for i in range(0, len(ids), batch_size)]
+    total = len(chunks)
+
+    for idx, chunk in enumerate(chunks, start=1):
+        mentions = " ".join(
+            f'<a href="tg://user?id={tid}">👤</a>' for tid in chunk
+        )
+        header = (
+            f"Tag semua ({idx}/{total})" if total > 1 else "Tag semua"
+        )
+        text = (
+            f"{custom_body_html}\n\n{mentions}"
+            if custom_body_html
+            else f"{header}\n\n{mentions}"
+        )
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        if idx < total:
+            await asyncio.sleep(pause_sec)
+
+    if custom_body_html:
+        await update.message.reply_text("Summon ended.")
+
+    await db.add_audit(
+        conn,
+        actor,
+        "tagall",
+        f"chat={update.effective_chat.id} count={len(ids)} batches={total} msg={int(bool(custom_body))}",
     )
 
 

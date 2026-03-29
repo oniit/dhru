@@ -106,3 +106,24 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             context, db, conn, rid, uid, {field_key: text}
         )
         return
+
+
+async def track_group_activity(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if not update.effective_user or not update.effective_chat:
+        return
+    if update.effective_chat.type not in ("group", "supergroup"):
+        return
+    conn = _conn(context)
+    db = _db(context)
+    u = update.effective_user
+    await db.touch_group_seen_user(
+        conn,
+        chat_id=update.effective_chat.id,
+        telegram_id=u.id,
+        username=u.username,
+        first_name=u.first_name,
+        last_name=u.last_name,
+        is_bot=u.is_bot,
+    )

@@ -33,7 +33,7 @@ def role_display(role: str) -> str:
     return {
         ROLE_OWNER: "Founder",
         ROLE_ADMIN: "Sekretaris",
-        ROLE_LECTURER: "Dosen",
+        ROLE_LECTURER: "Dosen / Coach",
         ROLE_STAFF: "Staf",
         ROLE_STUDENT: "Mahasiswa",
     }.get(role, role)

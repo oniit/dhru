@@ -159,6 +159,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS group_seen_users (
+    chat_id INTEGER NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    last_seen_at REAL NOT NULL,
+    PRIMARY KEY (chat_id, telegram_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_agra_target ON agra_ledger(target_telegram_id);
 CREATE INDEX IF NOT EXISTS idx_pending_profile ON profile_change_requests(status);
 CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
@@ -347,6 +358,14 @@ class Database:
         )
         await conn.commit()
         return cur.lastrowid
+
+    async def get_profile_request(
+        self, conn: aiosqlite.Connection, request_id: int
+    ) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM profile_change_requests WHERE id = ?", (request_id,)
+        )
+        return await cur.fetchone()
 
     async def resolve_profile_request(
         self,
@@ -607,6 +626,57 @@ class Database:
         rows = await cur.fetchall()
         return [int(r["telegram_id"]) for r in rows]
 
+    async def touch_group_seen_user(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        chat_id: int,
+        telegram_id: int,
+        username: str | None,
+        first_name: str | None,
+        last_name: str | None,
+        is_bot: bool,
+    ) -> None:
+        now = time.time()
+        await conn.execute(
+            """
+            INSERT INTO group_seen_users (
+                chat_id, telegram_id, username, first_name, last_name, is_bot, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id, telegram_id) DO UPDATE SET
+                username = excluded.username,
+                first_name = excluded.first_name,
+                last_name = excluded.last_name,
+                is_bot = excluded.is_bot,
+                last_seen_at = excluded.last_seen_at
+            """,
+            (
+                chat_id,
+                telegram_id,
+                username,
+                first_name,
+                last_name,
+                1 if is_bot else 0,
+                now,
+            ),
+        )
+        await conn.commit()
+
+    async def list_group_seen_user_ids(
+        self, conn: aiosqlite.Connection, chat_id: int
+    ) -> list[int]:
+        cur = await conn.execute(
+            """
+            SELECT telegram_id
+            FROM group_seen_users
+            WHERE chat_id = ? AND is_bot = 0
+            ORDER BY last_seen_at DESC
+            """,
+            (chat_id,),
+        )
+        rows = await cur.fetchall()
+        return [int(r["telegram_id"]) for r in rows]
+
     async def ensure_owner_role(self, conn: aiosqlite.Connection) -> None:
         if not OWNER_ID:
             return
@@ -712,6 +782,10 @@ def role_can_report(role: str) -> bool:
     return role in (ROLE_OWNER, ROLE_ADMIN)
 
 
+def role_can_tag_all(role: str) -> bool:
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_STAFF, ROLE_LECTURER)
+
+
 __all__ = [
     "Database",
     "DB_PATH",
@@ -726,4 +800,5 @@ __all__ = [
     "role_can_add_agra",
     "role_can_open_presensi",
     "role_can_report",
+    "role_can_tag_all",
 ]
