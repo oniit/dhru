@@ -405,7 +405,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     opener_name = s["opener_first_name"] or str(s["opened_by"])
                 lines.append(
                     f"• `{format_local_date(s['opened_at'])} #{s['id']} `{_class_label(s['class_id'])} | "
-                    f"{opener_name}"
+                    f"_{opener_name}_"
                 )
             await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
             return
