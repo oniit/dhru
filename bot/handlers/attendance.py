@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -15,7 +16,7 @@ from bot.database import (
     role_can_report,
 )
 from bot.settings import CHOICES
-from bot.timefmt import format_local_time
+from bot.timefmt import TZ, format_local_time
 
 from .common import normalize_multi_choice_value, profile_from_row, user_row
 
@@ -89,6 +90,14 @@ def _format_presensi_block(
             else:
                 lines.append(f"• {name}")
     return "\n".join(lines)
+
+
+def format_local_date(ts: float | None) -> str:
+    """Format tanggal saja (tanpa jam/WIB) untuk output ringkas."""
+    if ts is None:
+        return "—"
+    dt = datetime.fromtimestamp(float(ts), tz=TZ)
+    return dt.strftime("%d/%m/%y")
 
 
 async def refresh_presensi_announcement(
@@ -343,9 +352,17 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if allowed_class_ids is None:
                 cur = await conn.execute(
                     """
-                    SELECT id, class_id, opened_at, closed_at
-                    FROM attendance_sessions
-                    ORDER BY id DESC
+                    SELECT
+                        s.id,
+                        s.class_id,
+                        s.opened_at,
+                        s.closed_at,
+                        s.opened_by,
+                        u.profile_json AS opener_profile_json,
+                        u.first_name AS opener_first_name
+                    FROM attendance_sessions s
+                    LEFT JOIN users u ON u.telegram_id = s.opened_by
+                    ORDER BY s.id DESC
                     """
                 )
                 sessions = await cur.fetchall()
@@ -353,10 +370,18 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 placeholders = ",".join("?" * len(allowed_class_ids))
                 cur = await conn.execute(
                     f"""
-                    SELECT id, class_id, opened_at, closed_at
-                    FROM attendance_sessions
-                    WHERE class_id IN ({placeholders})
-                    ORDER BY id DESC
+                    SELECT
+                        s.id,
+                        s.class_id,
+                        s.opened_at,
+                        s.closed_at,
+                        s.opened_by,
+                        u.profile_json AS opener_profile_json,
+                        u.first_name AS opener_first_name
+                    FROM attendance_sessions s
+                    LEFT JOIN users u ON u.telegram_id = s.opened_by
+                    WHERE s.class_id IN ({placeholders})
+                    ORDER BY s.id DESC
                     """,
                     allowed_class_ids,
                 )
@@ -369,10 +394,18 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = ["*Rekap presensi (semua sesi)*"]
             for s in sessions:
                 closed_at = s["closed_at"]
+                opener_name = None
+                if s["opener_profile_json"]:
+                    try:
+                        opener_json = json.loads(s["opener_profile_json"] or "{}")
+                        opener_name = opener_json.get("full_name")
+                    except Exception:
+                        opener_name = None
+                if not opener_name:
+                    opener_name = s["opener_first_name"] or str(s["opened_by"])
                 lines.append(
-                    f"• `#{s['id']}` {_class_label(s['class_id'])} — "
-                    f"buka {format_local_time(s['opened_at'])}, "
-                    f"tutup {format_local_time(closed_at) if closed_at else '—'}"
+                    f"• `{format_local_date(s['opened_at'])} #{s['id']}` {_class_label(s['class_id'])} | "
+                    f"{opener_name}"
                 )
             await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
             return
@@ -408,9 +441,9 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text("Belum ada rekap sesi yang sudah ditutup.")
             return
 
-        lines = ["*Rekap presensi per matkul (jumlah sesi ditutup)*"]
+        lines = ["*Rekap presensi per matkul*"]
         for r in rows:
-            lines.append(f"• {_class_label(r['class_id'])} — {int(r['session_count'])} sesi")
+            lines.append(f"• {int(r['session_count'])} sesi — {_class_label(r['class_id'])}")
         await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
         return
 
