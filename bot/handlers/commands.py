@@ -217,7 +217,7 @@ def help_for_role(role: str) -> str:
     if role_can_add_agra(role):
         lines.extend(
             [
-                "*Agra (dosen/admin/owner)*",
+                "*Agra (dosen/coach/admin)*",
                 "/add <nominal> @user … | <deskripsi>",
                 "Contoh: `/add 10 @user1 @user2 | Tugas 1`",
                 "Bisa *reply* pesan user + `/add 10 | alasan`",
@@ -244,7 +244,7 @@ def help_for_role(role: str) -> str:
                 "*Sesi & rekap hadir*",
                 "/sesi — Sesi aktif"
                 + (" _(hanya kelas diampu)_" if role == ROLE_LECTURER else ""),
-                "/rekap\\_hadir <id\\_sesi> — Detail hadir & waktu",
+                "/rekap\\_hadir <id\\_sesi>",
                 "",
             ]
         )
@@ -286,8 +286,8 @@ def help_for_role(role: str) -> str:
             [
                 "*Mention grup*",
                 "/tagall — Mention semua user",
-                "/all <pesan> — Kirim pesan + mention semua user",
-                "_(Dipecah ke beberapa pesan.)_",
+                "/all <pesan> — Kirim pesan + mention",
+                "_Dipecah ke beberapa pesan_",
                 "",
             ]
         )

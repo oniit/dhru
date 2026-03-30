@@ -67,8 +67,9 @@ def _format_presensi_block(
         f"📋 *Presensi* `#{sess['id']}` — {c_lab}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
     ]
-    if sess.get("closed_at"):
-        lines.append(f"Ditutup: {format_local_time(sess['closed_at'])}")
+    closed_at = sess["closed_at"]
+    if closed_at is not None:
+        lines.append(f"Ditutup: {format_local_time(closed_at)}")
     if closed:
         lines.append("_Sesi ditutup._")
     else:
@@ -129,15 +130,22 @@ async def refresh_presensi_announcement(
 
 async def _send_presensi_dm(context: ContextTypes.DEFAULT_TYPE, uid: int, text: str) -> None:
     try:
-        await context.bot.send_message(chat_id=uid, text=text)
+        await context.bot.send_message(
+            chat_id=uid,
+            text=text,
+            parse_mode="Markdown",
+        )
     except Exception as e:
         log.warning("DM presensi ke %s: %s", uid, e)
 
 
-def _classes_keyboard() -> InlineKeyboardMarkup:
+def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeyboardMarkup:
     rows = []
+    allowed_set = set(allowed_class_ids) if allowed_class_ids is not None else None
     for item in CHOICES.get("classes", []):
         cid = item.get("id", "")
+        if allowed_set is not None and cid not in allowed_set:
+            continue
         lab = str(item.get("label", cid))
         rows.append([InlineKeyboardButton(lab, callback_data=f"o:{cid}"[:64])])
     return InlineKeyboardMarkup(rows)
@@ -152,9 +160,20 @@ async def cmd_buka_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not row or not role_can_open_presensi(row["role"]):
         await update.message.reply_text("Hanya dosen/admin/owner yang bisa membuka presensi.")
         return
+    profile = profile_from_row(row)
+    allowed_class_ids: list[str] | None = None
+    if row["role"] == ROLE_LECTURER:
+        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
+        if not teaching:
+            await update.message.reply_text(
+                "Isi *Kelas yang diampu* di /lengkapi untuk membuka presensi.",
+                parse_mode="Markdown",
+            )
+            return
+        allowed_class_ids = teaching
     await update.message.reply_text(
         "Pilih kelas untuk sesi presensi:",
-        reply_markup=_classes_keyboard(),
+        reply_markup=_classes_keyboard(allowed_class_ids),
     )
 
 
@@ -176,6 +195,12 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not sess:
         await update.message.reply_text("Sesi tidak ditemukan.")
         return
+    if sess["closed_at"] is not None:
+        await update.message.reply_text(
+            f"Sesi `{sid}` sudah ditutup sebelumnya.",
+            parse_mode="Markdown",
+        )
+        return
     opened_by = int(sess["opened_by"])
     await db.close_attendance_session(conn, sid)
     await db.add_audit(conn, update.effective_user.id, "presensi_close", f"session={sid}")
@@ -185,6 +210,11 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     recap_dm = f"📩 *Rekap presensi (DM)*\n\n{recap_dm}"
     await _send_presensi_dm(context, opened_by, recap_dm[:4000])
+    # Admin/owner juga dapat rekap saat sesi ditutup.
+    for mid in await db.list_moderator_telegram_ids(conn):
+        if mid == opened_by:
+            continue
+        await _send_presensi_dm(context, mid, recap_dm[:4000])
     await refresh_presensi_announcement(context, db, conn, sid)
     await update.message.reply_text(f"Sesi `{sid}` ditutup.", parse_mode="Markdown")
 
@@ -237,8 +267,8 @@ async def _record_hadir(
         return False, "Sesi ini untuk kelas lain.", False
     added = await db.record_attendance(conn, session_id, uid)
     if added:
-        return True, "✅ Presensi tercatat. Terima kasih.", True
-    return True, "Kamu sudah tercatat hadir di sesi ini.", False
+        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat. Terima kasih.", True
+    return True, f"Kamu sudah tercatat hadir di sesi ini. Kelas: {_class_label(sess['class_id'])}.", False
 
 
 async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
