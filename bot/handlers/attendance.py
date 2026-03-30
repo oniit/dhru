@@ -318,10 +318,110 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     profile = profile_from_row(row)
     parts = (update.message.text or "").split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await update.message.reply_text("Pakai: `/rekap_hadir <id_sesi>`", parse_mode="Markdown")
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "Pakai: `/rekap_hadir <id_sesi>` atau `/rekap_hadir all` atau `/rekap_hadir total`",
+            parse_mode="Markdown",
+        )
         return
-    sid = int(parts[1])
+
+    arg = parts[1]
+    allowed_class_ids: list[str] | None = None
+    if row["role"] == ROLE_LECTURER:
+        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
+        if not teaching:
+            await update.message.reply_text(
+                "Isi *Kelas yang diampu* di /lengkapi untuk melihat rekap.",
+                parse_mode="Markdown",
+            )
+            return
+        allowed_class_ids = teaching
+
+    if arg in ("all", "total"):
+        # Lecturer hanya boleh lihat matkul yang dia ampu.
+        if arg == "all":
+            if allowed_class_ids is None:
+                cur = await conn.execute(
+                    """
+                    SELECT id, class_id, opened_at, closed_at
+                    FROM attendance_sessions
+                    ORDER BY id DESC
+                    """
+                )
+                sessions = await cur.fetchall()
+            else:
+                placeholders = ",".join("?" * len(allowed_class_ids))
+                cur = await conn.execute(
+                    f"""
+                    SELECT id, class_id, opened_at, closed_at
+                    FROM attendance_sessions
+                    WHERE class_id IN ({placeholders})
+                    ORDER BY id DESC
+                    """,
+                    allowed_class_ids,
+                )
+                sessions = await cur.fetchall()
+
+            if not sessions:
+                await update.message.reply_text("Belum ada sesi presensi.")
+                return
+
+            lines = ["*Rekap presensi (semua sesi)*"]
+            for s in sessions:
+                closed_at = s["closed_at"]
+                lines.append(
+                    f"• `#{s['id']}` {_class_label(s['class_id'])} — "
+                    f"buka {format_local_time(s['opened_at'])}, "
+                    f"tutup {format_local_time(closed_at) if closed_at else '—'}"
+                )
+            await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+            return
+
+        # arg == "total"
+        if allowed_class_ids is None:
+            cur = await conn.execute(
+                """
+                SELECT class_id, COUNT(*) as session_count
+                FROM attendance_sessions
+                WHERE closed_at IS NOT NULL
+                GROUP BY class_id
+                ORDER BY session_count DESC
+                """
+            )
+            rows = await cur.fetchall()
+        else:
+            placeholders = ",".join("?" * len(allowed_class_ids))
+            cur = await conn.execute(
+                f"""
+                SELECT class_id, COUNT(*) as session_count
+                FROM attendance_sessions
+                WHERE closed_at IS NOT NULL
+                  AND class_id IN ({placeholders})
+                GROUP BY class_id
+                ORDER BY session_count DESC
+                """,
+                allowed_class_ids,
+            )
+            rows = await cur.fetchall()
+
+        if not rows:
+            await update.message.reply_text("Belum ada rekap sesi yang sudah ditutup.")
+            return
+
+        lines = ["*Rekap presensi per matkul (jumlah sesi ditutup)*"]
+        for r in rows:
+            lines.append(f"• {_class_label(r['class_id'])} — {int(r['session_count'])} sesi")
+        await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+        return
+
+    if not arg.isdigit():
+        await update.message.reply_text(
+            "Pakai: `/rekap_hadir <id_sesi>` atau `/rekap_hadir all` atau `/rekap_hadir total`",
+            parse_mode="Markdown",
+        )
+        return
+
+    sid = int(arg)
     sess, records = await db.attendance_recap_session(conn, sid)
     if not sess:
         await update.message.reply_text("Sesi tidak ada.")
