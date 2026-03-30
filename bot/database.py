@@ -677,6 +677,328 @@ class Database:
         rows = await cur.fetchall()
         return [int(r["telegram_id"]) for r in rows]
 
+    @staticmethod
+    def _rowcount(cur: aiosqlite.Cursor) -> int:
+        rc = getattr(cur, "rowcount", None)
+        if rc is None or rc < 0:
+            return 0
+        return int(rc)
+
+    async def reset_all_data_except_users(
+        self, conn: aiosqlite.Connection
+    ) -> dict[str, int]:
+        """
+        Reset data operasional bot (tanpa menghapus tabel/role user).
+        Ini dirancang untuk keperluan owner saat debugging/maintenance.
+        """
+        # Order penting karena foreign key.
+        cur = await conn.execute("DELETE FROM attendance_records")
+        attendance_records = self._rowcount(cur)
+        cur = await conn.execute("DELETE FROM attendance_sessions")
+        attendance_sessions = self._rowcount(cur)
+
+        cur = await conn.execute("DELETE FROM agra_ledger")
+        agra_ledger = self._rowcount(cur)
+
+        cur = await conn.execute("DELETE FROM profile_change_requests")
+        profile_change_requests = self._rowcount(cur)
+
+        cur = await conn.execute("DELETE FROM audit_log")
+        audit_log = self._rowcount(cur)
+
+        await conn.commit()
+        return {
+            "attendance_records": attendance_records,
+            "attendance_sessions": attendance_sessions,
+            "agra_ledger": agra_ledger,
+            "profile_change_requests": profile_change_requests,
+            "audit_log": audit_log,
+        }
+
+    async def reset_attendance_all(
+        self, conn: aiosqlite.Connection
+    ) -> dict[str, int]:
+        cur = await conn.execute("DELETE FROM attendance_records")
+        attendance_records = self._rowcount(cur)
+        cur = await conn.execute("DELETE FROM attendance_sessions")
+        attendance_sessions = self._rowcount(cur)
+        await conn.commit()
+        return {
+            "attendance_records": attendance_records,
+            "attendance_sessions": attendance_sessions,
+        }
+
+    async def reset_attendance_for_user(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> dict[str, int]:
+        """
+        Reset data presensi yang terkait user:
+        - hapus attendance_records yang tercatat user itu hadir
+        - hapus sesi yang dibuka oleh user itu (termasuk record milik sesi tersebut)
+        """
+        cur = await conn.execute(
+            "DELETE FROM attendance_records WHERE telegram_id = ?", (telegram_id,)
+        )
+        attendance_records_by_user = self._rowcount(cur)
+
+        cur = await conn.execute(
+            """
+            DELETE FROM attendance_records
+            WHERE session_id IN (
+                SELECT id FROM attendance_sessions WHERE opened_by = ?
+            )
+            """,
+            (telegram_id,),
+        )
+        attendance_records_for_opened_sessions = self._rowcount(cur)
+
+        cur = await conn.execute(
+            "DELETE FROM attendance_sessions WHERE opened_by = ?", (telegram_id,)
+        )
+        attendance_sessions_opened_by = self._rowcount(cur)
+        await conn.commit()
+        return {
+            "attendance_records_by_user": attendance_records_by_user,
+            "attendance_records_for_opened_sessions": attendance_records_for_opened_sessions,
+            "attendance_sessions_opened_by": attendance_sessions_opened_by,
+        }
+
+    async def reset_attendance_for_class(
+        self, conn: aiosqlite.Connection, class_id: str
+    ) -> dict[str, int]:
+        cur = await conn.execute(
+            """
+            DELETE FROM attendance_records
+            WHERE session_id IN (
+                SELECT id FROM attendance_sessions WHERE class_id = ?
+            )
+            """,
+            (class_id,),
+        )
+        attendance_records = self._rowcount(cur)
+        cur = await conn.execute(
+            "DELETE FROM attendance_sessions WHERE class_id = ?", (class_id,)
+        )
+        attendance_sessions = self._rowcount(cur)
+        await conn.commit()
+        return {
+            "attendance_records": attendance_records,
+            "attendance_sessions": attendance_sessions,
+        }
+
+    async def reset_attendance_for_session(
+        self, conn: aiosqlite.Connection, session_id: int
+    ) -> dict[str, int]:
+        cur = await conn.execute(
+            "DELETE FROM attendance_records WHERE session_id = ?",
+            (session_id,),
+        )
+        attendance_records = self._rowcount(cur)
+        cur = await conn.execute(
+            "DELETE FROM attendance_sessions WHERE id = ?",
+            (session_id,),
+        )
+        attendance_sessions = self._rowcount(cur)
+        await conn.commit()
+        return {
+            "attendance_records": attendance_records,
+            "attendance_sessions": attendance_sessions,
+        }
+
+    async def reset_agra_all(self, conn: aiosqlite.Connection) -> int:
+        cur = await conn.execute("DELETE FROM agra_ledger")
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_agra_for_user(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> int:
+        cur = await conn.execute(
+            """
+            DELETE FROM agra_ledger
+            WHERE target_telegram_id = ? OR actor_telegram_id = ?
+            """,
+            (telegram_id, telegram_id),
+        )
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_profile_change_requests_all(self, conn: aiosqlite.Connection) -> int:
+        cur = await conn.execute("DELETE FROM profile_change_requests")
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_profile_change_requests_for_user(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> int:
+        cur = await conn.execute(
+            "DELETE FROM profile_change_requests WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_audit_log_all(self, conn: aiosqlite.Connection) -> int:
+        cur = await conn.execute("DELETE FROM audit_log")
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_audit_log_for_user(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> int:
+        cur = await conn.execute("DELETE FROM audit_log WHERE actor_id = ?", (telegram_id,))
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_group_seen_users_all(self, conn: aiosqlite.Connection) -> int:
+        cur = await conn.execute("DELETE FROM group_seen_users")
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_group_seen_users_for_user(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> int:
+        cur = await conn.execute(
+            "DELETE FROM group_seen_users WHERE telegram_id = ?", (telegram_id,)
+        )
+        n = self._rowcount(cur)
+        await conn.commit()
+        return n
+
+    async def reset_user_all_data(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> dict[str, int]:
+        """
+        Reset data operasional bot yang terkait user (tanpa menghapus tabel users).
+        """
+        out: dict[str, int] = {}
+
+        att = await self.reset_attendance_for_user(conn, telegram_id)
+        out.update(att)
+
+        out["agra_ledger"] = await self.reset_agra_for_user(conn, telegram_id)
+        out["profile_change_requests"] = await self.reset_profile_change_requests_for_user(
+            conn, telegram_id
+        )
+        out["audit_log"] = await self.reset_audit_log_for_user(conn, telegram_id)
+
+        # Reset profil supaya user bisa /lengkapi lagi (seperti akun baru).
+        # `group_seen_users` sengaja tidak dihapus agar data "seen" tetap ada.
+        cur = await conn.execute(
+            """
+            UPDATE users
+            SET profile_json = '{}',
+                onboarding_step = NULL,
+                updated_at = ?
+            WHERE telegram_id = ?
+            """,
+            (time.time(), telegram_id),
+        )
+        out["users_profile_reset"] = self._rowcount(cur)
+        return out
+
+    async def reset_all_users_all_data_except_env(
+        self, conn: aiosqlite.Connection
+    ) -> dict[str, int]:
+        """
+        Reset operasional "semua user" yang bukan OWNER_ID/ADMIN_IDS dari .env.
+        `group_seen_users` sengaja tidak disentuh (biar seen tetap).
+        """
+        exclude_ids = [i for i in [OWNER_ID, *ADMIN_IDS] if i and int(i) != 0]
+        placeholders = ",".join("?" * len(exclude_ids)) if exclude_ids else ""
+
+        if not exclude_ids:
+            cur = await conn.execute("SELECT telegram_id FROM users")
+        else:
+            cur = await conn.execute(
+                f"SELECT telegram_id FROM users WHERE telegram_id NOT IN ({placeholders})",
+                exclude_ids,
+            )
+        rows = await cur.fetchall()
+        target_ids = [int(r["telegram_id"]) for r in rows]
+        if not target_ids:
+            return {"users_reset": 0}
+
+        p = ",".join("?" * len(target_ids))
+        now = time.time()
+
+        cur = await conn.execute(
+            f"DELETE FROM attendance_records WHERE telegram_id IN ({p})",
+            target_ids,
+        )
+        attendance_records_by_user = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"""
+            DELETE FROM attendance_records
+            WHERE session_id IN (
+                SELECT id FROM attendance_sessions WHERE opened_by IN ({p})
+            )
+            """,
+            target_ids,
+        )
+        attendance_records_for_opened_sessions = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"DELETE FROM attendance_sessions WHERE opened_by IN ({p})",
+            target_ids,
+        )
+        attendance_sessions_opened_by = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"""
+            DELETE FROM agra_ledger
+            WHERE target_telegram_id IN ({p})
+               OR actor_telegram_id IN ({p})
+            """,
+            (*target_ids, *target_ids),
+        )
+        agra_ledger_deleted = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"DELETE FROM profile_change_requests WHERE telegram_id IN ({p})",
+            target_ids,
+        )
+        profile_change_requests_deleted = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"DELETE FROM audit_log WHERE actor_id IN ({p})",
+            target_ids,
+        )
+        audit_log_deleted = self._rowcount(cur)
+
+        cur = await conn.execute(
+            f"""
+            UPDATE users
+            SET profile_json = '{{}}',
+                onboarding_step = NULL,
+                updated_at = ?
+            WHERE telegram_id IN ({p})
+            """,
+            (now, *target_ids),
+        )
+        users_profile_reset = self._rowcount(cur)
+
+        await conn.commit()
+
+        return {
+            "users_reset": len(target_ids),
+            "attendance_records_by_user": attendance_records_by_user,
+            "attendance_records_for_opened_sessions": attendance_records_for_opened_sessions,
+            "attendance_sessions_opened_by": attendance_sessions_opened_by,
+            "agra_ledger_deleted": agra_ledger_deleted,
+            "profile_change_requests_deleted": profile_change_requests_deleted,
+            "audit_log_deleted": audit_log_deleted,
+            "users_profile_reset": users_profile_reset,
+        }
+
     async def ensure_owner_role(self, conn: aiosqlite.Connection) -> None:
         if not OWNER_ID:
             return

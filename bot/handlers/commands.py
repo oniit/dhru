@@ -26,6 +26,7 @@ from bot.database import (
 )
 from bot.settings import (
     CHOICES,
+    ADMIN_IDS,
     OWNER_ID,
     PROFILE_FIELDS,
     field_applies_to_role,
@@ -53,6 +54,8 @@ from .common import (
 MULTI_UD_KEY = "multi_select"
 ADMIN_TARGET_KEY = "admin_profile_target"
 LENGKAPI_DONE_KEY = "__lengkapi_done"
+
+ORRESET_SCOPE_KEY = "owner_reset_scope"
 
 
 def _multi_clear(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -299,6 +302,8 @@ def help_for_role(role: str) -> str:
                 "atau reply + `/setrole <role>`",
                 "_Role: admin · lecturer · staff · student_",
                 "",
+                "`/owner_reset` — reset data (owner, via tombol)",
+                "",
             ]
         )
     lines.append(" ")
@@ -505,6 +510,605 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not q or not q.data or not q.from_user:
         return
     data = q.data
+
+    if data.startswith("orreset:"):
+        # Owner-only safety gate.
+        if not is_owner(q.from_user.id):
+            await q.answer("Tidak diizinkan.", show_alert=True)
+            return
+
+        parts = data.split(":")
+        # Supported:
+        # - orreset:act:<SCOPE>
+        # - orreset:pick_user:<UID>
+        # - orreset:pick_class:<CLASS_ID>
+        # - orreset:do:<ACTION>
+        # - orreset:do_user:<SCOPE>:<UID>
+        # - orreset:cancel
+        if len(parts) >= 2 and parts[1] == "cancel":
+            context.user_data.pop(ORRESET_SCOPE_KEY, None)
+            await q.edit_message_text("Dibatalkan.")
+            return
+
+        if len(parts) >= 3 and parts[1] == "back" and parts[2] == "root":
+            kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "✅ Semua (tanpa users)",
+                            callback_data="orreset:act:ALL"[:64],
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🧾 Presensi: semua",
+                            callback_data="orreset:act:ATT_ALL"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "📚 Presensi: per matkul",
+                            callback_data="orreset:act:ATT_CLASS"[:64],
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🆔 Presensi: per id",
+                            callback_data="orreset:act:ATT_SESSION"[:64],
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "💳 Agra: semua",
+                            callback_data="orreset:act:AGRA_ALL"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "👤 Agra: per user",
+                            callback_data="orreset:act:AGRA_USER"[:64],
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🧩 Audit log: semua",
+                            callback_data="orreset:act:AUD_ALL"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "♻️ Reset semua data per user",
+                            callback_data="orreset:act:USER_ALL"[:64],
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🧼 Reset semua user (kecuali env)",
+                            callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "🧾 Requests: semua",
+                            callback_data="orreset:act:REQ_ALL"[:64],
+                        ),
+                    ],
+                    [InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64])],
+                ]
+            )
+            context.user_data.pop(ORRESET_SCOPE_KEY, None)
+            await q.edit_message_text(
+                "Menu reset data (owner). Pilih varian, lalu konfirmasi untuk menghapus data.",
+                reply_markup=kb,
+            )
+            return
+
+        if len(parts) >= 3 and parts[1] == "act":
+            scope = parts[2]
+            conn = _conn(context)
+            db = _db(context)
+
+            if scope == "USER_ALL":
+                context.user_data[ORRESET_SCOPE_KEY] = scope
+                cur = await conn.execute(
+                    """
+                    SELECT telegram_id, role, username, first_name, last_name, profile_json
+                    FROM users
+                    ORDER BY created_at DESC
+                    LIMIT 12
+                    """
+                )
+                rows = await cur.fetchall()
+                if not rows:
+                    await q.edit_message_text("Tidak ada user untuk dipilih.")
+                    return
+                lines = []
+                kb_rows: list[list[InlineKeyboardButton]] = []
+                for r in rows:
+                    pid = int(r["telegram_id"])
+                    prof = json.loads(r["profile_json"] or "{}")
+                    full_name = (
+                        prof.get("full_name")
+                        or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+                        or (f"@{r['username']}" if r["username"] else None)
+                        or str(pid)
+                    )
+                    # 2 kolom.
+                    kb_rows.append(
+                        [
+                            InlineKeyboardButton(
+                                full_name[:20],
+                                callback_data=f"orreset:pick_user:{pid}"[:64],
+                            )
+                        ]
+                    )
+                    lines.append(f"• {full_name}")
+                # Bikin layout 2 kolom.
+                out_rows: list[list[InlineKeyboardButton]] = []
+                flat = [b for row in kb_rows for b in row]
+                for i in range(0, len(flat), 2):
+                    out_rows.append(flat[i : i + 2])
+                out_rows = out_rows[:6]
+                out_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Back",
+                            callback_data="orreset:back:root"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "❌ Cancel",
+                            callback_data="orreset:cancel"[:64],
+                        ),
+                    ]
+                )
+                await q.edit_message_text(
+                    "Pilih user target reset:",
+                    reply_markup=InlineKeyboardMarkup(out_rows),
+                )
+                return
+
+            if scope == "AGRA_USER":
+                context.user_data[ORRESET_SCOPE_KEY] = scope
+                exclude_ids = [i for i in [OWNER_ID, *ADMIN_IDS] if i and int(i) != 0]
+                params = tuple(exclude_ids)
+                ex_ph = ",".join("?" * len(exclude_ids)) if exclude_ids else ""
+                where_sql = (
+                    f"WHERE telegram_id NOT IN ({ex_ph})" if exclude_ids else ""
+                )
+                cur = await conn.execute(
+                    f"""
+                    SELECT telegram_id, role, username, first_name, last_name, profile_json
+                    FROM users
+                    {where_sql}
+                    ORDER BY created_at DESC
+                    LIMIT 12
+                    """,
+                    params,
+                )
+                rows = await cur.fetchall()
+                if not rows:
+                    await q.edit_message_text("Tidak ada user untuk dipilih.")
+                    return
+                kb_rows: list[list[InlineKeyboardButton]] = []
+                for r in rows:
+                    pid = int(r["telegram_id"])
+                    prof = json.loads(r["profile_json"] or "{}")
+                    full_name = (
+                        prof.get("full_name")
+                        or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+                        or (f"@{r['username']}" if r["username"] else None)
+                        or str(pid)
+                    )
+                    kb_rows.append(
+                        [
+                            InlineKeyboardButton(
+                                full_name[:20],
+                                callback_data=f"orreset:pick_user:{pid}"[:64],
+                            )
+                        ]
+                    )
+                # 2 kolom layout
+                out_rows: list[list[InlineKeyboardButton]] = []
+                flat = [b for row in kb_rows for b in row]
+                for i in range(0, len(flat), 2):
+                    out_rows.append(flat[i : i + 2])
+                out_rows = out_rows[:6]
+                out_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Back",
+                            callback_data="orreset:back:root"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "❌ Cancel",
+                            callback_data="orreset:cancel"[:64],
+                        ),
+                    ]
+                )
+                await q.edit_message_text(
+                    "Pilih user untuk reset agra:",
+                    reply_markup=InlineKeyboardMarkup(out_rows),
+                )
+                return
+
+            if scope == "ATT_SESSION":
+                context.user_data[ORRESET_SCOPE_KEY] = scope
+                cur = await conn.execute(
+                    """
+                    SELECT
+                        s.id,
+                        s.class_id,
+                        s.opened_at,
+                        s.opened_by,
+                        u.profile_json AS opener_profile_json,
+                        u.first_name AS opener_first,
+                        u.last_name AS opener_last
+                    FROM attendance_sessions s
+                    LEFT JOIN users u ON u.telegram_id = s.opened_by
+                    ORDER BY s.id DESC
+                    LIMIT 12
+                    """
+                )
+                sessions = await cur.fetchall()
+                if not sessions:
+                    await q.edit_message_text("Belum ada sesi presensi.")
+                    return
+
+                kb: list[list[InlineKeyboardButton]] = []
+                row: list[InlineKeyboardButton] = []
+                for s in sessions:
+                    cid = s["class_id"]
+                    lab = cid
+                    for item in CHOICES.get("classes", []):
+                        if item.get("id") == cid:
+                            lab = str(item.get("label", cid))
+                            break
+                    sid = int(s["id"])
+                    text = f"#{sid} {lab}"[:35]
+                    row.append(
+                        InlineKeyboardButton(
+                            text,
+                            callback_data=f"orreset:pick_session:{sid}"[:64],
+                        )
+                    )
+                    if len(row) == 2:
+                        kb.append(row)
+                        row = []
+                if row:
+                    kb.append(row)
+
+                if kb:
+                    kb = kb[:6]
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Back",
+                            callback_data="orreset:back:root"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "❌ Cancel",
+                            callback_data="orreset:cancel"[:64],
+                        ),
+                    ]
+                )
+
+                await q.edit_message_text(
+                    "Pilih sesi presensi untuk di-reset:",
+                    reply_markup=InlineKeyboardMarkup(kb),
+                )
+                return
+
+            if scope == "ATT_CLASS":
+                # Pilih matkul.
+                kb = []
+                row: list[InlineKeyboardButton] = []
+                for item in CHOICES.get("classes", []):
+                    cid = item.get("id", "")
+                    lab = str(item.get("label", cid))
+                    row.append(
+                        InlineKeyboardButton(
+                            lab[:30],
+                            callback_data=f"orreset:pick_class:{cid}"[:64],
+                        )
+                    )
+                    if len(row) == 2:
+                        kb.append(row)
+                        row = []
+                if row:
+                    kb.append(row)
+                context.user_data[ORRESET_SCOPE_KEY] = scope
+                if kb:
+                    kb = kb[:10]
+                kb.append(
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Back",
+                            callback_data="orreset:back:root"[:64],
+                        ),
+                        InlineKeyboardButton(
+                            "❌ Cancel",
+                            callback_data="orreset:cancel"[:64],
+                        ),
+                    ]
+                )
+                await q.edit_message_text(
+                    "Pilih matkul untuk reset presensi:",
+                    reply_markup=InlineKeyboardMarkup(kb),
+                )
+                return
+
+            # Non-user action: langsung konfirmasi.
+            action_label = scope.replace("_", " ").title()
+            detail = (
+                "Ini akan menghapus data operasional dari database (users tidak ikut terhapus)."
+            )
+            if scope == "USER_ALL_EXCEPT_ENV":
+                detail = (
+                    "Ini akan reset profil & onboarding_step semua user "
+                    "(kecuali OWNER/ADMIN dari .env), jadi bisa /lengkapi lagi. "
+                    "Data `seen` tetap dipertahankan."
+                )
+            await q.edit_message_text(
+                f"Konfirmasi reset: *{action_label}*?\n\n{detail}",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ YA, HAPUS",
+                                callback_data=f"orreset:do:{scope}"[:64],
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "⬅️ Back",
+                                callback_data="orreset:back:root"[:64],
+                            ),
+                            InlineKeyboardButton(
+                                "❌ Cancel",
+                                callback_data="orreset:cancel"[:64],
+                            ),
+                        ],
+                    ]
+                ),
+            )
+            return
+
+        if len(parts) >= 3 and parts[1] == "pick_user":
+            # scope disimpan di user_data
+            scope = context.user_data.get(ORRESET_SCOPE_KEY)
+            if not scope:
+                await q.edit_message_text("Sesi reset tidak valid. Coba /owner_reset lagi.")
+                return
+            uid = int(parts[2])
+            # Ambil nama untuk preview
+            conn = _conn(context)
+            cur = await conn.execute("SELECT role, username, first_name, last_name, profile_json FROM users WHERE telegram_id = ?", (uid,))
+            r = await cur.fetchone()
+            prof = json.loads(r["profile_json"] or "{}") if r else {}
+            full_name = (
+                prof.get("full_name")
+                or (f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() if r else "")
+                or (f"@{r['username']}" if r and r["username"] else None)
+                or str(uid)
+            )
+            await q.edit_message_text(
+                f"Konfirmasi reset *{scope.replace('_',' ').title()}* untuk user:\n• {full_name}",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ YA, HAPUS",
+                                callback_data=f"orreset:do_user:{scope}:{uid}"[:64],
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "⬅️ Back",
+                                callback_data="orreset:back:root"[:64],
+                            ),
+                            InlineKeyboardButton(
+                                "❌ Cancel",
+                                callback_data="orreset:cancel"[:64],
+                            ),
+                        ],
+                    ]
+                ),
+            )
+            return
+
+        if len(parts) >= 3 and parts[1] == "pick_class":
+            scope = context.user_data.get(ORRESET_SCOPE_KEY)
+            if scope != "ATT_CLASS":
+                await q.edit_message_text("Sesi reset tidak valid. Coba /owner_reset lagi.")
+                return
+            class_id = parts[2]
+            class_lab = class_id
+            for item in CHOICES.get("classes", []):
+                if str(item.get("id")) == class_id:
+                    class_lab = str(item.get("label", class_id))
+                    break
+            await q.edit_message_text(
+                f"Konfirmasi reset *presensi* untuk matkul:\n• {class_lab} (`{class_id}`)\n\n"
+                "Ini akan menghapus sesi + record presensi milik matkul tersebut.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ YA, HAPUS",
+                                callback_data=f"orreset:do:{scope}:{class_id}"[:64],
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "⬅️ Back",
+                                callback_data="orreset:back:root"[:64],
+                            ),
+                            InlineKeyboardButton(
+                                "❌ Cancel",
+                                callback_data="orreset:cancel"[:64],
+                            ),
+                        ],
+                    ]
+                ),
+            )
+            return
+
+        if len(parts) >= 3 and parts[1] == "pick_session":
+            scope = context.user_data.get(ORRESET_SCOPE_KEY)
+            if scope != "ATT_SESSION":
+                await q.edit_message_text("Sesi reset tidak valid. Coba /owner_reset lagi.")
+                return
+            session_id = int(parts[2])
+
+            conn = _conn(context)
+            cur = await conn.execute(
+                """
+                SELECT
+                    s.id,
+                    s.class_id,
+                    s.opened_by,
+                    s.opened_at,
+                    u.profile_json AS opener_profile_json,
+                    u.first_name AS opener_first,
+                    u.last_name AS opener_last,
+                    u.username AS opener_username
+                FROM attendance_sessions s
+                LEFT JOIN users u ON u.telegram_id = s.opened_by
+                WHERE s.id = ?
+                """,
+                (session_id,),
+            )
+            s = await cur.fetchone()
+            if not s:
+                await q.edit_message_text("Sesi tidak ditemukan.")
+                return
+
+            class_lab = s["class_id"]
+            for item in CHOICES.get("classes", []):
+                if item.get("id") == s["class_id"]:
+                    class_lab = str(item.get("label", s["class_id"]))
+                    break
+
+            opener_name = None
+            if s["opener_profile_json"]:
+                try:
+                    opener_json = json.loads(s["opener_profile_json"] or "{}")
+                    opener_name = opener_json.get("full_name")
+                except Exception:
+                    opener_name = None
+            if not opener_name:
+                opener_name = (
+                    f"{s['opener_first'] or ''} {s['opener_last'] or ''}".strip()
+                    or (f"@{s['opener_username']}" if s["opener_username"] else None)
+                    or str(s["opened_by"])
+                )
+
+            await q.edit_message_text(
+                f"Konfirmasi reset presensi untuk sesi:\n• `#{session_id}` {class_lab}\n• oleh {opener_name}\n\n"
+                "Ini akan menghapus sesi + semua record presensi pada sesi tersebut.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "✅ YA, HAPUS",
+                                callback_data=f"orreset:do:{scope}:{session_id}"[:64],
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                "⬅️ Back",
+                                callback_data="orreset:back:root"[:64],
+                            ),
+                            InlineKeyboardButton(
+                                "❌ Cancel",
+                                callback_data="orreset:cancel"[:64],
+                            ),
+                        ],
+                    ]
+                ),
+            )
+            return
+
+        if len(parts) >= 3 and parts[1] == "do":
+            # Non-user do, or do with class_id (ATT_CLASS).
+            conn = _conn(context)
+            db = _db(context)
+            scope = parts[2]
+            result: object
+            if scope in ("ATT_CLASS", "ATT_SESSION") and len(parts) >= 4:
+                target_id = parts[3]
+                if scope == "ATT_CLASS":
+                    result = await db.reset_attendance_for_class(conn, target_id)
+                else:
+                    result = await db.reset_attendance_for_session(
+                        conn, int(target_id)
+                    )
+            else:
+                if scope == "ALL":
+                    result = await db.reset_all_data_except_users(conn)
+                elif scope == "ATT_ALL":
+                    result = await db.reset_attendance_all(conn)
+                elif scope == "AGRA_ALL":
+                    result = await db.reset_agra_all(conn)
+                elif scope == "USER_ALL_EXCEPT_ENV":
+                    result = await db.reset_all_users_all_data_except_env(conn)
+                elif scope == "REQ_ALL":
+                    result = await db.reset_profile_change_requests_all(conn)
+                elif scope == "AUD_ALL":
+                    result = await db.reset_audit_log_all(conn)
+                elif scope == "SEEN_ALL":
+                    result = await db.reset_group_seen_users_all(conn)
+                else:
+                    await q.edit_message_text("Scope reset tidak dikenal.")
+                    return
+
+            context.user_data.pop(ORRESET_SCOPE_KEY, None)
+            if isinstance(result, dict):
+                lines = [f"• {k}: `{v}`" for k, v in result.items()]
+                await q.edit_message_text(
+                    "*Reset selesai.*\n" + "\n".join(lines),
+                    parse_mode="Markdown",
+                )
+            else:
+                await q.edit_message_text(
+                    f"*Reset selesai.*\n• count: `{result}`", parse_mode="Markdown"
+                )
+            return
+
+        if len(parts) >= 4 and parts[1] == "do_user":
+            conn = _conn(context)
+            db = _db(context)
+            scope = parts[2]
+            uid = int(parts[3])
+            result: object
+            if scope == "ATT_USER":
+                result = await db.reset_attendance_for_user(conn, uid)
+            elif scope == "AGRA_USER":
+                result = await db.reset_agra_for_user(conn, uid)
+            elif scope == "REQ_USER":
+                result = await db.reset_profile_change_requests_for_user(conn, uid)
+            elif scope == "AUD_USER":
+                result = await db.reset_audit_log_for_user(conn, uid)
+            elif scope == "SEEN_USER":
+                result = await db.reset_group_seen_users_for_user(conn, uid)
+            elif scope == "USER_ALL":
+                result = await db.reset_user_all_data(conn, uid)
+            else:
+                await q.edit_message_text("Scope reset user tidak dikenal.")
+                return
+
+            context.user_data.pop(ORRESET_SCOPE_KEY, None)
+            if isinstance(result, dict):
+                lines = [f"• {k}: `{v}`" for k, v in result.items()]
+                await q.edit_message_text(
+                    "*Reset selesai.*\n" + "\n".join(lines),
+                    parse_mode="Markdown",
+                )
+            else:
+                await q.edit_message_text(
+                    f"*Reset selesai.*\n• count: `{result}`", parse_mode="Markdown"
+                )
+            return
+
+        # Fallback: jika callback tidak match bentuk yang diharapkan.
+        await q.answer("Opsi reset tidak dikenali.", show_alert=True)
+        return
 
     if data.startswith("o:"):
         from . import attendance
@@ -1577,6 +2181,45 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             pass
     await update.message.reply_text(
         "Set role selesai:\n" + "\n".join(lines_out)[:4000]
+    )
+
+async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang bisa /owner_reset.")
+        return
+
+    kb = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("✅ Semua (tanpa users)", callback_data="orreset:act:ALL"[:64])],
+            [
+                InlineKeyboardButton("🧾 Presensi: semua", callback_data="orreset:act:ATT_ALL"[:64]),
+                InlineKeyboardButton("📚 Presensi: per matkul", callback_data="orreset:act:ATT_CLASS"[:64]),
+            ],
+            [InlineKeyboardButton("🆔 Presensi: per id", callback_data="orreset:act:ATT_SESSION"[:64])],
+            [
+                InlineKeyboardButton("💳 Agra: semua", callback_data="orreset:act:AGRA_ALL"[:64]),
+                InlineKeyboardButton("👤 Agra: per user", callback_data="orreset:act:AGRA_USER"[:64]),
+            ],
+            [
+                InlineKeyboardButton("🧩 Audit log: semua", callback_data="orreset:act:AUD_ALL"[:64]),
+                InlineKeyboardButton("♻️ Reset semua data per user", callback_data="orreset:act:USER_ALL"[:64]),
+            ],
+            [
+                InlineKeyboardButton(
+                    "🧼 Reset semua user (kecuali env)",
+                    callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
+                ),
+                InlineKeyboardButton("🧾 Requests: semua", callback_data="orreset:act:REQ_ALL"[:64]),
+            ],
+            [InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64])],
+        ]
+    )
+
+    await update.message.reply_text(
+        "Menu reset data (owner). Pilih varian, lalu konfirmasi untuk menghapus data.",
+        reply_markup=kb,
     )
 
 

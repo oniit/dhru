@@ -20,6 +20,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("ubah", commands.cmd_ubah))
     application.add_handler(CommandHandler("add", commands.cmd_add))
     application.add_handler(CommandHandler("setrole", commands.cmd_setrole))
+    application.add_handler(CommandHandler("owner_reset", commands.cmd_owner_reset))
     application.add_handler(CommandHandler("daftar", commands.cmd_daftar))
     application.add_handler(CommandHandler("admin_data", commands.cmd_admin_data))
     application.add_handler(CommandHandler("pending", commands.cmd_pending))
