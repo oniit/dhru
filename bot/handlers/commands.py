@@ -205,18 +205,21 @@ def help_for_role(role: str) -> str:
         "/lengkapi — Isi data wajib awal (sekali)",
         "_Mahasiswa: isi Fakultas sebelum Jurusan._",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "/hadir — Presensi ke sesi yang dibuka",
-        "",
-        "*Untuk semua pengguna*",
         "/top\\_agra — Peringkat Agra (17 besar)",
         "",
     ]
+    if role == ROLE_STUDENT:
+        lines.append(
+            "*Mahasiswa*",
+            "/hadir — Presensi ke sesi yang dibuka",
+            "",
+        )
     if role_can_add_agra(role):
         lines.extend(
             [
                 "*Agra (dosen/admin/owner)*",
-                "/add <nominal> @user … \\| <deskripsi>",
-                "Contoh: `/add 10 @friend1 @friend2 | Ujian modul 1`",
+                "/add <nominal> @user … | <deskripsi>",
+                "Contoh: `/add 10 @user1 @user2 | Tugas 1`",
                 "Bisa *reply* pesan user + `/add 10 | alasan`",
                 "",
             ]
@@ -250,7 +253,7 @@ def help_for_role(role: str) -> str:
             [
                 "*Admin / Owner*",
                 "/pending — Antrean ubah profil",
-                "/admin\\_data <id> — Ubah profil user langsung (tanpa persetujuan)",
+                "/admin\\_data <id> — Ubah profil user",
                 "_Atau balas pesan user lalu_ `/admin_data`",
                 "",
             ]
@@ -259,8 +262,11 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "/log — Audit & Agra (deskripsi)",
-                "_Filter:_ `/log fakultas <id>` · `/log kelas <id>` · `/log nama <teks>`",
-                "_Tanpa filter:_ ringkasan terbaru.",
+                "_Tanpa filter: semua log terbaru._",
+                "_Filter:_",
+                "`/log fakultas <id>`",
+                "`/log kelas <id>`",
+                "`/log nama <teks>`",
                 "",
             ]
         )
@@ -268,10 +274,10 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "*Daftar pengguna*",
+                "_Hanya nama & username_",
                 "`/daftar all`",
-                "`/daftar id all`",
                 "`/daftar <unit> <id>`",
-                "_Hanya nama & username; data besar dipecah beberapa pesan._",
+                "`/daftar id …` —  untuk memunculkan ID.",
                 "",
             ]
         )
@@ -281,6 +287,7 @@ def help_for_role(role: str) -> str:
                 "*Mention grup*",
                 "/tagall — Mention semua user",
                 "/all <pesan> — Kirim pesan + mention semua user",
+                "_(Dipecah ke beberapa pesan.)_",
                 "",
             ]
         )
@@ -288,7 +295,9 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "*Owner*",
-                "`/setrole <admin|lecturer|staff|student> @user …` atau reply + `/setrole <role>`",
+                "`/setrole <role> @user1 @user2 …`",
+                "atau reply + `/setrole <role>`",
+                "_Role: admin · lecturer · staff · student_",
                 "",
             ]
         )
