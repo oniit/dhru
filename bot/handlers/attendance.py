@@ -97,7 +97,7 @@ def format_local_date(ts: float | None) -> str:
     if ts is None:
         return "—"
     dt = datetime.fromtimestamp(float(ts), tz=TZ)
-    return dt.strftime("%d/%m/%y")
+    return dt.strftime("%d/%m")
 
 
 async def refresh_presensi_announcement(
@@ -404,7 +404,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 if not opener_name:
                     opener_name = s["opener_first_name"] or str(s["opened_by"])
                 lines.append(
-                    f"• `{format_local_date(s['opened_at'])} #{s['id']}` {_class_label(s['class_id'])} | "
+                    f"• `{format_local_date(s['opened_at'])} #{s['id']} `{_class_label(s['class_id'])} | "
                     f"{opener_name}"
                 )
             await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
