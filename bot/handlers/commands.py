@@ -213,9 +213,7 @@ def help_for_role(role: str) -> str:
     ]
     if role == ROLE_STUDENT:
         lines.append(
-            "*Mahasiswa*",
-            "/hadir — Presensi ke sesi yang dibuka",
-            "",
+            "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
         )
     if role_can_add_agra(role):
         lines.extend(
