@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from telegram import Update
 from telegram.ext import ContextTypes
+import time
+import re
 
 from bot.database import role_can_report
-from bot.settings import PROFILE_FIELDS
+from bot.settings import PROFILE_FIELDS, FORWARD_GROUP_ID
 
 from .common import (
     field_label_for_key,
@@ -52,6 +54,34 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     step = row["onboarding_step"] or ""
     text = update.message.text.strip()
     if not step:
+        is_trigger = False
+        try:
+            from .triggers import check_and_execute_trigger
+            is_trigger = await check_and_execute_trigger(conn, update, context, text)
+        except ImportError:
+            pass
+            
+        if not is_trigger and FORWARD_GROUP_ID:
+            await context.bot.send_message(
+                chat_id=FORWARD_GROUP_ID,
+                text=f"Pesan dari {update.effective_user.first_name} (@{update.effective_user.username}):\n\n{text}\n\n#ID_{uid}"
+            )
+            if row["role"] == "public":
+                await update.message.reply_text("Pesan Anda telah diteruskan ke tim kami.")
+        return
+        
+    if step == "INPUT_CODE":
+        code = text.strip()
+        cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
+        code_row = await cur.fetchone()
+        if code_row:
+            await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ?", (uid, time.time(), code))
+            await db.set_role(conn, uid, "student")
+            await db.set_onboarding_step(conn, uid, None)
+            await conn.commit()
+            await update.message.reply_text("Kode valid! Role Anda telah diperbarui menjadi student.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
+        else:
+            await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
         return
 
     if step.startswith("ADMIN_TEXT_LC:"):
@@ -127,3 +157,20 @@ async def track_group_activity(
         last_name=u.last_name,
         is_bot=u.is_bot,
     )
+
+async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.message.text:
+        return
+    if not FORWARD_GROUP_ID or update.effective_chat.id != FORWARD_GROUP_ID:
+        return
+        
+    reply = update.message.reply_to_message
+    if reply and reply.from_user and reply.from_user.id == context.bot.id:
+        match = re.search(r"#ID_(\d+)", reply.text or "")
+        if match:
+            target_id = int(match.group(1))
+            try:
+                await context.bot.send_message(chat_id=target_id, text=update.message.text)
+                await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
+            except Exception as e:
+                await update.message.reply_text(f"Gagal mengirim balasan: {e}")

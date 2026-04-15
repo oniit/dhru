@@ -41,27 +41,35 @@ classes:
   - id: fisika
     label: Fisika
     majors: if
+    sks: 3
   - id: kimia
     label: Kimia
     majors: ik
+    sks: 3
   - id: data
     label: Data Science
     majors: dt
+    sks: 3
   - id: keamanan
     label: Cybersecurity
     majors: ki
+    sks: 3
   - id: musik
     label: Musik
     majors: im
+    sks: 3
   - id: visual
     label: Desain
     majors: iv
+    sks: 3
   - id: ekonomi
     label: Ekonomi
     majors: ie
+    sks: 3
   - id: bisnis
     label: Bisnis
     majors: ib
+    sks: 3
 
 # Jabatan (non-mahasiswa) — ubah sesuai kampus
 positions:
@@ -91,3 +99,14 @@ positions:
     label: Parichārya परिचर्या
   - id: lainnya
     label: Lainnya
+
+clubs:
+  - id: ukm_seni
+    label: UKM Seni
+    sks: 2
+  - id: ukm_olahraga
+    label: UKM Olahraga
+    sks: 2
+  - id: ukm_robotika
+    label: UKM Robotika
+    sks: 2

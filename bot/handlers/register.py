@@ -6,7 +6,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 
 from bot.database import Database
 
-from . import attendance, commands, messages
+from . import attendance, commands, messages, triggers, broadcast
 
 
 def register_all(application: Application, db: Database) -> None:
@@ -33,6 +33,16 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("top_agra", commands.cmd_top_agra))
     application.add_handler(CommandHandler("rekap_hadir", attendance.cmd_rekap_hadir))
     application.add_handler(CommandHandler("sesi", attendance.cmd_sesi_aktif))
+    
+    # New handlers
+    application.add_handler(CommandHandler("gencode", commands.cmd_gencode))
+    
+    application.add_handler(CommandHandler("addtrigger", triggers.cmd_addtrigger))
+    application.add_handler(CommandHandler("deltrigger", triggers.cmd_deltrigger))
+    application.add_handler(CommandHandler("listtrigger", triggers.cmd_listtrigger))
+    application.add_handler(CommandHandler("selesai_trigger", triggers.cmd_selesai_trigger))
+    
+    application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
 
     application.add_handler(CallbackQueryHandler(commands.on_callback))
     application.add_handler(
@@ -48,4 +58,11 @@ def register_all(application: Application, db: Database) -> None:
             messages.on_text,
         ),
         group=1,
+    )
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS & filters.REPLY,
+            messages.on_group_text,
+        ),
+        group=2,
     )

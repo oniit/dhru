@@ -7,7 +7,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+
+import random
+import string
+import time
 
 from bot.agra_parse import parse_add_command
 from bot.setrole_parse import parse_setrole_command
@@ -17,6 +22,8 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STAFF,
     ROLE_STUDENT,
+    ROLE_PUBLIC,
+    ROLE_COFOUNDER,
     role_can_add_agra,
     role_can_approve_profile,
     role_can_open_presensi,
@@ -179,10 +186,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         is_bot=u.is_bot,
         raw_profile={k: v for k, v in raw.items() if v is not None},
     )
+    await db.set_onboarding_step(conn, u.id, None)
     await _revalidate_filtered_choice_fields(conn, db, u.id)
     row = await user_row(conn, db, u.id)
     profile = profile_from_row(row)
-    miss = missing_required_fields(profile, row["role"])
+    role = row["role"] if row else ROLE_PUBLIC
+    
+    if role == ROLE_PUBLIC:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
+            [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
+        ])
+        await update.message.reply_text("Selamat datang! Silakan pilih menu di bawah ini:", reply_markup=keyboard)
+        return
+
+    miss = missing_required_fields(profile, role)
 
     lines = [
         "Halo! Profil Telegram kamu sudah dicatat.",
@@ -198,6 +216,33 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         lines.append(f"📋 Masih kurang {len(miss)} data wajib — ketik /lengkapi.")
 
     await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+    
+    parts = update.message.text.split()
+    count = 1
+    if len(parts) > 1 and parts[1].isdigit():
+        count = int(parts[1])
+    if count > 100: count = 100
+    
+    codes = []
+    now = time.time()
+    for _ in range(count):
+        codes.append((''.join(random.choices(string.ascii_uppercase + string.digits, k=10)), now))
+    
+    await conn.executemany("INSERT INTO access_codes (code, created_at) VALUES (?, ?)", codes)
+    await conn.commit()
+    
+    await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"`{c[0]}`" for c in codes), parse_mode="Markdown")
 
 
 def help_for_role(role: str) -> str:
@@ -338,7 +383,15 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         token = parts[1].strip()
         if token.isdigit():
-            target_id = int(token)
+            if len(token) < 8:
+                cur = await conn.execute("SELECT telegram_id FROM users ORDER BY created_at ASC, telegram_id ASC LIMIT 1 OFFSET ?", (int(token)-1,))
+                rkr = await cur.fetchone()
+                if not rkr:
+                    await update.message.reply_text("User dengan No. ID tsb tidak ditemukan.")
+                    return
+                target_id = rkr["telegram_id"]
+            else:
+                target_id = int(token)
         else:
             ids = await db.find_ids_by_usernames(conn, [token])
             if not ids:
@@ -350,8 +403,18 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     row = await user_row(conn, db, target_id)
     profile = profile_from_row(row)
     agra = await db.agra_total(conn, target_id) if row else 0
-    # Saat cek profil orang lain, sembunyikan metadata internal moderator.
     show_raw = role_can_view_sensitive_logs(requester_role) and not is_target_lookup
+    
+    cur = await conn.execute("SELECT created_at FROM users WHERE telegram_id = ?", (target_id,))
+    rt = await cur.fetchone()
+    if rt:
+        ca = rt["created_at"]
+        cur = await conn.execute("SELECT COUNT(*) AS n FROM users WHERE created_at < ? OR (created_at = ? AND telegram_id <= ?)", (ca, ca, target_id))
+        rr = await cur.fetchone()
+        reg_id = f"{(rr['n'] or 1):04d}"
+    else:
+        reg_id = "0000"
+
     text = format_profile_card(
         row,
         profile=profile,
@@ -359,7 +422,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         show_internal=show_raw,
         user_role=row["role"] if row else ROLE_STUDENT,
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(f"**No. ID:** `{reg_id}`\n\n{text}", parse_mode="Markdown")
 
 
 async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -509,6 +572,39 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     data = q.data
 
+    if data.startswith("pub:"):
+        await q.answer()
+        action = data.split(":")[1]
+        
+        if action == "hubungi":
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Seputar Media Partner dan sejenisnya.", callback_data="pub:medpart")],
+                [InlineKeyboardButton("Menghubungi HRD.", callback_data="pub:hrd")],
+                [InlineKeyboardButton("Menghubungi Akademik.", callback_data="pub:akademik")],
+                [InlineKeyboardButton("Input kode yang diberikan pihak akademik.", callback_data="pub:kode")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
+            ])
+            await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
+            
+        elif action == "back":
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
+                [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
+            ])
+            await q.edit_message_text("Selamat datang! Silakan pilih menu di bawah ini:", reply_markup=keyboard)
+
+        elif action in ("medpart", "hrd", "akademik"):
+            username = "@dhruvaekagrabot" if action == "medpart" else ("@HRDhruvabot" if action == "hrd" else "@acadhruvabot")
+            await q.edit_message_text(f"Silakan menghubungi {username}, ketik /start untuk kembali.")
+        elif action == "lainnya":
+            await q.edit_message_text("Silakan ketik pertanyaan Anda. Pesan Anda akan langsung diteruskan ke tim kami.")
+        elif action == "kode":
+            conn = _conn(context)
+            db = _db(context)
+            await db.set_onboarding_step(conn, q.from_user.id, "INPUT_CODE")
+            await q.edit_message_text("Silakan ketikkan kode akses yang Anda terima dari pihak akademik (huruf besar):")
+        return
+
     if data.startswith("orreset:"):
         # Owner-only safety gate.
         if not is_owner(q.from_user.id):
@@ -543,12 +639,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                             callback_data="orreset:act:ATT_ALL"[:64],
                         ),
                         InlineKeyboardButton(
-                            "📚 Presensi: per matkul",
-                            callback_data="orreset:act:ATT_CLASS"[:64],
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(
                             "🆔 Presensi: per id",
                             callback_data="orreset:act:ATT_SESSION"[:64],
                         )
@@ -569,8 +659,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                             callback_data="orreset:act:AUD_ALL"[:64],
                         ),
                         InlineKeyboardButton(
-                            "♻️ Reset semua data per user",
-                            callback_data="orreset:act:USER_ALL"[:64],
+                            "🧾 Requests: semua",
+                            callback_data="orreset:act:REQ_ALL"[:64],
                         ),
                     ],
                     [
@@ -579,8 +669,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                             callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
                         ),
                         InlineKeyboardButton(
-                            "🧾 Requests: semua",
-                            callback_data="orreset:act:REQ_ALL"[:64],
+                            "♻️ Reset semua data per user",
+                            callback_data="orreset:act:USER_ALL"[:64],
                         ),
                     ],
                     [InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64])],
@@ -834,7 +924,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             if scope == "USER_ALL_EXCEPT_ENV":
                 detail = (
-                    "Ini akan reset profil & onboarding_step semua user "
+                    "Ini akan reset profil & `onboarding_step` semua user "
                     "(kecuali OWNER/ADMIN dari .env), jadi bisa /lengkapi lagi. "
                     "Data `seen` tetap dipertahankan."
                 )
@@ -2365,14 +2455,17 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     custom_body = parts[1].strip() if len(parts) > 1 else ""
     custom_body_html = html.escape(custom_body)
 
-    batch_size = 40
+    batch_size = 7
     pause_sec = 0.8
     chunks = [ids[i : i + batch_size] for i in range(0, len(ids), batch_size)]
     total = len(chunks)
 
+    # Emoji love berbagai warna
+    hearts = ["❤", "🧡", "💛", "💚", "💙", "💜", "🤎", "🖤", "🤍", "💖", "💗", "💘", "💝", "💕"]
+
     for idx, chunk in enumerate(chunks, start=1):
         mentions = " ".join(
-            f'<a href="tg://user?id={tid}">👤</a>' for tid in chunk
+            f'<a href="tg://user?id={tid}">{random.choice(hearts)}</a>' for tid in chunk
         )
         header = (
             f"Tag semua ({idx}/{total})" if total > 1 else "Tag semua"

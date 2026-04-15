@@ -16,11 +16,13 @@ DB_PATH = ROOT / "data" / "bot.db"
 
 ROLE_OWNER = "owner"
 ROLE_ADMIN = "admin"
+ROLE_COFOUNDER = "co_founder"
 ROLE_LECTURER = "lecturer"
 ROLE_STAFF = "staff"
 ROLE_STUDENT = "student"
+ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_STUDENT)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER, ROLE_STAFF, ROLE_STUDENT, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -60,6 +62,23 @@ async def _apply_generated_profile_fields(
     profile: dict,
 ) -> dict:
     out = dict(profile)
+    
+    # Calc SKS
+    sks_total = 0
+    enrolled_classes = out.get("class_enrolled")
+    if isinstance(enrolled_classes, list):
+        for cid in enrolled_classes:
+            for item in CHOICES.get("classes", []):
+                if str(item.get("id")) == str(cid):
+                    sks_total += int(item.get("sks", 0))
+    enrolled_clubs = out.get("club_enrolled")
+    if isinstance(enrolled_clubs, list):
+        for cid in enrolled_clubs:
+            for item in CHOICES.get("clubs", []):
+                if str(item.get("id")) == str(cid):
+                    sks_total += int(item.get("sks", 0))
+    out["total_sks"] = sks_total
+    
     if role != ROLE_STUDENT:
         out.pop("student_id", None)
         return out
@@ -86,7 +105,7 @@ def _initial_role_for_telegram_id(tg_id: int) -> str:
         return ROLE_OWNER
     if tg_id in ADMIN_IDS:
         return ROLE_ADMIN
-    return ROLE_STUDENT
+    return ROLE_PUBLIC
 
 
 SCHEMA = """
@@ -99,7 +118,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_premium INTEGER DEFAULT 0,
     is_bot INTEGER DEFAULT 0,
     raw_profile_json TEXT,
-    role TEXT NOT NULL DEFAULT 'student',
+    role TEXT NOT NULL DEFAULT 'public',
     profile_json TEXT NOT NULL DEFAULT '{}',
     onboarding_step TEXT,
     created_at REAL NOT NULL,
@@ -173,6 +192,20 @@ CREATE TABLE IF NOT EXISTS group_seen_users (
 CREATE INDEX IF NOT EXISTS idx_agra_target ON agra_ledger(target_telegram_id);
 CREATE INDEX IF NOT EXISTS idx_pending_profile ON profile_change_requests(status);
 CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
+
+CREATE TABLE IF NOT EXISTS access_codes (
+    code TEXT PRIMARY KEY,
+    created_at REAL NOT NULL,
+    used_by INTEGER,
+    used_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS triggers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword TEXT NOT NULL,
+    actions_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL
+);
 """
 
 
@@ -1085,7 +1118,7 @@ def role_can_assign_roles(role: str) -> bool:
 
 
 def role_can_approve_profile(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN)
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER)
 
 
 def role_can_view_sensitive_logs(role: str) -> bool:
@@ -1093,19 +1126,19 @@ def role_can_view_sensitive_logs(role: str) -> bool:
 
 
 def role_can_add_agra(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER)
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER)
 
 
 def role_can_open_presensi(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER)
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER)
 
 
 def role_can_report(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN)
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER)
 
 
 def role_can_tag_all(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_STAFF, ROLE_LECTURER)
+    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_STAFF, ROLE_LECTURER)
 
 
 __all__ = [
@@ -1113,9 +1146,11 @@ __all__ = [
     "DB_PATH",
     "ROLE_OWNER",
     "ROLE_ADMIN",
+    "ROLE_COFOUNDER",
     "ROLE_LECTURER",
     "ROLE_STAFF",
     "ROLE_STUDENT",
+    "ROLE_PUBLIC",
     "role_can_assign_roles",
     "role_can_approve_profile",
     "role_can_view_sensitive_logs",

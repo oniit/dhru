@@ -71,6 +71,12 @@ PROFILE_FIELDS, PROFILE_DISPLAY_KEYS = load_profile_fields()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 
+_fg = os.environ.get("FORWARD_GROUP_ID", "").strip()
+FORWARD_GROUP_ID = int(_fg) if _fg else None
+
+_bc = os.environ.get("BACKUP_CHANNEL_ID", "").strip()
+BACKUP_CHANNEL_ID = int(_bc) if _bc else None
+
 
 def _parse_id_list(s: str | None) -> set[int]:
     if not s:

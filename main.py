@@ -57,6 +57,8 @@ def main() -> None:
         .build()
     )
     application.bot_data["db"] = db
+    from bot.jobs import setup_jobs
+    setup_jobs(application)
     setup_handlers(application, db)
     log.info("Polling dimulai…")
     application.run_polling(drop_pending_updates=True)
