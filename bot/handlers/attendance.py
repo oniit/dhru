@@ -41,8 +41,21 @@ def _class_label(class_id: str) -> str:
     return class_id
 
 
+def get_automatic_classes(profile: dict) -> list[str]:
+    major = profile.get("major")
+    auto = []
+    for item in CHOICES.get("classes", []):
+        cid = item.get("id")
+        m = item.get("majors")
+        if not m:
+            auto.append(cid)
+        elif m == major:
+            auto.append(cid)
+    return auto
+
+
 def classes_for_presensi(profile: dict) -> list[str]:
-    enrolled = normalize_multi_choice_value(profile.get("class_enrolled"))
+    enrolled = get_automatic_classes(profile)
     teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
     return list(dict.fromkeys(enrolled + teaching))
 

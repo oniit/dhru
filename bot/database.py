@@ -62,29 +62,44 @@ async def _apply_generated_profile_fields(
     profile: dict,
 ) -> dict:
     out = dict(profile)
-    
-    # Calc SKS
+
+    def _normalize_multi_choice(raw) -> list[str]:
+        if isinstance(raw, list):
+            return [str(x) for x in raw if x is not None and str(x).strip()]
+        if isinstance(raw, str) and raw.strip():
+            return [raw.strip()]
+        return []
+
+    # Calc SKS: kelas otomatis dari jurusan + kelas manual + club/UKM.
+    major_id = str(out.get("major") or "").strip()
+    enrolled_class_ids: set[str] = set(_normalize_multi_choice(out.get("class_enrolled")))
+    for item in CHOICES.get("classes", []):
+        cid = str(item.get("id") or "").strip()
+        if not cid:
+            continue
+        item_major = str(item.get("majors") or "").strip()
+        if not item_major or (major_id and item_major == major_id):
+            enrolled_class_ids.add(cid)
+
     sks_total = 0
-    enrolled_classes = out.get("class_enrolled")
-    if isinstance(enrolled_classes, list):
-        for cid in enrolled_classes:
-            for item in CHOICES.get("classes", []):
-                if str(item.get("id")) == str(cid):
-                    sks_total += int(item.get("sks", 0))
-    enrolled_clubs = out.get("club_enrolled")
-    if isinstance(enrolled_clubs, list):
-        for cid in enrolled_clubs:
-            for item in CHOICES.get("clubs", []):
-                if str(item.get("id")) == str(cid):
-                    sks_total += int(item.get("sks", 0))
+    for item in CHOICES.get("classes", []):
+        cid = str(item.get("id") or "").strip()
+        if cid and cid in enrolled_class_ids:
+            sks_total += int(item.get("sks", 0) or 0)
+
+    enrolled_club_ids = set(_normalize_multi_choice(out.get("club_enrolled")))
+    for item in CHOICES.get("clubs", []):
+        cid = str(item.get("id") or "").strip()
+        if cid and cid in enrolled_club_ids:
+            sks_total += int(item.get("sks", 0) or 0)
+
     out["total_sks"] = sks_total
-    
+
     if role != ROLE_STUDENT:
         out.pop("student_id", None)
         return out
 
     faculty_id = str(out.get("faculty") or "").strip()
-    major_id = str(out.get("major") or "").strip()
     if not faculty_id or not major_id:
         out.pop("student_id", None)
         return out

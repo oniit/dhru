@@ -3,72 +3,96 @@
 
 faculties:
   - id: fmipa
-    label: Matematika & Ilmu Pengetahuan Alam
+    label: Fakultas Matematika dan Ilmu Pengetahuan Alam
   - id: ftik
-    label: Teknik & Ilmu Komputer
+    label: Fakultas Ilmu Teknologi dan Komputer
   - id: fib
-    label: Ilmu Budaya
-  - id: feb
-    label: Ekonomi & Bisnis
+    label: Fakultas Ilmu Budaya
 
 majors:
   - id: if
     label: Ilmu Fisika
     faculty: fmipa
   - id: ik
-    label: Ilmu Kimia
+    label: Kimia
     faculty: fmipa
-  - id: dt
-    label: Data Terapan
+  - id: pm
+    label: Pemrograman
     faculty: ftik
   - id: ki
     label: Keamanan Informasi
     faculty: ftik
-  - id: im
-    label: Industri Musik
+  - id: ms
+    label: Musik
     faculty: fib
-  - id: iv
-    label: Industri Visual
+  - id: kr
+    label: Kreatif
     faculty: fib
-  - id: ie
-    label: Ilmu Ekonomi
-    faculty: feb
-  - id: ib
-    label: Ilmu Bisnis
-    faculty: feb
 
 classes:
-  - id: fisika
-    label: Fisika
+  # Kuliah Umum (Otomatis untuk semua)
+  - id: umum
+    label: Kuliah Umum
+    sks: 4
+  
+  # FMIPA - Ilmu Fisika
+  - id: fd
+    label: Fisika Dasar
     majors: if
     sks: 3
-  - id: kimia
-    label: Kimia
+  - id: mf
+    label: Matematika Fisika
+    majors: if
+    sks: 3
+  
+  # FMIPA - Kimia
+  - id: kd
+    label: Kimia Dasar
     majors: ik
     sks: 3
-  - id: data
-    label: Data Science
-    majors: dt
+  - id: kdo
+    label: Kimia Dasar Organik
+    majors: ik
     sks: 3
-  - id: keamanan
-    label: Cybersecurity
+
+  # FTIK - Pemrograman
+  - id: pmd
+    label: Pemrograman Dasar
+    majors: pm
+    sks: 3
+  - id: ddp
+    label: Dasar-Dasar Python
+    majors: pm
+    sks: 3
+
+  # FTIK - Keamanan Informasi
+  - id: ks
+    label: Keamanan Siber
     majors: ki
     sks: 3
-  - id: musik
-    label: Musik
-    majors: im
+  - id: aks
+    label: Analisis Kejahatan Siber
+    majors: ki
     sks: 3
-  - id: visual
-    label: Desain
-    majors: iv
+
+  # FIB - Musik
+  - id: sm
+    label: Sejarah Musik
+    majors: ms
     sks: 3
-  - id: ekonomi
-    label: Ekonomi
-    majors: ie
+  - id: mp
+    label: Membaca Partitur
+    majors: ms
     sks: 3
-  - id: bisnis
-    label: Bisnis
-    majors: ib
+
+  # FIB - Kreatif
+  - id: dg
+    label: Desain Grafis
+    majors: kr
+    sks: 3
+  - id: st
+    label: Storytelling
+    majors: kr
     sks: 3
 
 # Jabatan (non-mahasiswa) — ubah sesuai kampus
@@ -101,12 +125,12 @@ positions:
     label: Lainnya
 
 clubs:
-  - id: ukm_seni
-    label: UKM Seni
+  - id: ukm_debat
+    label: Debat
     sks: 2
-  - id: ukm_olahraga
-    label: UKM Olahraga
+  - id: ukm_memasak
+    label: Memasak
     sks: 2
-  - id: ukm_robotika
-    label: UKM Robotika
+  - id: ukm_sinden
+    label: Sinden
     sks: 2

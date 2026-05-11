@@ -6,7 +6,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 
 from bot.database import Database
 
-from . import attendance, commands, messages, triggers, broadcast
+from . import attendance, commands, ktm, messages, triggers, broadcast
 
 
 def register_all(application: Application, db: Database) -> None:
@@ -17,6 +17,12 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("profile", commands.cmd_profile))
     application.add_handler(CommandHandler("profil", commands.cmd_profile))
     application.add_handler(CommandHandler("lengkapi", commands.cmd_lengkapi))
+    application.add_handler(
+        CommandHandler("ktm", ktm.cmd_ktm, filters=ktm.KT_PRIVATE),
+    )
+    application.add_handler(
+        CommandHandler("ktm_foto", ktm.cmd_ktm_foto, filters=ktm.KT_PRIVATE),
+    )
     application.add_handler(CommandHandler("ubah", commands.cmd_ubah))
     application.add_handler(CommandHandler("add", commands.cmd_add))
     application.add_handler(CommandHandler("setrole", commands.cmd_setrole))
@@ -51,6 +57,13 @@ def register_all(application: Application, db: Database) -> None:
             messages.track_group_activity,
         ),
         group=0,
+    )
+    application.add_handler(
+        MessageHandler(
+            filters.PHOTO & filters.ChatType.PRIVATE,
+            ktm.on_ktm_photo,
+        ),
+        group=1,
     )
     application.add_handler(
         MessageHandler(

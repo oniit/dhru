@@ -51,6 +51,7 @@ from .common import (
     keyboard_for_multi_choices,
     missing_required_fields,
     moderator_chat_ids,
+    optional_fields_still_open,
     profile_from_row,
     normalize_multi_choice_value,
     role_display,
@@ -259,6 +260,8 @@ def help_for_role(role: str) -> str:
     if role == ROLE_STUDENT:
         lines.append(
             "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
+            "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
+            "/ktm\\_foto — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
         )
     if role_can_add_agra(role):
         lines.extend(
@@ -449,7 +452,8 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
         )
         return
-    target_fields = miss
+    # Wajib yang belum lengkap + opsional yang belum pernah diselesaikan (mis. club/UKM).
+    target_fields = miss + optional_fields_still_open(profile, role)
 
     await update.message.reply_text(
         "Pilih data yang ingin diisi / diperbarui (langsung tersimpan):",
@@ -1566,12 +1570,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
         if not step.startswith("MULTI_LC:") or step.split(":", 1)[1] != field_key:
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         m = context.user_data.get(MULTI_UD_KEY)
         if not m or m.get("field") != field_key or m.get("flow") != "lc":
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         ids: set[str] = m["ids"]
@@ -1604,17 +1612,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         m = context.user_data.get(MULTI_UD_KEY)
         if _is_lengkapi_done(profile_now):
             await q.answer()
-            await q.edit_message_text("/lengkapi sudah ditutup. Gunakan /ubah.")
+            await q.edit_message_text(
+                "/lengkapi sudah ditutup. Gunakan /ubah.", reply_markup=None
+            )
             _multi_clear(context)
             return
         if not step.startswith("MULTI_LC:") or step.split(":", 1)[1] != field_key:
             await q.answer()
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         if not m or m.get("field") != field_key or m.get("flow") != "lc":
             await q.answer()
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
@@ -1629,8 +1643,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
         lab = fdef.label if fdef else field_label_for_key(field_key)
+        updated_row = await user_row(conn, db, uid)
+        updated_profile = profile_from_row(updated_row) if updated_row else {}
+        sks_suffix = ""
+        if updated_row and updated_row["role"] == ROLE_STUDENT:
+            sks_suffix = f"\nTotal SKS saat ini: {updated_profile.get('total_sks', 0)}"
         await q.edit_message_text(
-            f"✅ {lab} disimpan ({len(ids_list)} pilihan)."
+            f"✅ {lab} disimpan ({len(ids_list)} pilihan).{sks_suffix}",
+            reply_markup=None,
         )
         return
 
@@ -1644,12 +1664,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
         if not step.startswith("MULTI_EC:") or step.split(":", 1)[1] != field_key:
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         m = context.user_data.get(MULTI_UD_KEY)
         if not m or m.get("field") != field_key or m.get("flow") != "ec":
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         ids = m["ids"]
@@ -1681,12 +1705,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         m = context.user_data.get(MULTI_UD_KEY)
         if not step.startswith("MULTI_EC:") or step.split(":", 1)[1] != field_key:
             await q.answer()
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         if not m or m.get("field") != field_key or m.get("flow") != "ec":
             await q.answer()
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None
+            )
             _multi_clear(context)
             return
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
@@ -1700,7 +1728,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_change_request", f"id={rid}")
         await q.edit_message_text(
-            "✅ Pengajuan perubahan dikirim. Menunggu persetujuan admin."
+            "✅ Pengajuan perubahan dikirim. Menunggu persetujuan admin.",
+            reply_markup=None,
         )
         await _notify_moderators_profile(
             context, db, conn, rid, uid, {field_key: ids_list}
@@ -1714,10 +1743,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         step = (step_row["onboarding_step"] or "") if step_row else ""
         profile_now = profile_from_row(step_row) if step_row else {}
         if _is_lengkapi_done(profile_now):
-            await q.edit_message_text("/lengkapi sudah ditutup. Gunakan /ubah.")
+            await q.edit_message_text(
+                "/lengkapi sudah ditutup. Gunakan /ubah.", reply_markup=None
+            )
             return
         if not step.startswith("PICK_LC:") or step.split(":", 1)[1] != field_key:
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None
+            )
             return
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         prof_before = profile_from_row(step_row) if step_row else {}
@@ -1725,7 +1758,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             fdef, prof_before, choice_id
         ):
             await q.edit_message_text(
-                "Pilihan tidak cocok dengan data profil (mis. fakultas). Buka /lengkapi lagi."
+                "Pilihan tidak cocok dengan data profil (mis. fakultas). Buka /lengkapi lagi.",
+                reply_markup=None,
             )
             return
         await db.set_profile_partial(conn, uid, {field_key: choice_id})
@@ -1734,7 +1768,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
         lab = fdef.label if fdef else field_label_for_key(field_key)
-        await q.edit_message_text(f"✅ {lab} disimpan.")
+        updated_row = await user_row(conn, db, uid)
+        updated_profile = profile_from_row(updated_row) if updated_row else {}
+        sks_suffix = ""
+        if updated_row and updated_row["role"] == ROLE_STUDENT:
+            sks_suffix = f"\nTotal SKS saat ini: {updated_profile.get('total_sks', 0)}"
+        await q.edit_message_text(
+            f"✅ {lab} disimpan.{sks_suffix}", reply_markup=None
+        )
         return
 
     if data.startswith("ec:"):
@@ -1743,7 +1784,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
         if not step.startswith("PICK_EC:") or step.split(":", 1)[1] != field_key:
-            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.")
+            await q.edit_message_text(
+                "Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None
+            )
             return
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         prof_before = profile_from_row(step_row) if step_row else {}
@@ -1751,14 +1794,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             fdef, prof_before, choice_id
         ):
             await q.edit_message_text(
-                "Pilihan tidak valid untuk fakultas kamu saat ini. Perbarui fakultas dulu jika perlu."
+                "Pilihan tidak valid untuk fakultas kamu saat ini. Perbarui fakultas dulu jika perlu.",
+                reply_markup=None,
             )
             return
         rid = await db.add_profile_request(conn, uid, {field_key: choice_id})
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_change_request", f"id={rid}")
         await q.edit_message_text(
-            "✅ Pengajuan perubahan dikirim. Menunggu persetujuan admin."
+            "✅ Pengajuan perubahan dikirim. Menunggu persetujuan admin.",
+            reply_markup=None,
         )
         await _notify_moderators_profile(context, db, conn, rid, uid, {field_key: choice_id})
         return

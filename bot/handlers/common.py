@@ -90,6 +90,31 @@ def display_keys_for_role(role: str) -> list[str]:
     return out
 
 
+def optional_fields_still_open(profile: dict, role: str) -> list[FieldDef]:
+    """Field opsional yang masih perlu ditawarkan di /lengkapi.
+
+    Untuk ``multi_choice`` opsional, jika key belum ada di profil berarti user belum
+    pernah menyelesaikan alur simpan (termasuk memilih nol opsi). Setelah disimpan,
+    key ada (mis. list kosong) dan tidak ditampilkan lagi.
+    """
+    out: list[FieldDef] = []
+    for f in fields_for_role(role):
+        if f.required:
+            continue
+        if f.type == "multi_choice":
+            if f.key not in profile:
+                out.append(f)
+            continue
+        v = profile.get(f.key)
+        if f.type == "choice":
+            if v is None or (isinstance(v, str) and not str(v).strip()):
+                out.append(f)
+            continue
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            out.append(f)
+    return out
+
+
 def missing_required_fields(profile: dict, role: str) -> list:
     miss = []
     for f in PROFILE_FIELDS:
@@ -132,9 +157,23 @@ def format_profile_card(
             return role_display(row["role"])
         if key == "agra_total":
             return str(agra)
+        if key == "auto_class_enrolled":
+            major = profile.get("major")
+            auto = []
+            for item in CHOICES.get("classes", []):
+                cid = item.get("id")
+                # Kuliah Umum tetap dihitung di SKS/presensi; tidak ditampilkan di kartu profil.
+                if cid == "umum":
+                    continue
+                m = item.get("majors")
+                if not m or m == major:
+                    auto.append(cid)
+            return multi_choice_labels("classes", auto) if auto else "—"
+
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)
         if not fdef:
             return str(profile.get(key, "—"))
+
         raw = profile.get(fdef.key)
         if fdef.type == "multi_choice" and fdef.choices_key:
             return multi_choice_labels(fdef.choices_key, normalize_multi_choice_value(raw))
@@ -147,6 +186,8 @@ def format_profile_card(
         "username": "Username",
         "role": "Status",
         "agra_total": "Total Agra",
+        "total_sks": "Total SKS",
+        "auto_class_enrolled": "Kelas",
     }
     for key in display_keys_for_role(user_role):
         label = labels.get(key)

@@ -14,6 +14,7 @@ from .common import (
     profile_from_row,
     user_row,
 )
+from .ktm import STEP_KTM_PHOTO
 
 ADMIN_PROFILE_TARGET_UD = "admin_profile_target"
 LENGKAPI_DONE_KEY = "__lengkapi_done"
@@ -82,6 +83,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("Kode valid! Role Anda telah diperbarui menjadi student.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
             await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
+        return
+
+    if step == STEP_KTM_PHOTO:
+        await update.message.reply_text(
+            "Sekarang bot menunggu *foto* (bukan teks). Kirim satu foto wajah di chat ini.\n"
+            "Atau ketik /start untuk membatalkan.",
+            parse_mode="Markdown",
+        )
         return
 
     if step.startswith("ADMIN_TEXT_LC:"):

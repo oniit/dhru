@@ -23,13 +23,6 @@ fields:
     roles: [student]
     required: true
 
-  - key: class_enrolled
-    label: Kelas
-    type: multi_choice
-    choices_key: classes
-    roles: [student]
-    required: true
-
   - key: club_enrolled
     label: Club / UKM
     type: multi_choice
@@ -63,7 +56,7 @@ profile_display:
   - full_name
   - faculty
   - major
-  - class_enrolled
+  - auto_class_enrolled
   - club_enrolled
   - total_sks
   - student_id
