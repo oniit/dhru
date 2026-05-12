@@ -292,14 +292,19 @@ def help_for_role(role: str) -> str:
         "/lengkapi — Isi data wajib awal (sekali)",
         "_Mahasiswa: isi Fakultas sebelum Jurusan._",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "/top\\_agra — Peringkat Agra (17 besar)",
+        "/top_agra — Peringkat Agra (17 besar)",
         "",
     ]
     if role == ROLE_STUDENT:
         lines.append(
             "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
             "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
-            "/ktm\\_foto — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
+            "/ktm_foto — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
+        )
+    if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+        lines.append(
+            "*Staf / Dosen*\n/karpeg — Kartu Pegawai (gambar, hanya chat privat)\n"
+            "/karpeg_foto — Unggah foto wajah untuk Karpeg (privat), lalu /karpeg\n"
         )
     if role_can_add_agra(role):
         lines.extend(
@@ -315,8 +320,8 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "*Presensi (buka/tutup)*",
-                "/buka\\_presensi — Pilih kelas",
-                "/tutup\\_presensi <id\\_sesi> — Tutup sesi",
+                "/buka_presensi — Pilih kelas",
+                "/tutup_presensi <id_sesi> — Tutup sesi",
                 "",
             ]
         )
@@ -331,7 +336,7 @@ def help_for_role(role: str) -> str:
                 "*Sesi & rekap hadir*",
                 "/sesi — Sesi aktif"
                 + (" _(hanya kelas diampu)_" if role == ROLE_LECTURER else ""),
-                "/rekap\\_hadir <id\\_sesi>",
+                "/rekap_hadir <id_sesi>",
                 "",
             ]
         )
@@ -340,7 +345,7 @@ def help_for_role(role: str) -> str:
             [
                 "*Admin / Owner*",
                 "/pending — Antrean ubah profil",
-                "/admin\\_data <id> — Ubah profil user",
+                "/admin_data <id> — Ubah profil user",
                 "_Atau balas pesan user lalu_ `/admin_data`",
                 "",
             ]
@@ -385,8 +390,6 @@ def help_for_role(role: str) -> str:
                 "`/setrole <role> @user1 @user2 …`",
                 "atau reply + `/setrole <role>`",
                 "_Role: admin · lecturer · staff · student_",
-                "",
-                "`/owner_reset` — reset data (owner, via tombol)",
                 "",
             ]
         )
@@ -511,10 +514,11 @@ async def cmd_ubah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     role = row["role"]
+    profile = profile_from_row(row)
     await update.message.reply_text(
         "Pilih data yang ingin *diajukan* perubahannya (butuh persetujuan admin):",
         parse_mode="Markdown",
-        reply_markup=_ubah_keyboard(fields_for_role(role)),
+        reply_markup=_ubah_keyboard(fields_for_role(role, profile)),
     )
 
 
@@ -1245,10 +1249,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         await attendance.cb_open_presensi(update, context)
         return
-    if data.startswith("h:"):
+    if data.startswith("h:") or data.startswith("i:"):
         from . import attendance
 
-        await attendance.cb_hadir(update, context)
+        await attendance.cb_attendance_action(update, context)
         return
 
     conn = _conn(context)
@@ -1348,7 +1352,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await q.edit_message_text("Target tidak ada.")
                 return
             fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
-            await db.set_profile_partial(conn, tid_target, {field_key: choice_id})
+            
+            update_dict = {field_key: choice_id}
+            if field_key == "position_detail":
+                pos_id = None
+                for item in CHOICES.get("position_details", []):
+                    if item.get("id") == choice_id:
+                        pos_id = item.get("position")
+                        break
+                if pos_id:
+                    update_dict["position"] = pos_id
+            
+            await db.set_profile_partial(conn, tid_target, update_dict)
             await _revalidate_filtered_choice_fields(conn, db, tid_target)
             await db.set_onboarding_step(conn, uid, None)
             await db.add_audit(
@@ -1800,7 +1815,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 reply_markup=None,
             )
             return
-        await db.set_profile_partial(conn, uid, {field_key: choice_id})
+        update_dict = {field_key: choice_id}
+        if field_key == "position_detail":
+            pos_id = None
+            for item in CHOICES.get("position_details", []):
+                if item.get("id") == choice_id:
+                    pos_id = item.get("position")
+                    break
+            if pos_id:
+                update_dict["position"] = pos_id
+        
+        await db.set_profile_partial(conn, uid, update_dict)
         await _mark_lengkapi_done_if_complete(conn, db, uid)
         await _revalidate_filtered_choice_fields(conn, db, uid)
         await db.set_onboarding_step(conn, uid, None)
@@ -1836,7 +1861,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 reply_markup=None,
             )
             return
-        rid = await db.add_profile_request(conn, uid, {field_key: choice_id})
+        req_dict = {field_key: choice_id}
+        if field_key == "position_detail":
+            pos_id = None
+            for item in CHOICES.get("position_details", []):
+                if item.get("id") == choice_id:
+                    pos_id = item.get("position")
+                    break
+            if pos_id:
+                req_dict["position"] = pos_id
+
+        rid = await db.add_profile_request(conn, uid, req_dict)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_change_request", f"id={rid}")
         await q.edit_message_text(

@@ -254,6 +254,12 @@ class Database:
             await conn.execute(
                 "ALTER TABLE profile_change_requests ADD COLUMN moderator_prompt_text TEXT"
             )
+        cur = await conn.execute("PRAGMA table_info(attendance_records)")
+        rec_cols = {str(r[1]) for r in await cur.fetchall()}
+        if "status" not in rec_cols:
+            await conn.execute(
+                "ALTER TABLE attendance_records ADD COLUMN status TEXT NOT NULL DEFAULT 'hadir'"
+            )
         await conn.commit()
         return conn
 
@@ -605,9 +611,18 @@ class Database:
         )
         await conn.commit()
 
+    async def _auto_close_stale_sessions(self, conn: aiosqlite.Connection) -> None:
+        stale_cutoff = time.time() - 7200
+        await conn.execute(
+            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ?",
+            (stale_cutoff,)
+        )
+        await conn.commit()
+
     async def get_attendance_session(
         self, conn: aiosqlite.Connection, session_id: int
     ) -> aiosqlite.Row | None:
+        await self._auto_close_stale_sessions(conn)
         cur = await conn.execute(
             "SELECT * FROM attendance_sessions WHERE id = ?", (session_id,)
         )
@@ -628,6 +643,7 @@ class Database:
     async def get_open_session_for_class(
         self, conn: aiosqlite.Connection, class_id: str
     ) -> aiosqlite.Row | None:
+        await self._auto_close_stale_sessions(conn)
         cur = await conn.execute(
             """
             SELECT * FROM attendance_sessions
@@ -641,6 +657,7 @@ class Database:
     async def get_open_session_for_classes(
         self, conn: aiosqlite.Connection, class_ids: list[str]
     ) -> aiosqlite.Row | None:
+        await self._auto_close_stale_sessions(conn)
         if not class_ids:
             return None
         placeholders = ",".join("?" * len(class_ids))
@@ -655,20 +672,33 @@ class Database:
         return await cur.fetchone()
 
     async def record_attendance(
-        self, conn: aiosqlite.Connection, session_id: int, telegram_id: int
-    ) -> bool:
-        try:
+        self, conn: aiosqlite.Connection, session_id: int, telegram_id: int, status: str = "hadir"
+    ) -> tuple[bool, str]:
+        cur = await conn.execute(
+            "SELECT status FROM attendance_records WHERE session_id = ? AND telegram_id = ?",
+            (session_id, telegram_id)
+        )
+        row = await cur.fetchone()
+        if not row:
             await conn.execute(
                 """
-                INSERT INTO attendance_records (session_id, telegram_id, recorded_at)
-                VALUES (?, ?, ?)
+                INSERT INTO attendance_records (session_id, telegram_id, recorded_at, status)
+                VALUES (?, ?, ?, ?)
                 """,
-                (session_id, telegram_id, time.time()),
+                (session_id, telegram_id, time.time(), status),
             )
             await conn.commit()
-            return True
-        except aiosqlite.IntegrityError:
-            return False
+            return True, ""
+        else:
+            old_status = row["status"]
+            if old_status == status:
+                return False, old_status
+            await conn.execute(
+                "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ?",
+                (status, time.time(), session_id, telegram_id)
+            )
+            await conn.commit()
+            return True, old_status
 
     async def attendance_recap_session(
         self, conn: aiosqlite.Connection, session_id: int
@@ -693,6 +723,7 @@ class Database:
     async def recent_open_sessions(
         self, conn: aiosqlite.Connection, limit: int = 10
     ) -> list[aiosqlite.Row]:
+        await self._auto_close_stale_sessions(conn)
         cur = await conn.execute(
             """
             SELECT * FROM attendance_sessions WHERE closed_at IS NULL

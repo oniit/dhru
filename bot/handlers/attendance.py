@@ -89,11 +89,29 @@ def _format_presensi_block(
     else:
         lines.append("Ketuk *Hadir* atau gunakan perintah /hadir.")
     lines.append("")
-    lines.append(f"*Hadir ({len(records)})*")
-    if not records:
+    hadir_records = [r for r in records if dict(r).get("status", "hadir") == "hadir"]
+    izin_records = [r for r in records if dict(r).get("status", "hadir") == "izin"]
+
+    lines.append(f"*Hadir ({len(hadir_records)})*")
+    if not hadir_records:
         lines.append("_Belum ada._")
     else:
-        for r in records:
+        for r in hadir_records:
+            pj = json.loads(r["profile_json"] or "{}")
+            name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+            if show_record_times:
+                lines.append(
+                    f"• {name} — `{format_local_time(r['recorded_at'])}`"
+                )
+            else:
+                lines.append(f"• {name}")
+                
+    lines.append("")
+    lines.append(f"*Izin ({len(izin_records)})*")
+    if not izin_records:
+        lines.append("_Belum ada._")
+    else:
+        for r in izin_records:
             pj = json.loads(r["profile_json"] or "{}")
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             if show_record_times:
@@ -134,6 +152,9 @@ async def refresh_presensi_announcement(
                 [
                     InlineKeyboardButton(
                         "✅ Hadir", callback_data=f"h:{session_id}"[:32]
+                    ),
+                    InlineKeyboardButton(
+                        "⏸️ Izin", callback_data=f"i:{session_id}"[:32]
                     )
                 ]
             ]
@@ -265,7 +286,7 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
     ok, msg, added = await _record_hadir(
-        db, conn, sess["id"], uid, row["role"], user_classes
+        db, conn, sess["id"], uid, row["role"], user_classes, status="hadir"
     )
     await update.message.reply_text(msg)
     if ok:
@@ -274,7 +295,7 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _record_hadir(
-    db, conn, session_id: int, uid: int, role: str, user_classes: list[str]
+    db, conn, session_id: int, uid: int, role: str, user_classes: list[str], status: str = "hadir"
 ):
     cur = await conn.execute(
         "SELECT * FROM attendance_sessions WHERE id = ?", (session_id,)
@@ -287,10 +308,13 @@ async def _record_hadir(
         and role not in (ROLE_OWNER, ROLE_ADMIN)
     ):
         return False, "Sesi ini untuk kelas lain.", False
-    added = await db.record_attendance(conn, session_id, uid)
-    if added:
-        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat. Terima kasih.", True
-    return True, f"Kamu sudah tercatat hadir di sesi ini. Kelas: {_class_label(sess['class_id'])}.", False
+    changed, old_status = await db.record_attendance(conn, session_id, uid, status)
+    status_label = "Hadir" if status == "hadir" else "Izin"
+    if changed:
+        if old_status:
+            return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.", True
+        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.", True
+    return True, f"Status kamu tetap {status_label} di sesi ini. Kelas: {_class_label(sess['class_id'])}.", False
 
 
 async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -477,15 +501,27 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Kamu tidak punya akses rekap untuk sesi ini (bukan admin/owner atau bukan dosen kelas tersebut)."
         )
         return
+    hadir_records = [r for r in records if dict(r).get("status", "hadir") == "hadir"]
+    izin_records = [r for r in records if dict(r).get("status", "hadir") == "izin"]
+
     lines = [
         f"*Rekap presensi* sesi `{sid}`",
         f"Kelas: {_class_label(sess['class_id'])}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
         f"Ditutup: {format_local_time(sess['closed_at']) if sess['closed_at'] else '— (aktif)'}",
         "",
-        f"*Hadir ({len(records)} orang)*",
+        f"*Hadir ({len(hadir_records)} orang)*",
     ]
-    for r in records:
+    for r in hadir_records:
+        pj = profile_from_row(r)
+        name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+        lines.append(
+            f"• {name} — `{format_local_time(r['recorded_at'])}`"
+        )
+        
+    lines.append("")
+    lines.append(f"*Izin ({len(izin_records)} orang)*")
+    for r in izin_records:
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
         lines.append(
@@ -526,6 +562,9 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             [
                 InlineKeyboardButton(
                     "✅ Hadir", callback_data=f"h:{sid}"[:32]
+                ),
+                InlineKeyboardButton(
+                    "⏸️ Izin", callback_data=f"i:{sid}"[:32]
                 )
             ]
         ]
@@ -540,10 +579,11 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 
-async def cb_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     q = update.callback_query
     if not q or not q.data or not q.from_user:
         return
+    action = q.data[0]
     sid_s = q.data.split(":", 1)[1]
     if not sid_s.isdigit():
         return
@@ -560,8 +600,9 @@ async def cb_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not user_classes:
         await q.answer("Lengkapi kelas di profil.", show_alert=True)
         return
+    status = "hadir" if action == "h" else "izin"
     ok, msg, _ = await _record_hadir(
-        db, conn, sid, uid, row["role"], user_classes
+        db, conn, sid, uid, row["role"], user_classes, status=status
     )
     if ok:
         await q.answer()

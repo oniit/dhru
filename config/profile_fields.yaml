@@ -27,7 +27,7 @@ fields:
     label: Club / UKM
     type: multi_choice
     choices_key: clubs
-    roles: [student]
+    roles: [student, lecturer, staff, owner, admin, co_founder]
     required: false
 
   - key: student_id
@@ -36,11 +36,11 @@ fields:
     roles: [student]
     required: false
 
-  - key: position
+  - key: position_detail
     label: Jabatan
     type: choice
-    choices_key: positions
-    roles: [owner, admin, lecturer, staff]
+    choices_key: position_details
+    roles: [owner, admin, lecturer, staff, co_founder]
     required: true
 
   - key: teaching_classes
@@ -61,6 +61,7 @@ profile_display:
   - total_sks
   - student_id
   - position
+  - position_detail
   - teaching_classes
   - role
   - agra_total

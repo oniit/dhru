@@ -102,14 +102,14 @@ positions:
   - id: sekre
     label: Sachiva सचिव
   - id: warek1
-    label: Kuladhipati I कुलाधीपति
+    label: Kuladhipati I कुलाधीपति I
   - id: warek2
-    label: Kuladhipati II कुलाधीपति
+    label: Kuladhipati II कुलाधीपति II
   - id: warek3
-    label: Kuladhipati III कुलाधीपति
+    label: Kuladhipati III कुलाधीपति III
   - id: dekan
     label: Pradhanāchārya प्रधानाचार्य
-  - id: kajur
+  - id: sarpras
     label: Prāchārya प्रचार्य
   - id: dosen
     label: Āchārya आचार्य
@@ -117,12 +117,65 @@ positions:
     label: Āchāryaka आचार्यक
   - id: pembina
     label: Āchāryata आचार्यता
-  - id: staf_umum
+  - id: penyunting
     label: Upāchārya उपचर्या
-  - id: staf_mp
+  - id: mpps
     label: Parichārya परिचर्या
   - id: lainnya
     label: Lainnya
+
+position_details:
+  - id: d_rektor
+    label: Rektor
+    position: rektor
+  - id: d_sekre
+    label: Sekretaris
+    position: sekre
+  - id: d_warek1
+    label: Wakil Rektor I
+    position: warek1
+  - id: d_warek2
+    label: Wakil Rektor II
+    position: warek2
+  - id: d_warek3
+    label: Wakil Rektor III
+    position: warek3
+  - id: d_dekan
+    label: Dekan
+    position: dekan
+  - id: d_sarpras
+    label: Sarana & Prasarana
+    position: sarpras
+  - id: d_pembina
+    label: Pembina BEM
+    position: pembina
+  - id: d_dosen
+    label: Dosen
+    position: dosen
+  - id: d_coach
+    label: Pelatih UKM
+    position: coach
+  - id: d_peny_penyunting
+    label: Penyunting
+    position: penyunting
+  - id: d_peny_sdm
+    label: Pengembangan SDM
+    position: penyunting
+  - id: d_peny_admin
+    label: Administrasi
+    position: penyunting
+  - id: d_mp_mpps
+    label: MPPS
+    position: mpps
+  - id: d_mp_sfs
+    label: SFS
+    position: mpps
+  - id: d_mp_konten
+    label: Konten
+    position: mpps
+  - id: d_lain
+    label: Lainnya
+    position: lainnya
 
 clubs:
   - id: ukm_debat

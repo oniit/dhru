@@ -138,7 +138,22 @@ def is_choice_allowed_for_profile(
     return choice_id in allowed
 
 
-def field_applies_to_role(field_def: FieldDef, role: str) -> bool:
+def field_applies_to_role(field_def: FieldDef, role: str, profile: dict | None = None) -> bool:
+    if field_def.key == "club_enrolled":
+        if role == "student":
+            return True
+        if profile and profile.get("position") == "coach":
+            return True
+        return False
+        
+    if field_def.key == "teaching_classes":
+        if profile and profile.get("position") == "dosen":
+            return True
+        if not profile and role == "lecturer":
+            # Fallback if profile not provided but role is lecturer
+            return True
+        return False
+
     if field_def.roles is None:
         return True
     return role in field_def.roles

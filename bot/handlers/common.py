@@ -65,15 +65,15 @@ def field_label_for_key(field_key: str) -> str:
     return fd.label if fd else field_key.replace("_", " ").title()
 
 
-def fields_for_role(role: str) -> list[FieldDef]:
+def fields_for_role(role: str, profile: dict | None = None) -> list[FieldDef]:
     return [
         f
         for f in PROFILE_FIELDS
-        if field_applies_to_role(f, role) and f.key != "student_id" #yg baru and f.key != "student_id"
+        if field_applies_to_role(f, role, profile) and f.key != "student_id" #yg baru and f.key != "student_id"
     ]
 
 
-def display_keys_for_role(role: str) -> list[str]:
+def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
     out: list[str] = []
     for key in PROFILE_DISPLAY_KEYS:
         if key in ("telegram_name", "username"):
@@ -83,9 +83,11 @@ def display_keys_for_role(role: str) -> list[str]:
             continue
         fd = next((f for f in PROFILE_FIELDS if f.key == key), None)
         if fd:
-            if field_applies_to_role(fd, role):
+            if field_applies_to_role(fd, role, profile):
                 out.append(key)
         else:
+            if key in ("total_sks", "auto_class_enrolled") and role != ROLE_STUDENT:
+                continue
             out.append(key)
     return out
 
@@ -98,7 +100,7 @@ def optional_fields_still_open(profile: dict, role: str) -> list[FieldDef]:
     key ada (mis. list kosong) dan tidak ditampilkan lagi.
     """
     out: list[FieldDef] = []
-    for f in fields_for_role(role):
+    for f in fields_for_role(role, profile):
         if f.required:
             continue
         if f.type == "multi_choice":
@@ -118,7 +120,7 @@ def optional_fields_still_open(profile: dict, role: str) -> list[FieldDef]:
 def missing_required_fields(profile: dict, role: str) -> list:
     miss = []
     for f in PROFILE_FIELDS:
-        if not field_applies_to_role(f, role):
+        if not field_applies_to_role(f, role, profile):
             continue
         if not f.required:
             continue
@@ -189,7 +191,7 @@ def format_profile_card(
         "total_sks": "Total SKS",
         "auto_class_enrolled": "Kelas",
     }
-    for key in display_keys_for_role(user_role):
+    for key in display_keys_for_role(user_role, profile):
         label = labels.get(key)
         if not label:
             fd = next((x for x in PROFILE_FIELDS if x.key == key), None)
