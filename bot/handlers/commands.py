@@ -121,6 +121,44 @@ def _profile_request_status_text(
     return f"{original_text}\n\nStatus: {status}.\nOleh: {decided_by_name}"
 
 
+async def _broadcast_profile_request_status(
+    context: ContextTypes.DEFAULT_TYPE,
+    db,
+    conn,
+    request_id: int,
+    *,
+    status: str,
+    decided_by_name: str,
+    fallback_base_text: str,
+) -> bool:
+    """Edit semua pesan moderasi untuk pengajuan ini. True jika ada pesan terdaftar."""
+    req = await db.get_profile_request(conn, request_id)
+    stored = None
+    if req:
+        stored = dict(req).get("moderator_prompt_text")
+    base = (stored or "").strip() or fallback_base_text
+    refs = await db.list_profile_request_mod_messages(conn, request_id)
+    if not refs:
+        return False
+    final_text = _profile_request_status_text(
+        base, status=status, decided_by_name=decided_by_name
+    )
+    for r in refs:
+        cid = int(r["mod_chat_id"])
+        mid = int(r["message_id"])
+        try:
+            await context.bot.edit_message_text(
+                chat_id=cid,
+                message_id=mid,
+                text=final_text,
+                parse_mode="Markdown",
+                reply_markup=None,
+            )
+        except Exception as e:
+            log.warning("profile req broadcast %s/%s: %s", cid, mid, e)
+    return True
+
+
 async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
     row = await user_row(conn, db, telegram_id)
     if not row:
@@ -1814,15 +1852,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if len(parts) != 3:
             return
         _, rid_s, dec = parts
+        rid_int = int(rid_s)
         row_u = await user_row(conn, db, uid)
         if not row_u or not role_can_approve_profile(row_u["role"]):
             await q.edit_message_text("Tidak diizinkan.")
             return
+        fallback_base = q.message.text or f"Pengajuan #{rid_s}"
         ok, tid, proposed = await db.resolve_profile_request(
-            conn, int(rid_s), approve=(dec == "1"), decided_by=uid
+            conn, rid_int, approve=(dec == "1"), decided_by=uid
         )
         if not ok:
-            req = await db.get_profile_request(conn, int(rid_s))
+            req = await db.get_profile_request(conn, rid_int)
             if not req:
                 await q.edit_message_text("Permintaan tidak tersedia.")
                 return
@@ -1830,14 +1870,24 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 decided_by_row = await user_row(conn, db, int(req["decided_by"] or 0))
                 decided_by_name = _display_name_from_row(decided_by_row)
                 final_status = "disetujui" if req["status"] == "approved" else "ditolak"
-                original_text = q.message.text or f"Pengajuan #{rid_s}"
-                await q.edit_message_text(
-                    _profile_request_status_text(
-                        original_text,
-                        status=final_status,
-                        decided_by_name=decided_by_name,
-                    )
+                broadcast_ok = await _broadcast_profile_request_status(
+                    context,
+                    db,
+                    conn,
+                    rid_int,
+                    status=final_status,
+                    decided_by_name=decided_by_name,
+                    fallback_base_text=fallback_base,
                 )
+                if not broadcast_ok:
+                    original_text = q.message.text or f"Pengajuan #{rid_s}"
+                    await q.edit_message_text(
+                        _profile_request_status_text(
+                            original_text,
+                            status=final_status,
+                            decided_by_name=decided_by_name,
+                        )
+                    )
                 return
             await q.edit_message_text("Permintaan tidak tersedia.")
             return
@@ -1848,15 +1898,25 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"id={rid_s} approve={dec} target={tid}",
         )
         status = "disetujui" if dec == "1" else "ditolak"
-        original_text = q.message.text or f"Pengajuan #{rid_s}"
         decided_by_name = _display_name_from_row(row_u)
-        await q.edit_message_text(
-            _profile_request_status_text(
-                original_text,
-                status=status,
-                decided_by_name=decided_by_name,
-            )
+        broadcast_ok = await _broadcast_profile_request_status(
+            context,
+            db,
+            conn,
+            rid_int,
+            status=status,
+            decided_by_name=decided_by_name,
+            fallback_base_text=fallback_base,
         )
+        if not broadcast_ok:
+            original_text = q.message.text or f"Pengajuan #{rid_s}"
+            await q.edit_message_text(
+                _profile_request_status_text(
+                    original_text,
+                    status=status,
+                    decided_by_name=decided_by_name,
+                )
+            )
         if tid and dec == "1":
             await _revalidate_filtered_choice_fields(conn, db, tid)
         if tid:
@@ -1914,12 +1974,16 @@ async def _notify_moderators_profile(
         f"Data awal: `{before_preview}`\n"
         f"Usulan: `{preview}`"
     )
+    await db.set_profile_request_moderator_prompt(conn, request_id, text)
     for mid in mods:
         if mid == proposer_id:
             continue
         try:
-            await context.bot.send_message(
+            sent = await context.bot.send_message(
                 chat_id=mid, text=text, parse_mode="Markdown", reply_markup=kb
+            )
+            await db.register_profile_request_mod_message(
+                conn, request_id, mid, sent.message_id
             )
         except Exception as e:
             log.warning("mod notify %s: %s", mid, e)

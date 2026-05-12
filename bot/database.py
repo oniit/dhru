@@ -148,7 +148,16 @@ CREATE TABLE IF NOT EXISTS profile_change_requests (
     created_at REAL NOT NULL,
     decided_at REAL,
     decided_by INTEGER,
+    moderator_prompt_text TEXT,
     FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+);
+
+CREATE TABLE IF NOT EXISTS profile_request_mod_messages (
+    request_id INTEGER NOT NULL,
+    mod_chat_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (request_id, mod_chat_id),
+    FOREIGN KEY (request_id) REFERENCES profile_change_requests(id)
 );
 
 CREATE TABLE IF NOT EXISTS agra_ledger (
@@ -238,6 +247,12 @@ class Database:
         if "announce_message_id" not in cols:
             await conn.execute(
                 "ALTER TABLE attendance_sessions ADD COLUMN announce_message_id INTEGER"
+            )
+        cur = await conn.execute("PRAGMA table_info(profile_change_requests)")
+        pcr_cols = {str(r[1]) for r in await cur.fetchall()}
+        if "moderator_prompt_text" not in pcr_cols:
+            await conn.execute(
+                "ALTER TABLE profile_change_requests ADD COLUMN moderator_prompt_text TEXT"
             )
         await conn.commit()
         return conn
@@ -406,6 +421,49 @@ class Database:
         )
         await conn.commit()
         return cur.lastrowid
+
+    async def set_profile_request_moderator_prompt(
+        self, conn: aiosqlite.Connection, request_id: int, text: str
+    ) -> None:
+        await conn.execute(
+            """
+            UPDATE profile_change_requests
+            SET moderator_prompt_text = ?
+            WHERE id = ?
+            """,
+            (text, request_id),
+        )
+        await conn.commit()
+
+    async def register_profile_request_mod_message(
+        self,
+        conn: aiosqlite.Connection,
+        request_id: int,
+        mod_chat_id: int,
+        message_id: int,
+    ) -> None:
+        await conn.execute(
+            """
+            INSERT OR REPLACE INTO profile_request_mod_messages
+            (request_id, mod_chat_id, message_id)
+            VALUES (?, ?, ?)
+            """,
+            (request_id, mod_chat_id, message_id),
+        )
+        await conn.commit()
+
+    async def list_profile_request_mod_messages(
+        self, conn: aiosqlite.Connection, request_id: int
+    ) -> list[aiosqlite.Row]:
+        cur = await conn.execute(
+            """
+            SELECT mod_chat_id, message_id
+            FROM profile_request_mod_messages
+            WHERE request_id = ?
+            """,
+            (request_id,),
+        )
+        return await cur.fetchall()
 
     async def get_profile_request(
         self, conn: aiosqlite.Connection, request_id: int
@@ -748,6 +806,7 @@ class Database:
         cur = await conn.execute("DELETE FROM agra_ledger")
         agra_ledger = self._rowcount(cur)
 
+        await conn.execute("DELETE FROM profile_request_mod_messages")
         cur = await conn.execute("DELETE FROM profile_change_requests")
         profile_change_requests = self._rowcount(cur)
 
@@ -874,6 +933,7 @@ class Database:
         return n
 
     async def reset_profile_change_requests_all(self, conn: aiosqlite.Connection) -> int:
+        await conn.execute("DELETE FROM profile_request_mod_messages")
         cur = await conn.execute("DELETE FROM profile_change_requests")
         n = self._rowcount(cur)
         await conn.commit()
@@ -882,6 +942,15 @@ class Database:
     async def reset_profile_change_requests_for_user(
         self, conn: aiosqlite.Connection, telegram_id: int
     ) -> int:
+        await conn.execute(
+            """
+            DELETE FROM profile_request_mod_messages
+            WHERE request_id IN (
+                SELECT id FROM profile_change_requests WHERE telegram_id = ?
+            )
+            """,
+            (telegram_id,),
+        )
         cur = await conn.execute(
             "DELETE FROM profile_change_requests WHERE telegram_id = ?",
             (telegram_id,),
@@ -1010,6 +1079,15 @@ class Database:
         )
         agra_ledger_deleted = self._rowcount(cur)
 
+        cur = await conn.execute(
+            f"""
+            DELETE FROM profile_request_mod_messages
+            WHERE request_id IN (
+                SELECT id FROM profile_change_requests WHERE telegram_id IN ({p})
+            )
+            """,
+            target_ids,
+        )
         cur = await conn.execute(
             f"DELETE FROM profile_change_requests WHERE telegram_id IN ({p})",
             target_ids,
