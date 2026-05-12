@@ -33,7 +33,7 @@ def role_display(role: str) -> str:
     return {
         ROLE_OWNER: "Founder",
         ROLE_ADMIN: "Sekretaris",
-        ROLE_LECTURER: "Dosen / Coach",
+        ROLE_LECTURER: "Pengajar",
         ROLE_STAFF: "Staf",
         ROLE_STUDENT: "Mahasiswa",
     }.get(role, role)
@@ -164,7 +164,6 @@ def format_profile_card(
             auto = []
             for item in CHOICES.get("classes", []):
                 cid = item.get("id")
-                # Kuliah Umum tetap dihitung di SKS/presensi; tidak ditampilkan di kartu profil.
                 if cid == "umum":
                     continue
                 m = item.get("majors")

@@ -292,19 +292,19 @@ def help_for_role(role: str) -> str:
         "/lengkapi — Isi data wajib awal (sekali)",
         "_Mahasiswa: isi Fakultas sebelum Jurusan._",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "/top_agra — Peringkat Agra (17 besar)",
+        "`/top_agra` — Peringkat Agra (17 besar)",
         "",
     ]
     if role == ROLE_STUDENT:
         lines.append(
             "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
             "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
-            "/ktm_foto — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
+            "`/ktm_foto` — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
         lines.append(
             "*Staf / Dosen*\n/karpeg — Kartu Pegawai (gambar, hanya chat privat)\n"
-            "/karpeg_foto — Unggah foto wajah untuk Karpeg (privat), lalu /karpeg\n"
+            "`/karpeg_foto` — Unggah foto wajah untuk Karpeg (privat), lalu /karpeg\n"
         )
     if role_can_add_agra(role):
         lines.extend(
@@ -320,8 +320,8 @@ def help_for_role(role: str) -> str:
         lines.extend(
             [
                 "*Presensi (buka/tutup)*",
-                "/buka_presensi — Pilih kelas",
-                "/tutup_presensi <id_sesi> — Tutup sesi",
+                "`/buka_presensi` — Pilih kelas",
+                "`/tutup_presensi <id_sesi>` — Tutup sesi",
                 "",
             ]
         )
@@ -336,7 +336,7 @@ def help_for_role(role: str) -> str:
                 "*Sesi & rekap hadir*",
                 "/sesi — Sesi aktif"
                 + (" _(hanya kelas diampu)_" if role == ROLE_LECTURER else ""),
-                "/rekap_hadir <id_sesi>",
+                "`/rekap_hadir <id_sesi>`",
                 "",
             ]
         )
@@ -345,7 +345,7 @@ def help_for_role(role: str) -> str:
             [
                 "*Admin / Owner*",
                 "/pending — Antrean ubah profil",
-                "/admin_data <id> — Ubah profil user",
+                "`/admin_data <id>` — Ubah profil user",
                 "_Atau balas pesan user lalu_ `/admin_data`",
                 "",
             ]

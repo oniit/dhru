@@ -95,7 +95,6 @@ classes:
     majors: kr
     sks: 3
 
-# Jabatan (non-mahasiswa) — ubah sesuai kampus
 positions:
   - id: rektor
     label: Adhipati अधिपति
