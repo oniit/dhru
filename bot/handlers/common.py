@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 
 from bot.database import (
     ROLE_ADMIN,
+    ROLE_COFOUNDER,
     ROLE_LECTURER,
     ROLE_OWNER,
     ROLE_STAFF,
@@ -57,6 +58,97 @@ def normalize_multi_choice_value(raw) -> list[str]:
         return [str(x) for x in raw if x is not None and str(x).strip()]
     if isinstance(raw, str) and raw.strip():
         return [raw.strip()]
+    return []
+
+
+def classes_for_staff_faculty(faculty_id: str) -> list[str]:
+    """ID kelas yang termasuk fakultas (lewat jurusan di choices), plus Kuliah Umum."""
+    fid = (faculty_id or "").strip()
+    if not fid:
+        return []
+    majors_in = {
+        str(m["id"])
+        for m in CHOICES.get("majors", [])
+        if str(m.get("faculty") or "") == fid
+    }
+    out: list[str] = []
+    for item in CHOICES.get("classes", []):
+        cid = str(item.get("id") or "")
+        if not cid:
+            continue
+        if cid == "umum":
+            out.append(cid)
+            continue
+        if item.get("majors") in majors_in:
+            out.append(cid)
+    return list(dict.fromkeys(out))
+
+
+def is_dekan_profile(profile: dict | None) -> bool:
+    return (profile or {}).get("position") == "dekan"
+
+
+def dean_faculty_id(profile: dict | None) -> str:
+    return ((profile or {}).get("staff_faculty") or "").strip()
+
+
+def lecturer_presence_class_ids(profile: dict | None) -> list[str]:
+    """Presensi/rekap: kelas diampu ∪ (jika dekan) semua kelas di fakultas lingkup."""
+    p = profile or {}
+    parts = list(normalize_multi_choice_value(p.get("teaching_classes")))
+    if is_dekan_profile(p) and dean_faculty_id(p):
+        parts.extend(classes_for_staff_faculty(dean_faculty_id(p)))
+    return list(dict.fromkeys(parts))
+
+
+def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
+    """User muncul di /daftar saat difilter dekan fakultas ini."""
+    fid = (faculty_id or "").strip()
+    if not fid:
+        return False
+    if (p.get("staff_faculty") or "").strip() == fid:
+        return True
+    if (p.get("faculty") or "").strip() == fid:
+        return True
+    fac_classes = set(classes_for_staff_faculty(fid))
+    if not fac_classes:
+        return False
+    teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
+    if teaching & fac_classes:
+        return True
+    enrolled = set(normalize_multi_choice_value(p.get("class_enrolled")))
+    if enrolled & fac_classes:
+        return True
+    return False
+
+
+def can_daftar_as_dean(role: str, profile: dict | None) -> bool:
+    if role not in (ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+        return False
+    return is_dekan_profile(profile) and bool(dean_faculty_id(profile))
+
+
+def can_staff_dekan_open_presensi(role: str, profile: dict | None) -> bool:
+    return role == ROLE_STAFF and is_dekan_profile(profile or {}) and bool(
+        dean_faculty_id(profile)
+    )
+
+
+def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | None:
+    """None = boleh semua kelas (admin/owner/cofounder). List kosong = tidak ada akses."""
+    p = profile or {}
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        return None
+    if role == ROLE_COFOUNDER:
+        if is_dekan_profile(p) and dean_faculty_id(p):
+            ids = lecturer_presence_class_ids(p)
+            return ids if ids else []
+        return None
+    if role == ROLE_LECTURER:
+        ids = lecturer_presence_class_ids(p)
+        return ids if ids else []
+    if can_staff_dekan_open_presensi(role, p):
+        return classes_for_staff_faculty(dean_faculty_id(p))
     return []
 
 
@@ -131,6 +223,13 @@ def missing_required_fields(profile: dict, role: str) -> list:
             continue
         if v is None or (isinstance(v, str) and not v.strip()):
             miss.append(f)
+    if is_dekan_profile(profile):
+        sf = next((x for x in PROFILE_FIELDS if x.key == "staff_faculty"), None)
+        if sf and field_applies_to_role(sf, role, profile):
+            v = profile.get("staff_faculty")
+            if v is None or (isinstance(v, str) and not str(v).strip()):
+                if sf not in miss:
+                    miss.append(sf)
     return miss
 
 
@@ -170,6 +269,9 @@ def format_profile_card(
                 if not m or m == major:
                     auto.append(cid)
             return multi_choice_labels("classes", auto) if auto else "—"
+        if key == "position":
+            raw = profile.get("position")
+            return choice_label("positions", raw) if raw else "—"
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)
         if not fdef:
@@ -189,6 +291,7 @@ def format_profile_card(
         "agra_total": "Total Agra",
         "total_sks": "Total SKS",
         "auto_class_enrolled": "Kelas",
+        "position": "पदवी",
     }
     for key in display_keys_for_role(user_role, profile):
         label = labels.get(key)
@@ -196,14 +299,6 @@ def format_profile_card(
             fd = next((x for x in PROFILE_FIELDS if x.key == key), None)
             label = fd.label if fd else key.replace("_", " ").title()
         lines.append(f"*{label}:* {val_for_display(key)}")
-
-    # raw_meta = json.loads(row["raw_profile_json"] or "{}")
-    # if show_internal and raw_meta:
-    #     lines.append("")
-    #     lines.append("_Data mentah Telegram (hanya mod):_")
-    #     for k, v in sorted(raw_meta.items()):
-    #         if v is not None and v != "":
-    #             lines.append(f"• `{k}`: `{v}`")
 
     return "\n".join(lines)
 

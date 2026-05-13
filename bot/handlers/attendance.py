@@ -10,7 +10,6 @@ from telegram.ext import ContextTypes
 
 from bot.database import (
     ROLE_ADMIN,
-    ROLE_LECTURER,
     ROLE_OWNER,
     role_can_open_presensi,
     role_can_report,
@@ -18,7 +17,13 @@ from bot.database import (
 from bot.settings import CHOICES
 from bot.timefmt import TZ, format_local_time
 
-from .common import normalize_multi_choice_value, profile_from_row, user_row
+from .common import (
+    can_staff_dekan_open_presensi,
+    normalize_multi_choice_value,
+    presence_allowed_class_ids,
+    profile_from_row,
+    user_row,
+)
 
 if TYPE_CHECKING:
     pass
@@ -63,10 +68,16 @@ def classes_for_presensi(profile: dict) -> list[str]:
 def can_rekap_hadir_session(row, profile: dict, session_class_id: str) -> bool:
     if role_can_report(row["role"]):
         return True
-    if row["role"] == ROLE_LECTURER:
-        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-        return session_class_id in teaching
-    return False
+    allowed = presence_allowed_class_ids(row["role"], profile)
+    if allowed is None:
+        return True
+    return session_class_id in allowed
+
+
+def _can_act_on_presensi(row, profile: dict) -> bool:
+    if role_can_open_presensi(row["role"]):
+        return True
+    return can_staff_dekan_open_presensi(row["role"], profile)
 
 
 def _format_presensi_block(
@@ -200,20 +211,19 @@ async def cmd_buka_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not role_can_open_presensi(row["role"]):
-        await update.message.reply_text("Hanya dosen/admin/owner yang bisa membuka presensi.")
+    profile = profile_from_row(row) if row else {}
+    if not row or not _can_act_on_presensi(row, profile):
+        await update.message.reply_text(
+            "Hanya dosen/admin/owner/cofounder, atau dekan staf (dengan fakultas lingkup), yang bisa membuka presensi."
+        )
         return
-    profile = profile_from_row(row)
-    allowed_class_ids: list[str] | None = None
-    if row["role"] == ROLE_LECTURER:
-        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-        if not teaching:
-            await update.message.reply_text(
-                "Isi *Kelas yang diampu* di /lengkapi untuk membuka presensi.",
-                parse_mode="Markdown",
-            )
-            return
-        allowed_class_ids = teaching
+    allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
+    if allowed_class_ids is not None and not allowed_class_ids:
+        await update.message.reply_text(
+            "Isi *Kelas yang diampu* dan/atau *Fakultas (lingkup dekan)* di /lengkapi agar ada matkul untuk presensi.",
+            parse_mode="Markdown",
+        )
+        return
     await update.message.reply_text(
         "Pilih kelas untuk sesi presensi:",
         reply_markup=_classes_keyboard(allowed_class_ids),
@@ -226,7 +236,8 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not role_can_open_presensi(row["role"]):
+    profile = profile_from_row(row) if row else {}
+    if not row or not _can_act_on_presensi(row, profile):
         await update.message.reply_text("Tidak diizinkan.")
         return
     parts = (update.message.text or "").split()
@@ -237,6 +248,13 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     sess = await db.get_attendance_session(conn, sid)
     if not sess:
         await update.message.reply_text("Sesi tidak ditemukan.")
+        return
+    allowed = presence_allowed_class_ids(row["role"], profile)
+    if allowed is not None and sess["class_id"] not in allowed:
+        await update.message.reply_text(
+            "Sesi ini untuk kelas di luar lingkup presensi kamu.",
+            parse_mode="Markdown",
+        )
         return
     if sess["closed_at"] is not None:
         await update.message.reply_text(
@@ -326,22 +344,22 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not row:
         return
     profile = profile_from_row(row)
-    if row["role"] == ROLE_LECTURER:
-        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-        if not teaching:
-            await update.message.reply_text(
-                "Isi *Kelas yang diampu* di /lengkapi untuk melihat sesi relevan.",
-                parse_mode="Markdown",
-            )
-            return
-    elif not role_can_report(row["role"]):
-        await update.message.reply_text("Hanya admin/owner atau dosen (dengan kelas diampu).")
+    if not _can_act_on_presensi(row, profile) and not role_can_report(row["role"]):
+        await update.message.reply_text(
+            "Hanya admin/owner/cofounder/dosen, atau dekan staf (dengan fakultas lingkup)."
+        )
+        return
+    allowed = presence_allowed_class_ids(row["role"], profile)
+    if allowed is not None and not allowed:
+        await update.message.reply_text(
+            "Isi *Kelas yang diampu* dan/atau *Fakultas (lingkup dekan)* di /lengkapi untuk melihat sesi relevan.",
+            parse_mode="Markdown",
+        )
         return
 
     open_sess = await db.recent_open_sessions(conn, 20)
-    if row["role"] == ROLE_LECTURER:
-        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-        open_sess = [s for s in open_sess if s["class_id"] in teaching]
+    if allowed is not None:
+        open_sess = [s for s in open_sess if s["class_id"] in allowed]
     if not open_sess:
         await update.message.reply_text("Tidak ada sesi presensi aktif.")
         return
@@ -372,16 +390,13 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     arg = parts[1]
-    allowed_class_ids: list[str] | None = None
-    if row["role"] == ROLE_LECTURER:
-        teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-        if not teaching:
-            await update.message.reply_text(
-                "Isi *Kelas yang diampu* di /lengkapi untuk melihat rekap.",
-                parse_mode="Markdown",
-            )
-            return
-        allowed_class_ids = teaching
+    allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
+    if allowed_class_ids is not None and not allowed_class_ids:
+        await update.message.reply_text(
+            "Belum ada lingkup kelas di profil untuk rekap (dosen: kelas diampu; dekan: fakultas lingkup di /lengkapi).",
+            parse_mode="Markdown",
+        )
+        return
 
     if arg in ("all", "total"):
         # Lecturer hanya boleh lihat matkul yang dia ampu.
@@ -539,8 +554,13 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, q.from_user.id)
-    if not row or not role_can_open_presensi(row["role"]):
+    profile = profile_from_row(row) if row else {}
+    if not row or not _can_act_on_presensi(row, profile):
         await q.edit_message_text("Tidak diizinkan.")
+        return
+    allowed = presence_allowed_class_ids(row["role"], profile)
+    if allowed is not None and class_id not in allowed:
+        await q.edit_message_text("Kelas ini di luar lingkup presensi kamu.")
         return
     sid = await db.open_attendance_session(
         conn,

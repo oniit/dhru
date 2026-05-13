@@ -68,6 +68,7 @@ def register_all(application: Application, db: Database) -> None:
         MessageHandler(
             filters.PHOTO & filters.ChatType.PRIVATE,
             ktm.on_ktm_photo,
+            block=False,
         ),
         group=1,
     )
@@ -75,6 +76,7 @@ def register_all(application: Application, db: Database) -> None:
         MessageHandler(
             filters.PHOTO & filters.ChatType.PRIVATE,
             karpeg.on_karpeg_photo,
+            block=False,
         ),
         group=1,
     )

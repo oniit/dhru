@@ -116,9 +116,9 @@ positions:
     label: Āchāryaka आचार्यक
   - id: pembina
     label: Āchāryata आचार्यता
-  - id: penyunting
+  - id: umum
     label: Upāchārya उपचर्या
-  - id: mpps
+  - id: kerjasama
     label: Parichārya परिचर्या
   - id: lainnya
     label: Lainnya
@@ -154,22 +154,22 @@ position_details:
   - id: d_coach
     label: Pelatih UKM
     position: coach
-  - id: d_peny_penyunting
+  - id: d_umum_penyunting
     label: Penyunting
     position: penyunting
-  - id: d_peny_sdm
+  - id: d_umum_sdm
     label: Pengembangan SDM
     position: penyunting
-  - id: d_peny_admin
+  - id: d_umum_admin
     label: Administrasi
     position: penyunting
-  - id: d_mp_mpps
+  - id: d_kerjasama_mpps
     label: MPPS
     position: mpps
-  - id: d_mp_sfs
+  - id: d_kerjasama_sfs
     label: SFS
     position: mpps
-  - id: d_mp_konten
+  - id: d_kerjasama_konten
     label: Konten
     position: mpps
   - id: d_lain

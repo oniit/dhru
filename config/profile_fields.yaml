@@ -43,6 +43,13 @@ fields:
     roles: [owner, admin, lecturer, staff, co_founder]
     required: true
 
+  - key: staff_faculty
+    label: Fakultas (lingkup dekan)
+    type: choice
+    choices_key: faculties
+    roles: [owner, admin, lecturer, staff, co_founder]
+    required: false
+
   - key: teaching_classes
     label: Kelas yang diampu
     type: multi_choice
@@ -54,14 +61,15 @@ profile_display:
   - telegram_name
   - username
   - full_name
+  - position
+  - role
+  - position_detail
+  - staff_faculty
+  - teaching_classes
   - faculty
   - major
   - auto_class_enrolled
   - club_enrolled
   - total_sks
   - student_id
-  - position
-  - position_detail
-  - teaching_classes
-  - role
   - agra_total

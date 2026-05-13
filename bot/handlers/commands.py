@@ -57,6 +57,11 @@ from .common import (
     role_display,
     sync_roles_from_env,
     user_row,
+    is_dekan_profile,
+    can_daftar_as_dean,
+    user_in_dean_faculty_scope,
+    dean_faculty_id,
+    can_staff_dekan_open_presensi,
 )
 
 MULTI_UD_KEY = "multi_select"
@@ -192,6 +197,8 @@ async def _revalidate_filtered_choice_fields(
             to_remove.append(f.key)
     if to_remove:
         await db.remove_profile_keys(conn, telegram_id, to_remove)
+    if not is_dekan_profile(prof) and (prof.get("staff_faculty") or "").strip():
+        await db.remove_profile_keys(conn, telegram_id, ["staff_faculty"])
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -284,7 +291,9 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"`{c[0]}`" for c in codes), parse_mode="Markdown")
 
 
-def help_for_role(role: str) -> str:
+def help_for_role(role: str, profile: dict | None = None) -> str:
+    prof = profile if profile is not None else {}
+
     lines = [
         "*Perintah umum*",
         "/start — Daftar & sinkron profil Telegram",
@@ -292,6 +301,7 @@ def help_for_role(role: str) -> str:
         "/lengkapi — Isi data wajib awal (sekali)",
         "_Mahasiswa: isi Fakultas sebelum Jurusan._",
         "/ubah — Ajukan perubahan (disetujui admin)",
+        "_Satu struktur padavi per profil; kombinasi dosen + dekan memakai kelas diampu + kelas fakultas (presensi)._",
         "`/top_agra` — Peringkat Agra (17 besar)",
         "",
     ]
@@ -316,7 +326,7 @@ def help_for_role(role: str) -> str:
                 "",
             ]
         )
-    if role_can_open_presensi(role):
+    if role_can_open_presensi(role) or can_staff_dekan_open_presensi(role, prof):
         lines.extend(
             [
                 "*Presensi (buka/tutup)*",
@@ -327,15 +337,26 @@ def help_for_role(role: str) -> str:
         )
     if role == ROLE_LECTURER:
         lines.append(
-            "*Dosen: isi Kelas yang diampu di /lengkapi.*"
+            "*Dosen:* isi *Kelas yang diampu* di /lengkapi; jika *Dekan*, isi juga *Fakultas (lingkup dekan)*."
         )
         lines.append("")
-    if role_can_report(role) or role == ROLE_LECTURER:
+    elif can_staff_dekan_open_presensi(role, prof):
+        lines.append(
+            "*Dekan (staf):* presensi/rekap terbatas ke kelas di fakultas lingkup."
+        )
+        lines.append("")
+    if role_can_report(role) or role == ROLE_LECTURER or can_staff_dekan_open_presensi(
+        role, prof
+    ):
         lines.extend(
             [
                 "*Sesi & rekap hadir*",
                 "/sesi — Sesi aktif"
-                + (" _(hanya kelas diampu)_" if role == ROLE_LECTURER else ""),
+                + (
+                    " _(terfilter kelas kamu)_"
+                    if role == ROLE_LECTURER or can_staff_dekan_open_presensi(role, prof)
+                    else ""
+                ),
                 "`/rekap_hadir <id_sesi>`",
                 "",
             ]
@@ -362,11 +383,12 @@ def help_for_role(role: str) -> str:
                 "",
             ]
         )
-    if role_can_report(role):
+    if role_can_report(role) or can_daftar_as_dean(role, prof):
         lines.extend(
             [
                 "*Daftar pengguna*",
-                "_Hanya nama & username_",
+                "_Hanya nama & username_"
+                + (" _(dekan: otomatis terfilter ke fakultas lingkup)_" if can_daftar_as_dean(role, prof) else ""),
                 "`/daftar all`",
                 "`/daftar <unit> <id>`",
                 "`/daftar id …` —  untuk memunculkan ID.",
@@ -404,7 +426,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
     role = row["role"] if row else ROLE_STUDENT
-    await update.message.reply_text(help_for_role(role), parse_mode="Markdown")
+    profile = profile_from_row(row) if row else {}
+    await update.message.reply_text(help_for_role(role, profile), parse_mode="Markdown")
 
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2202,8 +2225,14 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not role_can_report(row["role"]):
-        await update.message.reply_text("Hanya admin atau owner.")
+    actor_profile = profile_from_row(row) if row else {}
+    dean_mode = can_daftar_as_dean(row["role"], actor_profile) if row else False
+    dean_fid = dean_faculty_id(actor_profile) if dean_mode else ""
+
+    if not row or not (role_can_report(row["role"]) or dean_mode):
+        await update.message.reply_text(
+            "Hanya admin, owner, atau dekan (dengan fakultas lingkup yang sudah diisi)."
+        )
         return
     text = (update.message.text or "").strip()
     parts = text.split()
@@ -2222,6 +2251,11 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "Gunakan /daftar id <jenis> untuk sertakan Telegram ID di output.\n"
             "Data panjang otomatis dipecah ke beberapa pesan (~40 baris tiap pesan, "
             "jeda singkat antarpesan mengurangi risiko flood limit Telegram)."
+            + (
+                "\n\n_Dekan: hasil dibatasi ke pengguna di fakultas lingkup kamu._"
+                if can_daftar_as_dean(row["role"], actor_profile)
+                else ""
+            )
         )
         return
     show_telegram_id = False
@@ -2312,6 +2346,17 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "Format tidak dikenali. Ketik /daftar untuk bantuan singkat."
         )
         return
+
+    if dean_mode and dean_fid:
+        kept: list[tuple[str, str | None, int]] = []
+        for name, un, tid in matching:
+            r = next((x for x in all_rows if int(x["telegram_id"]) == tid), None)
+            if not r:
+                continue
+            p = json.loads(r["profile_json"] or "{}")
+            if user_in_dean_faculty_scope(p, dean_fid):
+                kept.append((name, un, tid))
+        matching = kept
 
     matching.sort(key=lambda x: x[0].lower())
     out_lines = _daftar_format_lines(matching, show_telegram_id=show_telegram_id)

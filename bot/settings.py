@@ -139,6 +139,11 @@ def is_choice_allowed_for_profile(
 
 
 def field_applies_to_role(field_def: FieldDef, role: str, profile: dict | None = None) -> bool:
+    if field_def.key == "staff_faculty":
+        if not profile:
+            return False
+        return profile.get("position") == "dekan"
+
     if field_def.key == "club_enrolled":
         if role == "student":
             return True
