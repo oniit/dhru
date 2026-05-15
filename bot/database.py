@@ -92,7 +92,8 @@ async def _apply_generated_profile_fields(
         if cid and cid in enrolled_club_ids:
             sks_total += int(item.get("sks", 0) or 0)
 
-    out["total_sks"] = sks_total
+    accumulated = int(out.get("accumulated_sks", 0))
+    out["total_sks"] = accumulated + sks_total
 
     if role not in (ROLE_STUDENT, ROLE_BEM):
         out.pop("student_id", None)
@@ -761,6 +762,57 @@ class Database:
         )
         rows = await cur.fetchall()
         return [int(r["telegram_id"]) for r in rows]
+
+    async def reset_academic_period(self, conn: aiosqlite.Connection) -> dict[str, int]:
+        """
+        Reset periode akademik:
+        1. Bank SKS: accumulated_sks += current total_sks untuk student/bem.
+        2. Reset role student/bem ke public & hapus field period-specific.
+        3. Hapus agra_ledger, attendance_records, attendance_sessions.
+        """
+        # 1. Update users
+        cur = await conn.execute("SELECT telegram_id, role, profile_json FROM users")
+        rows = await cur.fetchall()
+        user_updates = 0
+        for row in rows:
+            uid = row["telegram_id"]
+            role = row["role"]
+            if role not in (ROLE_STUDENT, ROLE_BEM):
+                continue
+            
+            prof = json.loads(row["profile_json"] or "{}")
+            # Bank SKS
+            current_total = int(prof.get("total_sks", 0))
+            prof["accumulated_sks"] = current_total
+            
+            # Clear period-specific fields
+            for k in ["class_enrolled", "club_enrolled", "faculty", "major", "bem_position"]:
+                prof.pop(k, None)
+            
+            # Recalculate (will result in accumulated_sks since other fields are gone)
+            prof = await _apply_generated_profile_fields(conn, uid, ROLE_PUBLIC, prof)
+            
+            await conn.execute(
+                "UPDATE users SET role = ?, profile_json = ?, onboarding_step = NULL, updated_at = ? WHERE telegram_id = ?",
+                (ROLE_PUBLIC, json.dumps(prof, ensure_ascii=False), time.time(), uid)
+            )
+            user_updates += 1
+            
+        # 2. Clear tables
+        cur = await conn.execute("DELETE FROM agra_ledger")
+        agra_count = cur.rowcount
+        cur = await conn.execute("DELETE FROM attendance_records")
+        att_rec_count = cur.rowcount
+        cur = await conn.execute("DELETE FROM attendance_sessions")
+        att_sess_count = cur.rowcount
+        
+        await conn.commit()
+        return {
+            "users_reset_to_public": user_updates,
+            "agra_records_deleted": agra_count,
+            "attendance_records_deleted": att_rec_count,
+            "attendance_sessions_deleted": att_sess_count
+        }
 
     async def touch_group_seen_user(
         self,

@@ -1013,6 +1013,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     "(kecuali OWNER/ADMIN dari .env), jadi bisa /lengkapi lagi. "
                     "Data `seen` tetap dipertahankan."
                 )
+            elif scope == "ACADEMIC_PERIOD":
+                detail = (
+                    "⚠️ *TINDAKAN BESAR!*\n"
+                    "1. SKS semua Student/BEM akan 'dibekukan' (diakumulasi).\n"
+                    "2. Role mereka akan di-reset ke *public* (harus daftar ulang).\n"
+                    "3. Pilihan Matkul, UKM, Fakultas, Jurusan akan dikosongkan.\n"
+                    "4. Seluruh data Agra & Presensi akan *DIPUTUSKAN/DIHAPUS*."
+                )
             await q.edit_message_text(
                 f"Konfirmasi reset: *{action_label}*?\n\n{detail}",
                 parse_mode="Markdown",
@@ -1227,6 +1235,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     result = await db.reset_audit_log_all(conn)
                 elif scope == "SEEN_ALL":
                     result = await db.reset_group_seen_users_all(conn)
+                elif scope == "ACADEMIC_PERIOD":
+                    result = await db.reset_academic_period(conn)
                 else:
                     await q.edit_message_text("Scope reset tidak dikenal.")
                     return
@@ -2516,6 +2526,12 @@ async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
                 ),
                 InlineKeyboardButton("🧾 Requests: semua", callback_data="orreset:act:REQ_ALL"[:64]),
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎓 RESET PERIODE AKADEMIK",
+                    callback_data="orreset:act:ACADEMIC_PERIOD"[:64],
+                )
             ],
             [InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64])],
         ]

@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = ROOT / "assets" / "ktm.png"
 FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
+FONT_LIGHT_PATH = ROOT / "assets" / "Mukta/Mukta-Light.ttf"
 
 # Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
@@ -33,6 +34,7 @@ NIM_SIZE = 28
 CLUB_SIZE = 24
 CLUB_MAX_LINES = 4
 AGRA_SIZE = 36
+BEM_SIZE = 20
 # Kotak tempel foto (x, y, w, h) relatif ke template 1050×600 — area putih kiri.
 PHOTO_SLOT = (103, 145, 275, 367)
 PHOTO_CORNER_RADIUS_FRAC = 0.11  # relatif ke min(w,h) slot
@@ -66,11 +68,12 @@ def _cache_put(key: str, value: bytes) -> None:
         _CACHE.popitem(last=False)
 
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _load_font(size: int, font_path: Path | str | None = None) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    fp = font_path or FONT_PATH
     try:
-        return ImageFont.truetype(str(FONT_PATH), size=size)
+        return ImageFont.truetype(str(fp), size=size)
     except OSError:
-        log.warning("Font KTM tidak ditemukan, pakai default: %s", FONT_PATH)
+        log.warning("Font KTM tidak ditemukan, pakai fallback: %s", fp)
         try:
             return ImageFont.truetype("arial.ttf", size=size)
         except OSError:
@@ -255,12 +258,11 @@ def render_ktm_png_bytes(
         if bem_pos_item:
             b_label = str(bem_pos_item.get("label", ""))
             b_detail = str(bem_pos_item.get("detail", ""))
-            b_y = int(530 * sy)
+            b_y = int(555 * sy)
             b_x = int(PHOTO_SLOT[0] * sx)
             if b_label:
-                draw.text((b_x, b_y), b_label, font=font_small, fill=(255, 255, 255))
-            if b_detail:
-                draw.text((b_x, b_y + int(CLUB_SIZE * sy)), b_detail, font=_load_font(int(20 * sy)), fill=(255, 255, 255))
+                font_light = _load_font(int(BEM_SIZE * sy), font_path=FONT_LIGHT_PATH)
+                draw.text((b_x, b_y), f"{b_label} — {b_detail}", font=font_light, fill=(255, 255, 255))
 
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)
