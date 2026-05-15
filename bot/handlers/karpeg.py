@@ -8,7 +8,7 @@ from io import BytesIO
 from telegram import Update
 from telegram.ext import ContextTypes, filters
 
-from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER
+from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL
 from bot.karpeg_card import render_karpeg_png_bytes
 
 from .common import profile_from_row, user_row
@@ -60,7 +60,7 @@ async def cmd_karpeg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if row["role"] == ROLE_PUBLIC:
         await update.message.reply_text("Selesaikan pendaftaran dulu (kode akses).")
         return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         await update.message.reply_text("Kartu Pegawai hanya untuk staf/dosen/founder.")
         return
 
@@ -118,7 +118,7 @@ async def cmd_karpeg_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if row["role"] == ROLE_PUBLIC:
         await update.message.reply_text("Selesaikan pendaftaran dulu.")
         return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         await update.message.reply_text("Hanya staf/dosen/founder yang bisa mengatur foto Karpeg.")
         return
 
@@ -146,7 +146,7 @@ async def on_karpeg_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     step = (row["onboarding_step"] or "").strip()
     if step != STEP_KARPEG_PHOTO:
         return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         await db.set_onboarding_step(conn, uid, None)
         return
 

@@ -18,18 +18,10 @@ from bot.agra_parse import parse_add_command
 from bot.setrole_parse import parse_setrole_command
 from bot.database import (
     ROLE_ADMIN,
-    ROLE_LECTURER,
+    ROLE_INTERNAL,
     ROLE_OWNER,
-    ROLE_STAFF,
     ROLE_STUDENT,
     ROLE_PUBLIC,
-    ROLE_COFOUNDER,
-    role_can_add_agra,
-    role_can_approve_profile,
-    role_can_open_presensi,
-    role_can_report,
-    role_can_tag_all,
-    role_can_view_sensitive_logs,
 )
 from bot.settings import (
     CHOICES,
@@ -61,7 +53,13 @@ from .common import (
     can_daftar_as_dean,
     user_in_dean_faculty_scope,
     dean_faculty_id,
-    can_staff_dekan_open_presensi,
+    can_manage_agra,
+    can_assign_roles,
+    can_approve_profile,
+    can_view_sensitive_logs,
+    can_report,
+    can_tag_all,
+    presence_allowed_class_ids,
 )
 
 MULTI_UD_KEY = "multi_select"
@@ -270,7 +268,7 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER):
+    if not row or row["role"] != ROLE_OWNER:
         await update.message.reply_text("Tidak diizinkan.")
         return
     
@@ -311,22 +309,25 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
             "`/ktm_foto` — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
         )
-    if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
+    if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
             "*Staf / Dosen*\n/karpeg — Kartu Pegawai (gambar, hanya chat privat)\n"
             "`/karpeg_foto` — Unggah foto wajah untuk Karpeg (privat), lalu /karpeg\n"
         )
-    if role_can_add_agra(role):
+    if can_manage_agra(role, prof):
         lines.extend(
             [
-                "*Agra (dosen/coach/admin)*",
+                "*Manajemen Agra*",
                 "/add <nominal> @user … | <deskripsi>",
                 "Contoh: `/add 10 @user1 @user2 | Tugas 1`",
                 "Bisa *reply* pesan user + `/add 10 | alasan`",
                 "",
             ]
         )
-    if role_can_open_presensi(role) or can_staff_dekan_open_presensi(role, prof):
+    allowed_classes = presence_allowed_class_ids(role, prof)
+    can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
+    
+    if can_open_presensi:
         lines.extend(
             [
                 "*Presensi (buka/tutup)*",
@@ -335,33 +336,32 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "",
             ]
         )
-    if role == ROLE_LECTURER:
+    
+    if "d_dosen" in prof.get("position_detail", []):
         lines.append(
             "*Dosen:* isi *Kelas yang diampu* di /lengkapi; jika *Dekan*, isi juga *Fakultas*."
         )
         lines.append("")
-    elif can_staff_dekan_open_presensi(role, prof):
+    elif "d_dekan" in prof.get("position_detail", []):
         lines.append(
-            "*Dekan (staf):* presensi/rekap terbatas ke kelas di fakultas lingkup."
+            "*Dekan:* presensi/rekap terbatas ke kelas di fakultas lingkup."
         )
         lines.append("")
-    if role_can_report(role) or role == ROLE_LECTURER or can_staff_dekan_open_presensi(
-        role, prof
-    ):
+    if can_report(role, prof) or can_open_presensi:
         lines.extend(
             [
                 "*Sesi & rekap hadir*",
                 "/sesi — Sesi aktif"
                 + (
                     " _(terfilter kelas kamu)_"
-                    if role == ROLE_LECTURER or can_staff_dekan_open_presensi(role, prof)
+                    if allowed_classes is not None
                     else ""
                 ),
                 "`/rekap_hadir <id_sesi>`",
                 "",
             ]
         )
-    if role_can_approve_profile(role):
+    if can_approve_profile(role, prof):
         lines.extend(
             [
                 "*Admin / Owner*",
@@ -371,7 +371,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "",
             ]
         )
-    if role_can_view_sensitive_logs(role):
+    if can_view_sensitive_logs(role, prof):
         lines.extend(
             [
                 "/log — Audit & Agra (deskripsi)",
@@ -383,7 +383,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "",
             ]
         )
-    if role_can_report(role) or can_daftar_as_dean(role, prof):
+    if can_report(role, prof) or can_daftar_as_dean(role, prof):
         lines.extend(
             [
                 "*Daftar pengguna*",
@@ -395,7 +395,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "",
             ]
         )
-    if role_can_tag_all(role):
+    if can_tag_all(role, prof):
         lines.extend(
             [
                 "*Mention grup*",
@@ -470,7 +470,8 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     row = await user_row(conn, db, target_id)
     profile = profile_from_row(row)
     agra = await db.agra_total(conn, target_id) if row else 0
-    show_raw = role_can_view_sensitive_logs(requester_role) and not is_target_lookup
+    requester_prof = profile_from_row(row) if row else {}
+    show_raw = can_view_sensitive_logs(requester_role, requester_prof) and not is_target_lookup
     
     cur = await conn.execute("SELECT created_at FROM users WHERE telegram_id = ?", (target_id,))
     rt = await cur.fetchone()
@@ -575,6 +576,7 @@ def _lengkapi_keyboard(fields) -> InlineKeyboardMarkup:
                     )
                 ]
             )
+    rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -608,6 +610,7 @@ def _ubah_keyboard(fields) -> InlineKeyboardMarkup:
                     )
                 ]
             )
+    rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -629,9 +632,10 @@ def _admin_profile_keyboard() -> InlineKeyboardMarkup:
                 )
             ]
         )
-    rows.append(
-        [InlineKeyboardButton("Selesai", callback_data="adgo:__done__"[:64])]
-    )
+    rows.append([
+        InlineKeyboardButton("Selesai", callback_data="adgo:__done__"[:64]),
+        InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")
+    ])
     return InlineKeyboardMarkup(rows)
 
 
@@ -640,6 +644,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not q or not q.data or not q.from_user:
         return
     data = q.data
+
+    if data == "cancel_action":
+        await q.answer("Aksi dibatalkan.")
+        await q.edit_message_text("Aksi dibatalkan.")
+        return
 
     if data.startswith("pub:"):
         await q.answer()
@@ -1289,7 +1298,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         or data.startswith("admld:")
     ):
         row_ad = await user_row(conn, db, uid)
-        if not row_ad or not role_can_report(row_ad["role"]):
+        if not row_ad or not can_report(row_ad["role"], profile_from_row(row_ad)):
             await q.answer("Tidak diizinkan.", show_alert=True)
             return
 
@@ -1409,6 +1418,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if not step.startswith("MULTI_AD_LC:") or step.split(":", 1)[1] != field_key:
                 await q.edit_message_text("Sesi habis.")
                 return
+            if not tid_target:
+                await q.edit_message_text("Target tidak ada.")
+                return
+            fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
+            
             m = context.user_data.get(MULTI_UD_KEY)
             if not m or m.get("field") != field_key or m.get("flow") != "ad":
                 await q.edit_message_text("Sesi habis.")
@@ -1912,7 +1926,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         _, rid_s, dec = parts
         rid_int = int(rid_s)
         row_u = await user_row(conn, db, uid)
-        if not row_u or not role_can_approve_profile(row_u["role"]):
+        if not row_u or not can_approve_profile(row_u["role"], profile_from_row(row_u)):
             await q.edit_message_text("Tidak diizinkan.")
             return
         fallback_base = q.message.text or f"Pengajuan #{rid_s}"
@@ -2054,7 +2068,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db = _db(context)
     actor = update.effective_user.id
     row = await user_row(conn, db, actor)
-    if not row or not role_can_add_agra(row["role"]):
+    if not row or not can_manage_agra(row["role"], profile_from_row(row)):
         await update.message.reply_text("Kamu tidak punya akses menambah Agra.")
         return
 
@@ -2131,7 +2145,7 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db = _db(context)
     actor = update.effective_user.id
     row = await user_row(conn, db, actor)
-    if not row or not role_can_report(row["role"]):
+    if not row or not can_report(row["role"], profile_from_row(row)):
         await update.message.reply_text("Hanya admin atau owner.")
         return
     msg = update.message
@@ -2225,11 +2239,11 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    actor_profile = profile_from_row(row) if row else {}
-    dean_mode = can_daftar_as_dean(row["role"], actor_profile) if row else False
-    dean_fid = dean_faculty_id(actor_profile) if dean_mode else ""
+    profile = profile_from_row(row) if row else {}
+    dean_mode = can_daftar_as_dean(row["role"], profile) if row else False
+    dean_fid = dean_faculty_id(profile) if dean_mode else ""
 
-    if not row or not (role_can_report(row["role"]) or dean_mode):
+    if not row or not (can_report(row["role"], profile) or dean_mode):
         await update.message.reply_text(
             "Hanya admin, owner, atau dekan (dengan fakultas lingkup yang sudah diisi)."
         )
@@ -2253,7 +2267,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "jeda singkat antarpesan mengurangi risiko flood limit Telegram)."
             + (
                 "\n\n_Dekan: hasil dibatasi ke pengguna di fakultas lingkup kamu._"
-                if can_daftar_as_dean(row["role"], actor_profile)
+                if can_daftar_as_dean(row["role"], profile)
                 else ""
             )
         )
@@ -2303,21 +2317,23 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif kind == "staf":
         title = "Daftar staf (non-dosen)"
         for r in all_rows:
-            if r["role"] == ROLE_STAFF:
+            if r["role"] == ROLE_INTERNAL:
                 p = json.loads(r["profile_json"] or "{}")
-                push_row(r, p)
+                if "d_dosen" not in p.get("position_detail", []):
+                    push_row(r, p)
     elif kind == "all_staf":
-        title = "Daftar staf (admin + dosen + non-dosen)"
+        title = "Daftar staf (admin + internal)"
         for r in all_rows:
-            if r["role"] in (ROLE_ADMIN, ROLE_LECTURER, ROLE_STAFF):
+            if r["role"] in (ROLE_ADMIN, ROLE_INTERNAL):
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
     elif kind == "dosen":
         title = "Daftar dosen"
         for r in all_rows:
-            if r["role"] == ROLE_LECTURER:
+            if r["role"] == ROLE_INTERNAL:
                 p = json.loads(r["profile_json"] or "{}")
-                push_row(r, p)
+                if "d_dosen" in p.get("position_detail", []):
+                    push_row(r, p)
     elif kind == "fakultas" and len(parts) > kind_idx + 1:
         fid = parts[kind_idx + 1]
         title = f"Daftar — fakultas {fid}"
@@ -2385,7 +2401,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not parsed:
         await update.message.reply_text(
             "Pakai:\n"
-            "`/setrole <admin|lecturer|staff|student> @user1 @user2`\n"
+            "`/setrole <admin|internal|student|public> @user1 @user2`\n"
             "atau balas pesan seseorang lalu `/setrole <role>`\n\n"
             "Owner tetap hanya satu (di .env); tidak bisa set owner ke orang lain.",
             parse_mode="Markdown",
@@ -2395,8 +2411,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if role not in (
         ROLE_OWNER,
         ROLE_ADMIN,
-        ROLE_LECTURER,
-        ROLE_STAFF,
+        ROLE_INTERNAL,
         ROLE_STUDENT,
     ):
         await update.message.reply_text(
@@ -2463,8 +2478,11 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
-    if not is_owner(update.effective_user.id):
-        await update.message.reply_text("Hanya owner yang bisa /owner_reset.")
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or not can_approve_profile(row["role"], profile_from_row(row)):
+        await update.message.reply_text("Anda tidak berhak memicu reset moderasi.")
         return
 
     kb = InlineKeyboardMarkup(
@@ -2506,7 +2524,7 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not role_can_approve_profile(row["role"]):
+    if not row or not can_approve_profile(row["role"], profile_from_row(row)):
         await update.message.reply_text("Hanya admin/owner.")
         return
     pending = await db.list_pending_profile_requests(conn)
@@ -2541,8 +2559,8 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not role_can_view_sensitive_logs(row["role"]):
-        await update.message.reply_text("Hanya admin/owner.")
+    if not row or not can_view_sensitive_logs(row["role"], profile_from_row(row)):
+        await update.message.reply_text("Anda tidak berhak melihat log audit.")
         return
     text_raw = (update.message.text or "").strip()
     parts = text_raw.split()
@@ -2626,9 +2644,8 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     db = _db(context)
     actor = update.effective_user.id
     row = await user_row(conn, db, actor)
-    role = row["role"] if row else ROLE_STUDENT
-    if not role_can_tag_all(role):
-        await update.message.reply_text("Hanya owner/sekre/staf/dosen yang bisa /tagall.")
+    if not row or not can_tag_all(row["role"], profile_from_row(row)):
+        await update.message.reply_text("Hanya Staf/Pengajar yang bisa tag all.")
         return
 
     all_ids = await db.list_group_seen_user_ids(conn, update.effective_chat.id)

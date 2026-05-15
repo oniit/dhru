@@ -145,33 +145,33 @@ position_details:
   - id: d_sarpras
     label: Sarana & Prasarana
     position: sarpras
-  - id: d_pembina
-    label: Pembina BEM
-    position: pembina
   - id: d_dosen
     label: Dosen
     position: dosen
   - id: d_coach
     label: Pelatih UKM
     position: coach
+  - id: d_pembina
+    label: Pembina BEM
+    position: pembina
   - id: d_umum_penyunting
     label: Penyunting
-    position: penyunting
+    position: umum
   - id: d_umum_sdm
     label: Pengembangan SDM
-    position: penyunting
+    position: umum
   - id: d_umum_admin
     label: Administrasi
-    position: penyunting
+    position: umum
   - id: d_kerjasama_mpps
     label: MPPS
-    position: mpps
+    position: kerjasama
   - id: d_kerjasama_sfs
     label: SFS
-    position: mpps
+    position: kerjasama
   - id: d_kerjasama_konten
     label: Konten
-    position: mpps
+    position: kerjasama
   - id: d_lain
     label: Lainnya
     position: lainnya

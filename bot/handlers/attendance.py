@@ -11,14 +11,12 @@ from telegram.ext import ContextTypes
 from bot.database import (
     ROLE_ADMIN,
     ROLE_OWNER,
-    role_can_open_presensi,
-    role_can_report,
 )
 from bot.settings import CHOICES
 from bot.timefmt import TZ, format_local_time
 
 from .common import (
-    can_staff_dekan_open_presensi,
+    can_report,
     normalize_multi_choice_value,
     presence_allowed_class_ids,
     profile_from_row,
@@ -66,7 +64,7 @@ def classes_for_presensi(profile: dict) -> list[str]:
 
 
 def can_rekap_hadir_session(row, profile: dict, session_class_id: str) -> bool:
-    if role_can_report(row["role"]):
+    if can_report(row["role"], profile):
         return True
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is None:
@@ -75,9 +73,8 @@ def can_rekap_hadir_session(row, profile: dict, session_class_id: str) -> bool:
 
 
 def _can_act_on_presensi(row, profile: dict) -> bool:
-    if role_can_open_presensi(row["role"]):
-        return True
-    return can_staff_dekan_open_presensi(row["role"], profile)
+    allowed = presence_allowed_class_ids(row["role"], profile)
+    return allowed is None or len(allowed) > 0
 
 
 def _format_presensi_block(
@@ -202,6 +199,7 @@ def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeybo
             continue
         lab = str(item.get("label", cid))
         rows.append([InlineKeyboardButton(lab, callback_data=f"o:{cid}"[:64])])
+    rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -344,9 +342,9 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not row:
         return
     profile = profile_from_row(row)
-    if not _can_act_on_presensi(row, profile) and not role_can_report(row["role"]):
+    if not _can_act_on_presensi(row, profile) and not can_report(row["role"], profile):
         await update.message.reply_text(
-            "Hanya admin/owner/cofounder/dosen, atau dekan staf (dengan fakultas lingkup)."
+            "Hanya admin/owner/dosen/coach, atau dekan (dengan fakultas lingkup)."
         )
         return
     allowed = presence_allowed_class_ids(row["role"], profile)

@@ -11,8 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from bot.settings import ROOT, choice_label, multi_choice_labels
-from bot.handlers.common import role_display
+from bot.settings import ROOT, choice_label, multi_choice_labels, CHOICES
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +141,7 @@ def cache_payload_for_profile(profile: dict, agra: int, role: str) -> dict:
     return {
         "full_name": (profile.get("full_name") or "").strip(),
         "position": (profile.get("position") or "").strip(),
-        "position_detail": (profile.get("position_detail") or "").strip(),
+        "position_detail": sorted(_normalize_multi_choice(profile.get("position_detail"))),
         "teaching_classes": sorted(_normalize_multi_choice(profile.get("teaching_classes"))),
         "club_enrolled": sorted(_normalize_multi_choice(profile.get("club_enrolled"))),
         "role": role,
@@ -225,19 +224,12 @@ def render_karpeg_png_bytes(
     font_small = _load_font(int(CLUB_SIZE * sy))
     font_agra = _load_font(int(AGRA_SIZE * sy))
 
-    name = (payload["full_name"] or "—").strip() or "—"
-    role_name = role_display(payload["role"])
-    position_raw = payload["position"] or ""
-    position_label = choice_label("positions", position_raw) or "—"
+    name = (payload.get("full_name") or "—").strip() or "—"
     
-    if position_raw == "dosen":
-        detail_text = multi_choice_labels("classes", payload["teaching_classes"]) if payload["teaching_classes"] else "—"
-    elif position_raw == "coach":
-        detail_text = multi_choice_labels("clubs", payload["club_enrolled"]) if payload["club_enrolled"] else "—"
-    else:
-        detail_text = choice_label("position_details", payload["position_detail"] or None) or "—"
+    pd_raw = payload.get("position_detail")
+    detail_text = multi_choice_labels("position_details", pd_raw if isinstance(pd_raw, list) else [pd_raw] if pd_raw else []) or "—"
 
-    agra_s = str(payload["agra"])
+    agra_s = str(payload.get("agra", "0"))
 
     # Nama (satu baris; potong jika melebihi lebar kolom kanan)
     max_name_w = W - value_x - margin_r
@@ -246,20 +238,66 @@ def render_karpeg_png_bytes(
             name = name[:-1]
         name = (name + "…") if name else "—"
 
+    # Nama
     y = name_y0
     draw.text((value_x, y), name, font=font_name, fill=TEXT_COLOR)
     y += line_step
+    
+    # Baris 2: Jabatan Sansekerta (Padavi)
+    position_raw = payload.get("position")
+
+    if not position_raw:
+        detail_raw = payload.get("position_detail", [])
+
+        detail_to_position = {
+            item["id"]: item["position"]
+            for item in CHOICES["position_details"]
+        }
+
+        positions = []
+
+        for detail_id in detail_raw:
+            pos = detail_to_position.get(detail_id)
+
+            if pos and pos not in positions:
+                positions.append(pos)
+
+        position_label = ", ".join(
+            choice_label("positions", pos)
+            for pos in positions
+        ) if positions else "—"
+
+    else:
+        position_label = choice_label("positions", position_raw)
+
+    if _text_width(draw, position_label, font_body) > max_name_w:
+        while position_label and _text_width(draw, position_label + "…", font_body) > max_name_w:
+            position_label = position_label[:-1]
+
+        position_label = (position_label + "…") if position_label else "—"
+
     draw.text((value_x, y), position_label, font=font_body, fill=TEXT_COLOR)
     y += line_step
-    draw.text((value_x, y), role_name, font=font_body, fill=TEXT_COLOR)
+    
+    # Baris 3: Detail Jabatan (menggantikan Role)
+    if _text_width(draw, detail_text, font_body) > max_name_w:
+        while detail_text and _text_width(draw, detail_text + "…", font_body) > max_name_w:
+            detail_text = detail_text[:-1]
+        detail_text = (detail_text + "…") if detail_text else "—"
+    draw.text((value_x, y), detail_text, font=font_body, fill=TEXT_COLOR)
     y += line_step
     
-    # Detail Jabatan bisa panjang
-    detail_lines = _wrap_lines(draw, detail_text, font_small, club_max_w, CLUB_MAX_LINES)
-    line_h = max(int(CLUB_SIZE * sy * 1.25), int(20 * sy))
-    for line in detail_lines:
-        draw.text((value_x, y), line, font=font_small, fill=TEXT_COLOR)
-        y += line_h
+    # Baris 4: Detail Tambahan (Kelas / UKM)
+    classes = multi_choice_labels("classes", payload.get("teaching_classes")) if payload.get("teaching_classes") else ""
+    clubs = multi_choice_labels("clubs", payload.get("club_enrolled")) if payload.get("club_enrolled") else ""
+    extra_detail = ", ".join(filter(None, [classes.replace("—", ""), clubs.replace("—", "")])) or ""
+    
+    if _text_width(draw, extra_detail, font_small) > club_max_w:
+        while extra_detail and _text_width(draw, extra_detail + "…", font_small) > club_max_w:
+            extra_detail = extra_detail[:-1]
+        extra_detail = (extra_detail + "…") if extra_detail else "—"
+    draw.text((value_x, y), extra_detail, font=font_small, fill=TEXT_COLOR)
+    y += max(int(CLUB_SIZE * sy * 1.25), int(20 * sy))
     y += int(6 * sy)
     
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)

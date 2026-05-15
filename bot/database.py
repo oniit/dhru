@@ -16,13 +16,11 @@ DB_PATH = ROOT / "data" / "bot.db"
 
 ROLE_OWNER = "owner"
 ROLE_ADMIN = "admin"
-ROLE_COFOUNDER = "co_founder"
-ROLE_LECTURER = "lecturer"
-ROLE_STAFF = "staff"
+ROLE_INTERNAL = "internal"
 ROLE_STUDENT = "student"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER, ROLE_STAFF, ROLE_STUDENT, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_STUDENT, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -1237,49 +1235,12 @@ class Database:
         return await cur.fetchall()
 
 
-def role_can_assign_roles(role: str) -> bool:
-    return role == ROLE_OWNER
-
-
-def role_can_approve_profile(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER)
-
-
-def role_can_view_sensitive_logs(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN)
-
-
-def role_can_add_agra(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER)
-
-
-def role_can_open_presensi(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_LECTURER)
-
-
-def role_can_report(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER)
-
-
-def role_can_tag_all(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_COFOUNDER, ROLE_STAFF, ROLE_LECTURER)
-
-
 __all__ = [
     "Database",
     "DB_PATH",
     "ROLE_OWNER",
     "ROLE_ADMIN",
-    "ROLE_COFOUNDER",
-    "ROLE_LECTURER",
-    "ROLE_STAFF",
+    "ROLE_INTERNAL",
     "ROLE_STUDENT",
     "ROLE_PUBLIC",
-    "role_can_assign_roles",
-    "role_can_approve_profile",
-    "role_can_view_sensitive_logs",
-    "role_can_add_agra",
-    "role_can_open_presensi",
-    "role_can_report",
-    "role_can_tag_all",
 ]

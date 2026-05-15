@@ -5,10 +5,10 @@ from telegram.ext import ContextTypes
 import time
 import re
 
-from bot.database import role_can_report
 from bot.settings import PROFILE_FIELDS, FORWARD_GROUP_ID
 
 from .common import (
+    can_report,
     field_label_for_key,
     missing_required_fields,
     profile_from_row,
@@ -97,7 +97,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         field_key = step.split(":", 1)[1]
         target_tid = context.user_data.get(ADMIN_PROFILE_TARGET_UD)
         row_actor = await user_row(conn, db, uid)
-        if not target_tid or not row_actor or not role_can_report(row_actor["role"]):
+        if not target_tid or not row_actor or not can_report(row_actor["role"], profile_from_row(row_actor)):
             await db.set_onboarding_step(conn, uid, None)
             return
         await db.set_profile_partial(conn, target_tid, {field_key: text})

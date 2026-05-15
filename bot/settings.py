@@ -139,23 +139,26 @@ def is_choice_allowed_for_profile(
 
 
 def field_applies_to_role(field_def: FieldDef, role: str, profile: dict | None = None) -> bool:
-    if field_def.key == "staff_faculty":
+    def has_jabatan(jab_id: str) -> bool:
         if not profile:
             return False
-        return profile.get("position") == "dekan"
+        pd = profile.get("position_detail")
+        if isinstance(pd, list):
+            return jab_id in pd
+        return pd == jab_id
+
+    if field_def.key == "staff_faculty":
+        return has_jabatan("d_dekan")
 
     if field_def.key == "club_enrolled":
         if role == "student":
             return True
-        if profile and profile.get("position") == "coach":
+        if has_jabatan("d_coach"):
             return True
         return False
         
     if field_def.key == "teaching_classes":
-        if profile and profile.get("position") == "dosen":
-            return True
-        if not profile and role == "lecturer":
-            # Fallback if profile not provided but role is lecturer
+        if has_jabatan("d_dosen"):
             return True
         return False
 

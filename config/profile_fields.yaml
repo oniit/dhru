@@ -27,7 +27,7 @@ fields:
     label: Club / UKM
     type: multi_choice
     choices_key: clubs
-    roles: [student, lecturer, staff, owner, admin, co_founder]
+    roles: [student, internal, owner, admin]
     required: false
 
   - key: student_id
@@ -38,23 +38,23 @@ fields:
 
   - key: position_detail
     label: Jabatan
-    type: choice
+    type: multi_choice
     choices_key: position_details
-    roles: [owner, admin, lecturer, staff, co_founder]
+    roles: [owner, admin, internal]
     required: true
 
   - key: staff_faculty
     label: Fakultas
     type: choice
     choices_key: faculties
-    roles: [owner, admin, lecturer, staff, co_founder]
+    roles: [owner, admin, internal]
     required: false
 
   - key: teaching_classes
     label: Kelas yang diampu
     type: multi_choice
     choices_key: classes
-    roles: [lecturer]
+    roles: [owner, admin, internal]
     required: false
 
 profile_display:
@@ -62,7 +62,6 @@ profile_display:
   - username
   - full_name
   - position
-  - role
   - position_detail
   - staff_faculty
   - teaching_classes

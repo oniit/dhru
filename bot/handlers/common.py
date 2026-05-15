@@ -8,10 +8,8 @@ from telegram.ext import ContextTypes
 
 from bot.database import (
     ROLE_ADMIN,
-    ROLE_COFOUNDER,
-    ROLE_LECTURER,
+    ROLE_INTERNAL,
     ROLE_OWNER,
-    ROLE_STAFF,
     ROLE_STUDENT,
 )
 from bot.settings import (
@@ -34,8 +32,7 @@ def role_display(role: str) -> str:
     return {
         ROLE_OWNER: "Founder",
         ROLE_ADMIN: "Sekretaris",
-        ROLE_LECTURER: "Pengajar",
-        ROLE_STAFF: "Staf",
+        ROLE_INTERNAL: "Internal",
         ROLE_STUDENT: "Mahasiswa",
     }.get(role, role)
 
@@ -84,21 +81,18 @@ def classes_for_staff_faculty(faculty_id: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def get_user_jabatans(profile: dict | None) -> list[str]:
+    if not profile:
+        return []
+    return normalize_multi_choice_value(profile.get("position_detail"))
+
+
 def is_dekan_profile(profile: dict | None) -> bool:
-    return (profile or {}).get("position") == "dekan"
+    return "d_dekan" in get_user_jabatans(profile)
 
 
 def dean_faculty_id(profile: dict | None) -> str:
     return ((profile or {}).get("staff_faculty") or "").strip()
-
-
-def lecturer_presence_class_ids(profile: dict | None) -> list[str]:
-    """Presensi/rekap: kelas diampu ∪ (jika dekan) semua kelas di fakultas lingkup."""
-    p = profile or {}
-    parts = list(normalize_multi_choice_value(p.get("teaching_classes")))
-    if is_dekan_profile(p) and dean_faculty_id(p):
-        parts.extend(classes_for_staff_faculty(dean_faculty_id(p)))
-    return list(dict.fromkeys(parts))
 
 
 def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
@@ -123,33 +117,65 @@ def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
 
 
 def can_daftar_as_dean(role: str, profile: dict | None) -> bool:
-    if role not in (ROLE_LECTURER, ROLE_STAFF, ROLE_COFOUNDER):
-        return False
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        return True
     return is_dekan_profile(profile) and bool(dean_faculty_id(profile))
 
 
-def can_staff_dekan_open_presensi(role: str, profile: dict | None) -> bool:
-    return role == ROLE_STAFF and is_dekan_profile(profile or {}) and bool(
-        dean_faculty_id(profile)
-    )
-
-
 def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | None:
-    """None = boleh semua kelas (admin/owner/cofounder). List kosong = tidak ada akses."""
+    """None = boleh semua kelas (admin/owner). List kosong = tidak ada akses."""
     p = profile or {}
     if role in (ROLE_OWNER, ROLE_ADMIN):
         return None
-    if role == ROLE_COFOUNDER:
-        if is_dekan_profile(p) and dean_faculty_id(p):
-            ids = lecturer_presence_class_ids(p)
-            return ids if ids else []
-        return None
-    if role == ROLE_LECTURER:
-        ids = lecturer_presence_class_ids(p)
-        return ids if ids else []
-    if can_staff_dekan_open_presensi(role, p):
-        return classes_for_staff_faculty(dean_faculty_id(p))
+    jabatans = get_user_jabatans(p)
+    ids = []
+    has_access = False
+    
+    if "d_dosen" in jabatans:
+        has_access = True
+        ids.extend(normalize_multi_choice_value(p.get("teaching_classes")))
+    if "d_coach" in jabatans:
+        has_access = True
+        ids.extend(normalize_multi_choice_value(p.get("club_enrolled")))
+    if "d_dekan" in jabatans and dean_faculty_id(p):
+        has_access = True
+        ids.extend(classes_for_staff_faculty(dean_faculty_id(p)))
+        
+    if has_access:
+        return list(dict.fromkeys(ids))
     return []
+
+
+def can_manage_agra(role: str, profile: dict | None) -> bool:
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        return True
+    jabatans = get_user_jabatans(profile)
+    # Semua yang bertugas mengajar atau SDM
+    return "d_dosen" in jabatans or "d_coach" in jabatans or "d_umum_sdm" in jabatans
+
+
+def can_assign_roles(role: str, profile: dict | None) -> bool:
+    return role == ROLE_OWNER
+
+
+def can_approve_profile(role: str, profile: dict | None) -> bool:
+    if role in (ROLE_OWNER, ROLE_ADMIN): return True
+    return "d_umum_sdm" in get_user_jabatans(profile)
+
+
+def can_view_sensitive_logs(role: str, profile: dict | None) -> bool:
+    return role in (ROLE_OWNER, ROLE_ADMIN)
+
+
+def can_report(role: str, profile: dict | None) -> bool:
+    if role in (ROLE_OWNER, ROLE_ADMIN): return True
+    return "d_dekan" in get_user_jabatans(profile)
+
+
+def can_tag_all(role: str, profile: dict | None) -> bool:
+    if role in (ROLE_OWNER, ROLE_ADMIN): return True
+    jabatans = get_user_jabatans(profile)
+    return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans
 
 
 def field_label_for_key(field_key: str) -> str:
@@ -271,7 +297,28 @@ def format_profile_card(
             return multi_choice_labels("classes", auto) if auto else "—"
         if key == "position":
             raw = profile.get("position")
-            return choice_label("positions", raw) if raw else "—"
+            if not raw:
+                detail_raw = profile.get("position_detail", [])
+
+                detail_to_position = {
+                    item["id"]: item["position"]
+                    for item in CHOICES["position_details"]
+                }
+
+                positions = []
+
+                for detail_id in detail_raw:
+                    pos = detail_to_position.get(detail_id)
+
+                    if pos and pos not in positions:
+                        positions.append(pos)
+
+                return ", ".join(
+                    choice_label("positions", pos)
+                    for pos in positions
+                ) if positions else "—"
+
+            return choice_label("positions", raw)
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)
         if not fdef:
@@ -326,6 +373,7 @@ def keyboard_for_choices(
             row = []
     if row:
         rows.append(row)
+    rows.append([InlineKeyboardButton("⬅️ Batal / Kembali", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -356,7 +404,8 @@ def keyboard_for_multi_choices(
             InlineKeyboardButton(
                 "Selesai — simpan pilihan",
                 callback_data=f"{done_prefix}:{field_key}"[:64],
-            )
+            ),
+            InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action"),
         ]
     )
     return InlineKeyboardMarkup(rows)
@@ -388,4 +437,6 @@ async def moderator_chat_ids(db: Database, conn: aiosqlite.Connection) -> set[in
 
 
 def is_lecturer_or_above(role: str) -> bool:
-    return role in (ROLE_OWNER, ROLE_ADMIN, ROLE_LECTURER)
+    # Deprecated function, but keeping it empty logic or returning false
+    # if it's imported dynamically somewhere else. Let's just return if it's owner/admin.
+    return role in (ROLE_OWNER, ROLE_ADMIN)
