@@ -44,7 +44,7 @@ fields:
     required: true
 
   - key: staff_faculty
-    label: Fakultas (lingkup dekan)
+    label: Fakultas
     type: choice
     choices_key: faculties
     roles: [owner, admin, lecturer, staff, co_founder]

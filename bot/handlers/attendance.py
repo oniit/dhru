@@ -220,7 +220,7 @@ async def cmd_buka_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
-            "Isi *Kelas yang diampu* dan/atau *Fakultas (lingkup dekan)* di /lengkapi agar ada matkul untuk presensi.",
+            "Isi *Kelas yang diampu* dan/atau *Fakultas* di /lengkapi agar ada matkul untuk presensi.",
             parse_mode="Markdown",
         )
         return
@@ -352,7 +352,7 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is not None and not allowed:
         await update.message.reply_text(
-            "Isi *Kelas yang diampu* dan/atau *Fakultas (lingkup dekan)* di /lengkapi untuk melihat sesi relevan.",
+            "Isi *Kelas yang diampu* dan/atau *Fakultas* di /lengkapi untuk melihat sesi relevan.",
             parse_mode="Markdown",
         )
         return

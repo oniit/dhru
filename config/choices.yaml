@@ -4,10 +4,10 @@
 faculties:
   - id: fmipa
     label: Fakultas Matematika dan Ilmu Pengetahuan Alam
-  - id: ftik
-    label: Fakultas Ilmu Teknologi dan Komputer
-  - id: fib
-    label: Fakultas Ilmu Budaya
+  - id: fti
+    label: Fakultas Teknologi Informasi
+  - id: fsrd
+    label: Fakultas Seni Rupa dan Desain
 
 majors:
   - id: if

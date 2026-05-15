@@ -337,7 +337,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         )
     if role == ROLE_LECTURER:
         lines.append(
-            "*Dosen:* isi *Kelas yang diampu* di /lengkapi; jika *Dekan*, isi juga *Fakultas (lingkup dekan)*."
+            "*Dosen:* isi *Kelas yang diampu* di /lengkapi; jika *Dekan*, isi juga *Fakultas*."
         )
         lines.append("")
     elif can_staff_dekan_open_presensi(role, prof):
