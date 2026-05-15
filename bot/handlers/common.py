@@ -11,6 +11,7 @@ from bot.database import (
     ROLE_INTERNAL,
     ROLE_OWNER,
     ROLE_STUDENT,
+    ROLE_BEM,
 )
 from bot.settings import (
     CHOICES,
@@ -33,6 +34,7 @@ def role_display(role: str) -> str:
         ROLE_OWNER: "Founder",
         ROLE_ADMIN: "Sekretaris",
         ROLE_INTERNAL: "Internal",
+        ROLE_BEM: "BEM",
         ROLE_STUDENT: "Mahasiswa",
     }.get(role, role)
 
@@ -173,7 +175,7 @@ def can_report(role: str, profile: dict | None) -> bool:
 
 
 def can_tag_all(role: str, profile: dict | None) -> bool:
-    if role in (ROLE_OWNER, ROLE_ADMIN): return True
+    if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM): return True
     jabatans = get_user_jabatans(profile)
     return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans
 
@@ -204,7 +206,9 @@ def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
             if field_applies_to_role(fd, role, profile):
                 out.append(key)
         else:
-            if key in ("total_sks", "auto_class_enrolled") and role != ROLE_STUDENT:
+            if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM):
+                continue
+            if key == "position" and role in (ROLE_STUDENT, ROLE_BEM):
                 continue
             out.append(key)
     return out
@@ -298,26 +302,14 @@ def format_profile_card(
         if key == "position":
             raw = profile.get("position")
             if not raw:
-                detail_raw = profile.get("position_detail", [])
-
-                detail_to_position = {
-                    item["id"]: item["position"]
-                    for item in CHOICES["position_details"]
-                }
-
+                detail_raw = normalize_multi_choice_value(profile.get("position_detail"))
                 positions = []
-
-                for detail_id in detail_raw:
-                    pos = detail_to_position.get(detail_id)
-
-                    if pos and pos not in positions:
-                        positions.append(pos)
-
-                return ", ".join(
-                    choice_label("positions", pos)
-                    for pos in positions
-                ) if positions else "—"
-
+                for item in CHOICES.get("position_details", []):
+                    if item.get("id") in detail_raw:
+                        pos = item.get("position")
+                        if pos and pos not in positions:
+                            positions.append(pos)
+                return ", ".join(choice_label("positions", p) for p in positions) if positions else "—"
             return choice_label("positions", raw)
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)

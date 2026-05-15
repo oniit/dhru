@@ -12,7 +12,7 @@ fields:
     label: Fakultas
     type: choice
     choices_key: faculties
-    roles: [student]
+    roles: [student, bem]
     required: true
 
   - key: major
@@ -20,21 +20,28 @@ fields:
     type: choice
     choices_key: majors
     filter_by_field: faculty
-    roles: [student]
+    roles: [student, bem]
     required: true
 
   - key: club_enrolled
     label: Club / UKM
     type: multi_choice
     choices_key: clubs
-    roles: [student, internal, owner, admin]
+    roles: [student, bem, internal, owner, admin]
     required: false
 
   - key: student_id
     label: NIM
     type: text
-    roles: [student]
+    roles: [student, bem]
     required: false
+
+  - key: bem_position
+    label: Jabatan BEM
+    type: choice
+    choices_key: bem_positions
+    roles: [bem]
+    required: true
 
   - key: position_detail
     label: Jabatan
@@ -61,6 +68,7 @@ profile_display:
   - telegram_name
   - username
   - full_name
+  - bem_position
   - position
   - position_detail
   - staff_faculty

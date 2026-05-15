@@ -21,6 +21,7 @@ from bot.database import (
     ROLE_INTERNAL,
     ROLE_OWNER,
     ROLE_STUDENT,
+    ROLE_BEM,
     ROLE_PUBLIC,
 )
 from bot.settings import (
@@ -184,15 +185,17 @@ async def _revalidate_filtered_choice_fields(
     to_remove: list[str] = []
     role = row["role"]
     for f in PROFILE_FIELDS:
-        if f.type != "choice" or not f.filter_by_field:
-            continue
-        if not field_applies_to_role(f, role):
-            continue
-        val = prof.get(f.key)
-        if val is None or val == "":
-            continue
-        if not is_choice_allowed_for_profile(f, prof, str(val)):
-            to_remove.append(f.key)
+        if not field_applies_to_role(f, role, prof):
+            if f.key == "bem_position" and role == ROLE_STUDENT:
+                continue
+            if f.key in prof:
+                to_remove.append(f.key)
+        else:
+            if f.type == "choice" and f.filter_by_field:
+                val = prof.get(f.key)
+                if val is not None and val != "":
+                    if not is_choice_allowed_for_profile(f, prof, str(val)):
+                        to_remove.append(f.key)
     if to_remove:
         await db.remove_profile_keys(conn, telegram_id, to_remove)
     if not is_dekan_profile(prof) and (prof.get("staff_faculty") or "").strip():
@@ -303,7 +306,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "`/top_agra` — Peringkat Agra (17 besar)",
         "",
     ]
-    if role == ROLE_STUDENT:
+    if role in (ROLE_STUDENT, ROLE_BEM):
         lines.append(
             "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
             "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
@@ -400,6 +403,10 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             [
                 "*Mention grup*",
                 "/tagall — Mention semua user",
+                "`/tagall role <id>` — Filter berdasar role",
+                "`/tagall fakultas <id>` — Filter fakultas",
+                "`/tagall jurusan <id>` — Filter jurusan",
+                "`/tagall ukm <id>` — Filter ukm",
                 "/all <pesan> — Kirim pesan + mention",
                 "_Dipecah ke beberapa pesan_",
                 "",
@@ -1736,7 +1743,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         updated_row = await user_row(conn, db, uid)
         updated_profile = profile_from_row(updated_row) if updated_row else {}
         sks_suffix = ""
-        if updated_row and updated_row["role"] == ROLE_STUDENT:
+        if updated_row and updated_row["role"] in (ROLE_STUDENT, ROLE_BEM):
             sks_suffix = f"\nTotal SKS saat ini: {updated_profile.get('total_sks', 0)}"
         await q.edit_message_text(
             f"✅ {lab} disimpan ({len(ids_list)} pilihan).{sks_suffix}",
@@ -1871,7 +1878,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         updated_row = await user_row(conn, db, uid)
         updated_profile = profile_from_row(updated_row) if updated_row else {}
         sks_suffix = ""
-        if updated_row and updated_row["role"] == ROLE_STUDENT:
+        if updated_row and updated_row["role"] in (ROLE_STUDENT, ROLE_BEM):
             sks_suffix = f"\nTotal SKS saat ini: {updated_profile.get('total_sks', 0)}"
         await q.edit_message_text(
             f"✅ {lab} disimpan.{sks_suffix}", reply_markup=None
@@ -2009,8 +2016,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     await context.bot.send_message(
                         chat_id=tid,
                         text=(
-                            "Beberapa field (mis. jurusan) dikosongkan karena tidak cocok dengan fakultas. "
-                            "Lengkapi lagi dengan /lengkapi."
+                            "Jurusan telah dikosongkan secara otomatis karena baru saja mengganti fakultas. "
+                            "Silakan lengkapi profil."
                         ),
                     )
             except Exception as e:
@@ -2412,10 +2419,11 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ROLE_OWNER,
         ROLE_ADMIN,
         ROLE_INTERNAL,
+        ROLE_BEM,
         ROLE_STUDENT,
     ):
         await update.message.reply_text(
-            "Role tidak dikenal. Gunakan admin, lecturer, staff, atau student."
+            "Role tidak dikenal. Gunakan admin, internal, bem, atau student."
         )
         return
     conn = _conn(context)
@@ -2462,6 +2470,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             continue
         await db.set_role(conn, tid, role)
         await db.add_audit(conn, actor, "set_role", f"{tid}->{role}")
+        await _revalidate_filtered_choice_fields(conn, db, tid)
         lines_out.append(f"• {full_name} → {role_display(role)}")
         try:
             await context.bot.send_message(
@@ -2657,8 +2666,52 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     raw_text = (update.message.text or "").strip()
-    parts = raw_text.split(maxsplit=1)
-    custom_body = parts[1].strip() if len(parts) > 1 else ""
+    parts = raw_text.split(maxsplit=3)
+    
+    filter_type = None
+    filter_val = None
+    custom_body = ""
+    
+    if len(parts) > 1:
+        possible_type = parts[1].lower()
+        if possible_type in ("role", "fakultas", "jurusan", "ukm") and len(parts) > 2:
+            filter_type = possible_type
+            filter_val = parts[2].lower()
+            if len(parts) > 3:
+                custom_body = parts[3]
+        else:
+            p_split = raw_text.split(maxsplit=1)
+            custom_body = p_split[1] if len(p_split) > 1 else ""
+
+    filtered_ids = []
+    if filter_type:
+        for tid in ids:
+            u_row = await user_row(conn, db, tid)
+            if not u_row:
+                continue
+            u_role = u_row["role"]
+            u_prof = profile_from_row(u_row)
+            
+            match = False
+            if filter_type == "role" and u_role == filter_val:
+                match = True
+            elif filter_type == "fakultas" and str(u_prof.get("faculty", "")).lower() == filter_val:
+                match = True
+            elif filter_type == "jurusan" and str(u_prof.get("major", "")).lower() == filter_val:
+                match = True
+            elif filter_type == "ukm":
+                enrolled = normalize_multi_choice_value(u_prof.get("club_enrolled", []))
+                if filter_val in [str(x).lower() for x in enrolled]:
+                    match = True
+            
+            if match:
+                filtered_ids.append(tid)
+        ids = filtered_ids
+
+    if not ids:
+        await update.message.reply_text("Tidak ada user yang cocok dengan filter tagall tersebut.")
+        return
+
     custom_body_html = html.escape(custom_body)
 
     batch_size = 7

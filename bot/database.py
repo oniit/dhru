@@ -18,9 +18,10 @@ ROLE_OWNER = "owner"
 ROLE_ADMIN = "admin"
 ROLE_INTERNAL = "internal"
 ROLE_STUDENT = "student"
+ROLE_BEM = "bem"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_STUDENT, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -93,7 +94,7 @@ async def _apply_generated_profile_fields(
 
     out["total_sks"] = sks_total
 
-    if role != ROLE_STUDENT:
+    if role not in (ROLE_STUDENT, ROLE_BEM):
         out.pop("student_id", None)
         return out
 
@@ -1241,6 +1242,7 @@ __all__ = [
     "ROLE_OWNER",
     "ROLE_ADMIN",
     "ROLE_INTERNAL",
+    "ROLE_BEM",
     "ROLE_STUDENT",
     "ROLE_PUBLIC",
 ]

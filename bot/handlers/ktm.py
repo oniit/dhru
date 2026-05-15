@@ -8,7 +8,7 @@ from io import BytesIO
 from telegram import Update
 from telegram.ext import ContextTypes, filters
 
-from bot.database import ROLE_PUBLIC, ROLE_STUDENT
+from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_BEM
 from bot.ktm_card import render_ktm_png_bytes
 
 from .common import profile_from_row, user_row
@@ -60,7 +60,7 @@ async def cmd_ktm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if row["role"] == ROLE_PUBLIC:
         await update.message.reply_text("Selesaikan pendaftaran dulu (kode akses / role mahasiswa).")
         return
-    if row["role"] != ROLE_STUDENT:
+    if row["role"] not in (ROLE_STUDENT, ROLE_BEM):
         await update.message.reply_text("KTM digital hanya untuk mahasiswa.")
         return
 
@@ -117,7 +117,7 @@ async def cmd_ktm_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if row["role"] == ROLE_PUBLIC:
         await update.message.reply_text("Selesaikan pendaftaran dulu.")
         return
-    if row["role"] != ROLE_STUDENT:
+    if row["role"] not in (ROLE_STUDENT, ROLE_BEM):
         await update.message.reply_text("Hanya mahasiswa yang bisa mengatur foto KTM.")
         return
 
@@ -145,7 +145,7 @@ async def on_ktm_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     step = (row["onboarding_step"] or "").strip()
     if step != STEP_KTM_PHOTO:
         return
-    if row["role"] != ROLE_STUDENT:
+    if row["role"] not in (ROLE_STUDENT, ROLE_BEM):
         await db.set_onboarding_step(conn, uid, None)
         return
 

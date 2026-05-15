@@ -248,24 +248,13 @@ def render_karpeg_png_bytes(
 
     if not position_raw:
         detail_raw = payload.get("position_detail", [])
-
-        detail_to_position = {
-            item["id"]: item["position"]
-            for item in CHOICES["position_details"]
-        }
-
         positions = []
-
-        for detail_id in detail_raw:
-            pos = detail_to_position.get(detail_id)
-
-            if pos and pos not in positions:
-                positions.append(pos)
-
-        position_label = ", ".join(
-            choice_label("positions", pos)
-            for pos in positions
-        ) if positions else "—"
+        for item in CHOICES.get("position_details", []):
+            if item.get("id") in detail_raw:
+                pos = item.get("position")
+                if pos and pos not in positions:
+                    positions.append(pos)
+        position_label = ", ".join(choice_label("positions", pos) for pos in positions) if positions else "—"
 
     else:
         position_label = choice_label("positions", position_raw)

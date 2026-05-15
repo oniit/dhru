@@ -18,16 +18,16 @@ majors:
     faculty: fmipa
   - id: pm
     label: Pemrograman
-    faculty: ftik
+    faculty: fti
   - id: ki
     label: Keamanan Informasi
-    faculty: ftik
+    faculty: fti
   - id: ms
     label: Musik
-    faculty: fib
+    faculty: fsrd
   - id: kr
     label: Kreatif
-    faculty: fib
+    faculty: fsrd
 
 classes:
   # Kuliah Umum (Otomatis untuk semua)
@@ -175,6 +175,26 @@ position_details:
   - id: d_lain
     label: Lainnya
     position: lainnya
+
+bem_positions:
+  - id: bem_ketua
+    label: Adhyakṣa (अध्यक्ष)
+    detail: Ketua BEM
+  - id: bem_wakil
+    label: Upādhyakṣa (उपाध्यक्ष)
+    detail: Wakil Ketua BEM
+  - id: bem_sekre
+    label: Kośādhyakṣa (कोषाध्यक्ष)
+    detail: Sekretaris BEM
+  - id: bem_hara_vistara
+    label: Hara Vistara
+    detail: Divisi Media & Kreatif
+  - id: bem_hara_nirmana
+    label: Hara Nirmana
+    detail: Divisi Program Kerja
+  - id: bem_hara_samvada
+    label: Hara Samvada
+    detail: Divisi Komunikasi & Relasi
 
 clubs:
   - id: ukm_debat

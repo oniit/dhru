@@ -16,7 +16,7 @@ from bot.settings import ROOT, choice_label, multi_choice_labels
 log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = ROOT / "assets" / "ktm.png"
-FONT_PATH = ROOT / "assets" / "Recoleta-RegularDEMO.otf"
+FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 
 # Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
@@ -25,7 +25,7 @@ CARD_W, CARD_H = 1050, 600
 # Awal kolom nilai (sejajar setelah titik dua pada label cetak template).
 VALUE_X = 540
 # Baris pertama (Nama) — sesuaikan vertikal dengan baris "Nama :" di PNG.
-NAME_Y = 222
+NAME_Y = 218
 # Jarak vertikal antar baris isian (Nama → NIM → Jurusan → UKM → Agra).
 LINE_STEP = 48
 NAME_SIZE = 30
@@ -145,6 +145,7 @@ def cache_payload_for_profile(profile: dict, agra: int) -> dict:
         "major": (profile.get("major") or "").strip(),
         "club_ids": club_ids,
         "agra": int(agra),
+        "bem_position": (profile.get("bem_position") or "").strip(),
         "ktm_photo_file_id": (profile.get("ktm_photo_file_id") or "").strip(),
     }
 
@@ -246,6 +247,20 @@ def render_ktm_png_bytes(
         y += line_h
     y += int(6 * sy)
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)
+
+    bem_pos_id = payload.get("bem_position")
+    if bem_pos_id:
+        from bot.settings import CHOICES
+        bem_pos_item = next((x for x in CHOICES.get("bem_positions", []) if x.get("id") == bem_pos_id), None)
+        if bem_pos_item:
+            b_label = str(bem_pos_item.get("label", ""))
+            b_detail = str(bem_pos_item.get("detail", ""))
+            b_y = int(530 * sy)
+            b_x = int(PHOTO_SLOT[0] * sx)
+            if b_label:
+                draw.text((b_x, b_y), b_label, font=font_small, fill=(255, 255, 255))
+            if b_detail:
+                draw.text((b_x, b_y + int(CLUB_SIZE * sy)), b_detail, font=_load_font(int(20 * sy)), fill=(255, 255, 255))
 
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)

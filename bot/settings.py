@@ -151,7 +151,7 @@ def field_applies_to_role(field_def: FieldDef, role: str, profile: dict | None =
         return has_jabatan("d_dekan")
 
     if field_def.key == "club_enrolled":
-        if role == "student":
+        if role in ("student", "bem"):
             return True
         if has_jabatan("d_coach"):
             return True
