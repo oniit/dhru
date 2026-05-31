@@ -90,7 +90,7 @@ async def cmd_karpeg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     cap = "Kartu Pegawai (digital)."
     if fid and photo_bytes is None:
-        cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /karpeg\\_foto.)"
+        cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /karpeg_foto.)"
 
     await update.message.reply_photo(
         photo=BytesIO(png),
@@ -124,10 +124,9 @@ async def cmd_karpeg_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     await db.set_onboarding_step(conn, uid, STEP_KARPEG_PHOTO)
     await update.message.reply_text(
-        "Kirim *satu foto* (wajah) di chat ini. Foto akan dipotong memenuhi kotak di Kartu Pegawai.\n\n"
+        "Kirim <b>satu foto</b> (wajah) di chat ini. Foto akan dipotong memenuhi kotak di Kartu Pegawai.\n\n"
         "Setelah tersimpan, ketik /karpeg untuk melihat kartu.\n"
-        "Kirim foto baru lagi kapan saja dengan `/karpeg_foto` untuk mengganti.",
-        parse_mode="Markdown",
+        "Kirim foto baru lagi kapan saja dengan <code>/karpeg_foto</code> untuk mengganti."
     )
 
 

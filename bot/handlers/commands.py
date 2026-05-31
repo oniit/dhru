@@ -158,7 +158,6 @@ async def _broadcast_profile_request_status(
                 chat_id=cid,
                 message_id=mid,
                 text=final_text,
-                parse_mode="Markdown",
                 reply_markup=None,
             )
         except Exception as e:
@@ -292,91 +291,77 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await conn.executemany("INSERT INTO access_codes (code, created_at) VALUES (?, ?)", codes)
     await conn.commit()
     
-    await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"`{c[0]}`" for c in codes), parse_mode="Markdown")
+    await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes))
 
 
 def help_for_role(role: str, profile: dict | None = None) -> str:
     prof = profile if profile is not None else {}
 
     lines = [
-        "*Perintah umum*",
+        "<b>Perintah umum</b>",
         "/start — Daftar & sinkron profil Telegram",
         "/profile — Profil & total Agra",
         "/lengkapi — Isi data wajib awal (sekali)",
-        "_Mahasiswa: isi Fakultas sebelum Jurusan._",
+        "<i>Mahasiswa: isi Fakultas sebelum Jurusan.</i>",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "_Satu struktur padavi per profil; kombinasi dosen + dekan memakai kelas diampu + kelas fakultas (presensi)._",
-        "/agratop — Peringkat Agra (17 besar)",
-        "/agralog — Log Agra pribadi",
+        "<i>Satu struktur padavi per profil; kombinasi dosen + dekan memakai kelas diampu + kelas fakultas (presensi).</i>",
+        "",
+        "Informasi Agra",
+        "/agra top — Lihat top Agra (17 besar)",
+        "/agra log — Lihat riwayat Agra pribadi",
         "",
     ]
     if role in (ROLE_STUDENT, ROLE_BEM):
         lines.append(
-            "*Mahasiswa*\n/hadir — Presensi ke sesi yang dibuka\n"
-            "/ktm — Kartu tanda mahasiswa (gambar, hanya chat privat)\n"
-            "`/ktm_foto` — Unggah foto wajah untuk KTM (privat), lalu /ktm\n"
+            "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
+            "/ktm — Kartu tanda mahasiswa\n"
+            "/ktm_foto — Unggah foto wajah untuk KTM\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
-            "*Staf / Dosen*\n/karpeg — Kartu Pegawai (gambar, hanya chat privat)\n"
-            "`/karpeg_foto` — Unggah foto wajah untuk Karpeg (privat), lalu /karpeg\n"
+            "<b>Staf / Dosen</b>\n/karpeg — Kartu Pegawai\n"
+            "/karpeg_foto — Unggah foto wajah untuk Karpeg\n"
         )
     if can_manage_agra(role, prof):
         lines.extend(
             [
-                "*Manajemen Agra*",
-                "/add <nominal> @user … | <deskripsi>",
-                "Contoh: `/add 10 @user1 @user2 | Tugas 1`",
-                "Bisa *reply* pesan user + `/add 10 | alasan`",
-                "/transfer <nominal> @user | <deskripsi> — Transfer Agra (hidden gem)",
-                "/agralog [all] — Lihat riwayat Agra",
+                "<b>Manajemen Agra</b>",
+                "/add [nominal] @user … | [deskripsi]",
+                "Contoh: <code>/add 10 @user1 @user2 | Tugas 1</code>",
+                "Bisa <b>reply</b> pesan user + <code>/add 10 | alasan</code>",
+                "/transfer [nominal] @user | [deskripsi] — Transfer Agra",
                 "",
             ]
         )
     allowed_classes = presence_allowed_class_ids(role, prof)
     can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
     
-    if can_open_presensi:
-        lines.extend(
-            [
-                "*Presensi (buka/tutup)*",
-                "`/buka_presensi` — Pilih kelas",
-                "`/tutup_presensi <id_sesi>` — Tutup sesi",
-                "",
-            ]
-        )
-    
-    if "d_dosen" in prof.get("position_detail", []):
-        lines.append(
-            "*Dosen:* isi *Kelas yang diampu* di /lengkapi; jika *Dekan*, isi juga *Fakultas*."
-        )
-        lines.append("")
-    elif "d_dekan" in prof.get("position_detail", []):
-        lines.append(
-            "*Dekan:* presensi/rekap terbatas ke kelas di fakultas lingkup."
-        )
-        lines.append("")
     if can_report(role, prof) or can_open_presensi:
-        lines.extend(
-            [
-                "*Sesi & rekap hadir*",
-                "/sesi — Sesi aktif"
-                + (
-                    " _(terfilter kelas kamu)_"
-                    if allowed_classes is not None
-                    else ""
-                ),
-                "`/rekap_hadir <id_sesi>`",
-                "",
-            ]
+        lines.append("<b>Menu Presensi</b>")
+        if can_open_presensi:
+            lines.append("<code>/presensi buka</code> — Buka sesi kelas")
+            lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
+        
+        lines.append(
+            "/presensi sesi — Sesi aktif"
+            + (" <i>(terfilter)</i>" if allowed_classes is not None else "")
         )
+        lines.append("<code>/presensi rekap [id_sesi]</code> — Rekap kehadiran")
+        lines.append("")
+        
+        if "d_dosen" in prof.get("position_detail", []):
+            lines.append("<i>Catatan Dosen: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
+            lines.append("")
+        elif "d_dekan" in prof.get("position_detail", []):
+            lines.append("<i>Catatan Dekan: data presensi/rekap otomatis terfilter ke fakultas lingkup.</i>")
+            lines.append("")
     if can_approve_profile(role, prof):
         lines.extend(
             [
-                "*Admin / Owner*",
+                "<b>Admin / Owner</b>",
                 "/pending — Antrean ubah profil",
-                "`/admin_data <id>` — Ubah profil user",
-                "_Atau balas pesan user lalu_ `/admin_data`",
+                "<code>/admin_data [id]</code> — Ubah profil user",
+                "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
                 "",
             ]
         )
@@ -384,48 +369,49 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         lines.extend(
             [
                 "/log — Audit & Agra (deskripsi)",
-                "_Tanpa filter: semua log terbaru._",
-                "_Filter:_",
-                "`/log fakultas <id>`",
-                "`/log kelas <id>`",
-                "`/log nama <teks>`",
+                "<i>Tanpa filter: semua log terbaru.</i>",
+                "<i>Filter:</i>",
+                "<code>/log fakultas [id]</code>",
+                "<code>/log kelas [id]</code>",
+                "<code>/log nama [teks]</code>",
+                "<code>/log agra [all|@user]</code> — Riwayat global/spesifik",
                 "",
             ]
         )
     if can_report(role, prof) or can_daftar_as_dean(role, prof):
         lines.extend(
             [
-                "*Daftar pengguna*",
-                "_Hanya nama & username_"
-                + (" _(dekan: otomatis terfilter ke fakultas lingkup)_" if can_daftar_as_dean(role, prof) else ""),
-                "`/daftar all`",
-                "`/daftar <unit> <id>`",
-                "`/daftar id …` —  untuk memunculkan ID.",
-                "`/list_id` — Lihat daftar ID unit yang valid.",
+                "<b>Daftar pengguna</b>",
+                "<i>Hanya nama & username</i>"
+                + (" <i>(dekan: otomatis terfilter ke fakultas lingkup)</i>" if can_daftar_as_dean(role, prof) else ""),
+                "<code>/daftar all</code>",
+                "<code>/daftar [unit] [id]</code>",
+                "<code>/daftar id …</code> —  untuk memunculkan ID.",
+                "<code>/list_id</code> — Lihat daftar ID unit yang valid.",
                 "",
             ]
         )
     if can_tag_all(role, prof):
         lines.extend(
             [
-                "*Mention grup*",
+                "<b>Mention grup</b>",
                 "/tagall — Mention semua user",
-                "`/tagall role <id>` — Filter berdasar role",
-                "`/tagall fakultas <id>` — Filter fakultas",
-                "`/tagall jurusan <id>` — Filter jurusan",
-                "`/tagall ukm <id>` — Filter ukm",
-                "/all <pesan> — Kirim pesan + mention",
-                "_Dipecah ke beberapa pesan_",
+                "<code>/tagall role [id]</code> — Filter berdasar role",
+                "<code>/tagall fakultas [id]</code> — Filter fakultas",
+                "<code>/tagall jurusan [id]</code> — Filter jurusan",
+                "<code>/tagall ukm [id]</code> — Filter ukm",
+                "/all [pesan] — Kirim pesan + mention",
+                "<i>Dipecah ke beberapa pesan</i>",
                 "",
             ]
         )
     if role == ROLE_OWNER:
         lines.extend(
             [
-                "*Owner*",
-                "`/setrole <role> @user1 @user2 …`",
-                "atau reply + `/setrole <role>`",
-                "_Role: admin · lecturer · staff · student_",
+                "<b>Owner</b>",
+                "<code>/setrole [role] @user1 @user2 …</code>",
+                "atau reply + <code>/setrole [role]</code>",
+                "<i>Role: admin · lecturer · staff · student</i>",
                 "",
             ]
         )
@@ -441,7 +427,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     row = await user_row(conn, db, update.effective_user.id)
     role = row["role"] if row else ROLE_STUDENT
     profile = profile_from_row(row) if row else {}
-    await update.message.reply_text(help_for_role(role, profile), parse_mode="Markdown")
+    await update.message.reply_text(help_for_role(role, profile))
 
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -504,7 +490,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         show_internal=show_raw,
         user_role=row["role"] if row else ROLE_STUDENT,
     )
-    await update.message.reply_text(f"**No. ID:** `{reg_id}`\n\n{text}", parse_mode="Markdown")
+    await update.message.reply_text(f"**No. ID:** <code>{reg_id}</code>\n\n{text}")
 
 
 async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -554,8 +540,7 @@ async def cmd_ubah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     role = row["role"]
     profile = profile_from_row(row)
     await update.message.reply_text(
-        "Pilih data yang ingin *diajukan* perubahannya (butuh persetujuan admin):",
-        parse_mode="Markdown",
+        "Pilih data yang ingin <b>diajukan</b> perubahannya (butuh persetujuan admin):",
         reply_markup=_ubah_keyboard(fields_for_role(role, profile)),
     )
 
@@ -1016,21 +1001,20 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             if scope == "USER_ALL_EXCEPT_ENV":
                 detail = (
-                    "Ini akan reset profil & `onboarding_step` semua user "
+                    "Ini akan reset profil & <code>onboarding_step</code> semua user "
                     "(kecuali OWNER/ADMIN dari .env), jadi bisa /lengkapi lagi. "
-                    "Data `seen` tetap dipertahankan."
+                    "Data <code>seen</code> tetap dipertahankan."
                 )
             elif scope == "ACADEMIC_PERIOD":
                 detail = (
-                    "⚠️ *TINDAKAN BESAR!*\n"
+                    "⚠️ <b>TINDAKAN BESAR!</b>\n"
                     "1. SKS semua Student/BEM akan 'dibekukan' (diakumulasi).\n"
-                    "2. Role mereka akan di-reset ke *public* (harus daftar ulang).\n"
+                    "2. Role mereka akan di-reset ke <b>public</b> (harus daftar ulang).\n"
                     "3. Pilihan Matkul, UKM, Fakultas, Jurusan akan dikosongkan.\n"
-                    "4. Seluruh data Agra & Presensi akan *DIPUTUSKAN/DIHAPUS*."
+                    "4. Seluruh data Agra & Presensi akan <b>DIPUTUSKAN/DIHAPUS</b>."
                 )
             await q.edit_message_text(
-                f"Konfirmasi reset: *{action_label}*?\n\n{detail}",
-                parse_mode="Markdown",
+                f"Konfirmasi reset: <b>{action_label}</b>?\n\n{detail}",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -1073,8 +1057,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 or str(uid)
             )
             await q.edit_message_text(
-                f"Konfirmasi reset *{scope.replace('_',' ').title()}* untuk user:\n• {full_name}",
-                parse_mode="Markdown",
+                f"Konfirmasi reset <b>{scope.replace('_',' ').title()}</b> untuk user:\n• {full_name}",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -1110,9 +1093,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     class_lab = str(item.get("label", class_id))
                     break
             await q.edit_message_text(
-                f"Konfirmasi reset *presensi* untuk matkul:\n• {class_lab} (`{class_id}`)\n\n"
+                f"Konfirmasi reset <b>presensi</b> untuk matkul:\n• {class_lab} (<code>{class_id}</code>)\n\n"
                 "Ini akan menghapus sesi + record presensi milik matkul tersebut.",
-                parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -1187,9 +1169,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
 
             await q.edit_message_text(
-                f"Konfirmasi reset presensi untuk sesi:\n• `#{session_id}` {class_lab}\n• oleh {opener_name}\n\n"
+                f"Konfirmasi reset presensi untuk sesi:\n• <code>#{session_id}</code> {class_lab}\n• oleh {opener_name}\n\n"
                 "Ini akan menghapus sesi + semua record presensi pada sesi tersebut.",
-                parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -1250,14 +1231,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
             context.user_data.pop(ORRESET_SCOPE_KEY, None)
             if isinstance(result, dict):
-                lines = [f"• {k}: `{v}`" for k, v in result.items()]
+                lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
                 await q.edit_message_text(
-                    "*Reset selesai.*\n" + "\n".join(lines),
-                    parse_mode="Markdown",
+                    "<b>Reset selesai.</b>\n" + "\n".join(lines),
                 )
             else:
                 await q.edit_message_text(
-                    f"*Reset selesai.*\n• count: `{result}`", parse_mode="Markdown"
+                    f"<b>Reset selesai.</b>\n• count: <code>{result}</code>"
                 )
             return
 
@@ -1285,14 +1265,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
             context.user_data.pop(ORRESET_SCOPE_KEY, None)
             if isinstance(result, dict):
-                lines = [f"• {k}: `{v}`" for k, v in result.items()]
+                lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
                 await q.edit_message_text(
-                    "*Reset selesai.*\n" + "\n".join(lines),
-                    parse_mode="Markdown",
+                    "<b>Reset selesai.</b>\n" + "\n".join(lines),
                 )
             else:
                 await q.edit_message_text(
-                    f"*Reset selesai.*\n• count: `{result}`", parse_mode="Markdown"
+                    f"<b>Reset selesai.</b>\n• count: <code>{result}</code>"
                 )
             return
 
@@ -1351,8 +1330,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if fdef.type == "text":
                 await db.set_onboarding_step(conn, uid, f"ADMIN_TEXT_LC:{field_key}")
                 await q.edit_message_text(
-                    f"Kirim teks untuk *{fdef.label}* (user `{tid_target}`).",
-                    parse_mode="Markdown",
+                    f"Kirim teks untuk <b>{fdef.label}</b> (user <code>{tid_target}</code>).",
                 )
                 return
             if fdef.type == "choice" and fdef.choices_key:
@@ -1370,8 +1348,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     options=opts,
                 )
                 await q.edit_message_text(
-                    f"Pilih *{fdef.label}* untuk `{tid_target}`:",
-                    parse_mode="Markdown",
+                    f"Pilih <b>{fdef.label}</b> untuk <code>{tid_target}</code>:",
                     reply_markup=kb,
                 )
                 return
@@ -1387,8 +1364,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
                 await db.set_onboarding_step(conn, uid, f"MULTI_AD_LC:{field_key}")
                 await q.edit_message_text(
-                    f"Pilih *{fdef.label}* (multi) untuk `{tid_target}`.",
-                    parse_mode="Markdown",
+                    f"Pilih <b>{fdef.label}</b> (multi) untuk <code>{tid_target}</code>.",
                     reply_markup=kb,
                 )
                 return
@@ -1426,7 +1402,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 conn, uid, "admin_profile_set", f"target={tid_target} key={field_key}"
             )
             lab = fdef.label if fdef else field_key
-            await q.edit_message_text(f"✅ {lab} untuk `{tid_target}` disimpan.")
+            await q.edit_message_text(f"✅ {lab} untuk <code>{tid_target}</code> disimpan.")
             return
 
         if data.startswith("admlc:"):
@@ -1467,8 +1443,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 done_prefix="admld",
             )
             await q.edit_message_text(
-                f"Pilih *{fdef.label}* (multi) untuk `{tid_target}`.",
-                parse_mode="Markdown",
+                f"Pilih <b>{fdef.label}</b> (multi) untuk <code>{tid_target}</code>.",
                 reply_markup=kb,
             )
             return
@@ -1511,7 +1486,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             lab = fdef.label if fdef else field_key
             await q.edit_message_text(
-                f"✅ {lab} ({len(ids_list)} pilihan) untuk `{tid_target}` disimpan."
+                f"✅ {lab} ({len(ids_list)} pilihan) untuk <code>{tid_target}</code> disimpan."
             )
             return
 
@@ -1531,15 +1506,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         opts = filtered_choice_items(fdef, profile_u)
         if not opts:
             hint = (
-                f"Pilih *{fdef.filter_by_field}* dulu di /lengkapi."
+                f"Pilih <b>{fdef.filter_by_field}</b> dulu di /lengkapi."
                 if fdef.filter_by_field
                 else "Tidak ada opsi."
             )
-            await q.edit_message_text(hint, parse_mode="Markdown")
+            await q.edit_message_text(hint)
             return
         await q.edit_message_text(
-            f"Pilih *{fdef.label}*:",
-            parse_mode="Markdown",
+            f"Pilih <b>{fdef.label}</b>:",
             reply_markup=keyboard_for_choices(
                 field_key,
                 fdef.choices_key,
@@ -1565,8 +1539,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         await db.set_onboarding_step(conn, uid, f"TEXT_LC:{field_key}")
         await q.edit_message_text(
-            f"Kirim pesan teks untuk *{fdef.label}* (lengkapi).",
-            parse_mode="Markdown",
+            f"Kirim pesan teks untuk <b>{fdef.label}</b> (lengkapi).",
         )
         return
 
@@ -1583,15 +1556,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         opts = filtered_choice_items(fdef, profile_u)
         if not opts:
             hint = (
-                f"Set *{fdef.filter_by_field}* dulu (lengkapi profil), atau tidak ada jurusan untuk fakultas ini."
+                f"Set <b>{fdef.filter_by_field}</b> dulu (lengkapi profil), atau tidak ada jurusan untuk fakultas ini."
                 if fdef.filter_by_field
                 else "Tidak ada opsi."
             )
-            await q.edit_message_text(hint, parse_mode="Markdown")
+            await q.edit_message_text(hint)
             return
         await q.edit_message_text(
-            f"Pilih nilai baru *{fdef.label}* (akan diajukan):",
-            parse_mode="Markdown",
+            f"Pilih nilai baru <b>{fdef.label}</b> (akan diajukan):",
             reply_markup=keyboard_for_choices(
                 field_key,
                 fdef.choices_key,
@@ -1612,8 +1584,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         await db.set_onboarding_step(conn, uid, f"TEXT_EC:{field_key}")
         await q.edit_message_text(
-            f"Kirim teks baru untuk *{fdef.label}* (akan diajukan ke admin).",
-            parse_mode="Markdown",
+            f"Kirim teks baru untuk <b>{fdef.label}</b> (akan diajukan ke admin).",
         )
         return
 
@@ -1641,8 +1612,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         await db.set_onboarding_step(conn, uid, f"MULTI_LC:{field_key}")
         await q.edit_message_text(
-            f"Pilih satu atau lebih *{fdef.label}* (ketuk untuk centang, lalu *Selesai*).",
-            parse_mode="Markdown",
+            f"Pilih satu atau lebih <b>{fdef.label}</b> (ketuk untuk centang, lalu <b>Selesai</b>).",
             reply_markup=kb,
         )
         return
@@ -1668,8 +1638,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         await db.set_onboarding_step(conn, uid, f"MULTI_EC:{field_key}")
         await q.edit_message_text(
-            f"Pilih nilai baru *{fdef.label}*. Ajuan dikirim setelah *Selesai*.",
-            parse_mode="Markdown",
+            f"Pilih nilai baru <b>{fdef.label}</b>. Ajuan dikirim setelah <b>Selesai</b>.",
             reply_markup=kb,
         )
         return
@@ -1712,8 +1681,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             done_prefix="mld",
         )
         await q.edit_message_text(
-            f"Pilih satu atau lebih *{fdef.label}* (ketuk untuk centang, lalu *Selesai*).",
-            parse_mode="Markdown",
+            f"Pilih satu atau lebih <b>{fdef.label}</b> (ketuk untuk centang, lalu <b>Selesai</b>).",
             reply_markup=kb,
         )
         return
@@ -1806,8 +1774,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             done_prefix="med",
         )
         await q.edit_message_text(
-            f"Pilih nilai baru *{fdef.label}* (bisa banyak). Ajuan dikirim setelah *Selesai*.",
-            parse_mode="Markdown",
+            f"Pilih nilai baru <b>{fdef.label}</b> (bisa banyak). Ajuan dikirim setelah <b>Selesai</b>.",
             reply_markup=kb,
         )
         return
@@ -2019,8 +1986,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             try:
                 await context.bot.send_message(
                     chat_id=tid,
-                    text=f"Perubahan profil kamu *{status}*.",
-                    parse_mode="Markdown",
+                    text=f"Perubahan profil kamu <b>{status}</b>.",
                 )
             except Exception as e:
                 log.warning("notify user fail: %s", e)
@@ -2066,9 +2032,9 @@ async def _notify_moderators_profile(
     )
     text = (
         f"📩 Pengajuan ubah profil #{request_id}\n"
-        f"Dari: `{proposer_id}` @{un}\n"
-        f"Data awal: `{before_preview}`\n"
-        f"Usulan: `{preview}`"
+        f"Dari: <code>{proposer_id}</code> @{un}\n"
+        f"Data awal: <code>{before_preview}</code>\n"
+        f"Usulan: <code>{preview}</code>"
     )
     await db.set_profile_request_moderator_prompt(conn, request_id, text)
     for mid in mods:
@@ -2076,7 +2042,7 @@ async def _notify_moderators_profile(
             continue
         try:
             sent = await context.bot.send_message(
-                chat_id=mid, text=text, parse_mode="Markdown", reply_markup=kb
+                chat_id=mid, text=text, reply_markup=kb
             )
             await db.register_profile_request_mod_message(
                 conn, request_id, mid, sent.message_id
@@ -2099,9 +2065,8 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     parsed = parse_add_command(update.message)
     if not parsed:
         await update.message.reply_text(
-            "Format: `/add <angka> @user … | <deskripsi>` atau reply pesan user lalu "
-            "`/add <angka> | <deskripsi>`",
-            parse_mode="Markdown",
+            "Format: <code>/add <angka> @user … | <deskripsi></code> atau reply pesan user lalu "
+            "<code>/add <angka> | <deskripsi></code>",
         )
         return
 
@@ -2149,8 +2114,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             desc_text = f"\nKeterangan: {parsed.description}" if parsed.description else ""
             await context.bot.send_message(
                 chat_id=tid,
-                text=f"Kamu menerima *{parsed.amount}* Agra.{desc_text}",
-                parse_mode="Markdown",
+                text=f"Kamu menerima <b>{parsed.amount}</b> Agra.{desc_text}",
             )
         except Exception:
             pass
@@ -2158,8 +2122,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await db.add_audit(conn, actor, "agra_add", f"targets={targets} amount={parsed.amount}")
     summary = "\n".join(lines)
     await update.message.reply_text(
-        f"✅ *{parsed.amount} Agra* berhasil dicatat.\n\nPenerima:\n{summary}",
-        parse_mode="Markdown",
+        f"✅ <b>{parsed.amount} Agra</b> berhasil dicatat.\n\nPenerima:\n{summary}",
     )
 
 
@@ -2177,8 +2140,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     parsed = parse_add_command(update.message)
     if not parsed:
         await update.message.reply_text(
-            "Format: `/transfer <angka> @user … | <deskripsi>`",
-            parse_mode="Markdown",
+            "Format: <code>/transfer <angka> @user … | <deskripsi></code>",
         )
         return
 
@@ -2213,7 +2175,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     for tid in sorted(targets):
         urow = await user_row(conn, db, tid)
         if not urow:
-            lines.append(f"• User ID `{tid}` belum /start — dilewati.")
+            lines.append(f"• User ID <code>{tid}</code> belum /start — dilewati.")
             continue
             
         prof = profile_from_row(urow)
@@ -2247,8 +2209,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         try:
             await context.bot.send_message(
                 chat_id=tid,
-                text=f"Kamu menerima transfer *{parsed.amount}* Agra.\nKeterangan: {desc}",
-                parse_mode="Markdown",
+                text=f"Kamu menerima transfer <b>{parsed.amount}</b> Agra.\nKeterangan: {desc}",
             )
         except Exception:
             pass
@@ -2258,8 +2219,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         
     summary = "\n".join(lines)
     await update.message.reply_text(
-        f"✅ Transfer *{parsed.amount} Agra* berhasil ke {success_count} orang.\n\nPenerima:\n{summary}",
-        parse_mode="Markdown",
+        f"✅ Transfer <b>{parsed.amount} Agra</b> berhasil ke {success_count} orang.\n\nPenerima:\n{summary}",
     )
 
 
@@ -2274,13 +2234,12 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Ketik /start dulu.")
         return
         
-    parts = (update.message.text or "").split()
     is_global = False
     target_uid = uid
     title_suffix = "Kamu"
     
-    if len(parts) > 1:
-        arg = parts[1].strip()
+    if context.args:
+        arg = context.args[0].strip()
         if arg.lower() == "all":
             if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
                 await update.message.reply_text("Hanya admin/owner yang bisa melihat log global.")
@@ -2307,10 +2266,10 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
     if is_global:
         logs = await db.agra_report(conn, limit=20)
-        title = "📜 *Global Agra Log (20 Terbaru)*"
+        title = "📜 <b>Global Agra Log (20 Terbaru)</b>"
     else:
         logs = await db.agra_report_user(conn, target_uid, limit=20)
-        title = f"📜 *Log Agra {title_suffix} (20 Terbaru)*"
+        title = f"📜 <b>Log Agra {title_suffix} (20 Terbaru)</b>"
         
     if not logs:
         await update.message.reply_text(f"{title}\n\nBelum ada transaksi.")
@@ -2325,11 +2284,11 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         t_name = r["target_first"] or r["target_username"] or "User"
         
         if is_global:
-            lines.append(f"• `{dt}` | {t_name} | *{sign}{amt}* | _{r['description']}_")
+            lines.append(f"• <code>{dt}</code> | {t_name} | <b>{sign}{amt}</b> | <i>{r['description']}</i>")
         else:
-            lines.append(f"• *{sign}{amt}* | _{r['description']}_")
+            lines.append(f"• <b>{sign}{amt}</b> | <i>{r['description']}</i>")
                 
-    await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines)[:4000])
 
 
 
@@ -2354,8 +2313,7 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not target_tid:
         await update.message.reply_text(
             "Balas pesan user yang ingin diedit, atau:\n"
-            "`/admin_data <telegram_id>`",
-            parse_mode="Markdown",
+            "<code>/admin_data <telegram_id></code>",
         )
         return
     trow = await user_row(conn, db, target_tid)
@@ -2367,9 +2325,8 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await db.set_onboarding_step(conn, actor, None)
     un = trow["username"] or "—"
     await update.message.reply_text(
-        f"Edit profil `{target_tid}` (@{un}). "
+        f"Edit profil <code>{target_tid}</code> (@{un}). "
         f"Pilih field — tersimpan langsung, tanpa persetujuan:",
-        parse_mode="Markdown",
         reply_markup=_admin_profile_keyboard(),
     )
 
@@ -2386,7 +2343,7 @@ def _daftar_format_lines(
     lines = []
     for name, uname, tid in entries:
         dn = _daftar_clean_display(name)
-        prefix = f"`{tid}` " if show_telegram_id else ""
+        prefix = f"<code>{tid}</code> " if show_telegram_id else ""
         if uname:
             lines.append(f"{prefix}{dn} — @{uname}")
         else:
@@ -2446,9 +2403,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "Hanya admin, owner, dekan, atau dosen/coach (dengan lingkup yang sudah diisi)."
         )
         return
-    text = (update.message.text or "").strip()
-    parts = text.split()
-    if len(parts) < 2:
+    if not context.args:
         await update.message.reply_text(
             "Daftar pengguna (nama + username)\n\n"
             "/daftar all\n"
@@ -2471,11 +2426,19 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
     show_telegram_id = False
-    kind_idx = 1
-    if len(parts) >= 3 and parts[1].lower() == "id":
+    kind_idx = 0
+    if len(context.args) >= 2 and context.args[0].lower() == "id":
         show_telegram_id = True
-        kind_idx = 2
-    kind = parts[kind_idx].lower() if len(parts) > kind_idx else ""
+        kind_idx = 1
+    kind = context.args[kind_idx].lower() if len(context.args) > kind_idx else ""
+    # For sub-arguments like fakultas <id>, context.args will have them at kind_idx + 1
+    parts_from_args = ["/daftar"] + context.args
+    # Re-map parts logic:
+    # Instead of rewriting all `len(parts) > kind_idx + 1` to `len(context.args) > kind_idx + 1`, 
+    # we can just mock parts:
+    parts = ["/daftar"] + context.args
+    # Adjust kind_idx for parts array (since parts has the command at index 0)
+    kind_idx += 1
     cur = await conn.execute(
         """
         SELECT telegram_id, username, first_name, last_name, role, profile_json
@@ -2590,8 +2553,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply_daftar_chunks(
         update,
         title,
-        out_lines,
-        parse_mode="Markdown" if show_telegram_id else None,
+        out_lines if show_telegram_id else None,
     )
 
 
@@ -2613,25 +2575,24 @@ async def cmd_list_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines = []
     
-    lines.append("*Fakultas:*")
+    lines.append("<b>Fakultas:</b>")
     for f in CHOICES.get("faculties", []):
-        lines.append(f"• `{f.get('id', '')}` — {f.get('label', '')}")
+        lines.append(f"• <code>{f.get('id', '')}</code> — {f.get('label', '')}")
     lines.append("")
     
-    lines.append("*Jurusan:*")
+    lines.append("<b>Jurusan:</b>")
     for m in CHOICES.get("majors", []):
-        lines.append(f"• `{m.get('id', '')}` — {m.get('label', '')}")
+        lines.append(f"• <code>{m.get('id', '')}</code> — {m.get('label', '')}")
     lines.append("")
     
-    lines.append("*Kelas:*")
+    lines.append("<b>Kelas:</b>")
     for c in CHOICES.get("classes", []):
-        lines.append(f"• `{c.get('id', '')}` — {c.get('label', '')}")
+        lines.append(f"• <code>{c.get('id', '')}</code> — {c.get('label', '')}")
         
     await _reply_daftar_chunks(
         update,
         "Daftar ID Unit",
-        lines,
-        parse_mode="Markdown"
+        lines
     )
 
 
@@ -2646,10 +2607,9 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not parsed:
         await update.message.reply_text(
             "Pakai:\n"
-            "`/setrole <admin|internal|student|public> @user1 @user2`\n"
-            "atau balas pesan seseorang lalu `/setrole <role>`\n\n"
+            "<code>/setrole <admin|internal|student|public> @user1 @user2</code>\n"
+            "atau balas pesan seseorang lalu <code>/setrole <role></code>\n\n"
             "Owner tetap hanya satu (di .env); tidak bisa set owner ke orang lain.",
-            parse_mode="Markdown",
         )
         return
     role = parsed.role
@@ -2713,8 +2673,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         try:
             await context.bot.send_message(
                 chat_id=tid,
-                text=f"Peran kamu diubah menjadi: *{role_display(role)}*",
-                parse_mode="Markdown",
+                text=f"Peran kamu diubah menjadi: <b>{role_display(role)}</b>",
             )
         except Exception:
             pass
@@ -2800,8 +2759,7 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             ]
         )
         await update.message.reply_text(
-            f"#{p['id']} dari `{p['telegram_id']}`\n`{preview}`",
-            parse_mode="Markdown",
+            f"#{p['id']} dari <code>{p['telegram_id']}</code>\n<code>{preview}</code>",
             reply_markup=kb,
         )
 
@@ -2815,23 +2773,24 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not row or not can_view_sensitive_logs(row["role"], profile_from_row(row)):
         await update.message.reply_text("Anda tidak berhak melihat log audit.")
         return
-    text_raw = (update.message.text or "").strip()
-    parts = text_raw.split()
     faculty_id = class_id = name_sub = None
-    if len(parts) >= 3 and parts[1].lower() == "fakultas":
-        faculty_id = parts[2]
-    elif len(parts) >= 3 and parts[1].lower() == "kelas":
-        class_id = parts[2]
-    elif len(parts) >= 3 and parts[1].lower() == "nama":
-        name_sub = " ".join(parts[2:])
-    elif len(parts) > 1:
+    if len(context.args) >= 2 and context.args[0].lower() == "fakultas":
+        faculty_id = context.args[1]
+    elif len(context.args) >= 2 and context.args[0].lower() == "kelas":
+        class_id = context.args[1]
+    elif len(context.args) >= 2 and context.args[0].lower() == "nama":
+        name_sub = " ".join(context.args[1:])
+    elif len(context.args) >= 1 and context.args[0].lower() == "agra":
+        context.args = context.args[1:]
+        return await cmd_agralog(update, context)
+    elif len(context.args) > 0:
         await update.message.reply_text(
-            "*Format filter /log:*\n"
-            "`/log` — ringkasan terbaru\n"
-            "`/log fakultas <id>` — contoh: `fmipa`\n"
-            "`/log kelas <id_kelas>`\n"
-            "`/log nama <potongan nama>`",
-            parse_mode="Markdown",
+            "<b>Format filter /log:</b>\n"
+            "<code>/log</code> — ringkasan terbaru\n"
+            "<code>/log agra [all|@user]</code>\n"
+            "<code>/log fakultas <id></code> — contoh: <code>fmipa</code>\n"
+            "<code>/log kelas <id_kelas></code>\n"
+            "<code>/log nama <potongan nama></code>",
         )
         return
 
@@ -2850,39 +2809,39 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         agra_rows = await db.agra_ledger_for_targets(conn, ids, limit=15)
         hdr = []
         if faculty_id:
-            hdr.append(f"fakultas `{faculty_id}`")
+            hdr.append(f"fakultas <code>{faculty_id}</code>")
         if class_id:
-            hdr.append(f"kelas `{class_id}`")
+            hdr.append(f"kelas <code>{class_id}</code>")
         if name_sub:
-            hdr.append(f"nama `{name_sub}`")
-        lines = [f"*Log* (filter: {', '.join(hdr)})", ""]
+            hdr.append(f"nama <code>{name_sub}</code>")
+        lines = [f"<b>Log</b> (filter: {', '.join(hdr)})", ""]
     else:
         cur = await conn.execute(
             "SELECT * FROM audit_log ORDER BY id DESC LIMIT 15",
         )
         audit_rows = await cur.fetchall()
         agra_rows = await db.agra_report(conn, limit=8)
-        lines = ["*Log audit (15 terakhir)*", ""]
+        lines = ["<b>Log audit (15 terakhir)</b>", ""]
 
-    lines.append("*Audit*")
+    lines.append("<b>Audit</b>")
     if not audit_rows:
-        lines.append("_Kosong._")
+        lines.append("<i>Kosong.</i>")
     else:
         for r in audit_rows:
             ts = format_local_time(r["created_at"])
             det = (r["detail"] or "")[:120]
-            lines.append(f"• `{ts}` `{r['action']}` — {det}")
-    lines.extend(["", "*Agra (deskripsi — mod only)*"])
+            lines.append(f"• <code>{ts}</code> <code>{r['action']}</code> — {det}")
+    lines.extend(["", "<b>Agra (deskripsi — mod only)</b>"])
     if not agra_rows:
-        lines.append("_Kosong._")
+        lines.append("<i>Kosong.</i>")
     else:
         for g in agra_rows:
             ts = format_local_time(g["created_at"])
             lines.append(
-                f"• `{ts}` →`{g['target_telegram_id']}` **{g['amount']}** — _{g['description'][:80]}_"
+                f"• <code>{ts}</code> →<code>{g['target_telegram_id']}</code> <b>{g['amount']}</b> — <i>{g['description'][:80]}</i>"
             )
     await update.message.reply_text(
-        "\n".join(lines)[:4000], parse_mode="Markdown"
+        "\n".join(lines)[:4000]
     )
 
 

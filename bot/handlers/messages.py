@@ -87,9 +87,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if step == STEP_KTM_PHOTO:
         await update.message.reply_text(
-            "Sekarang bot menunggu *foto* (bukan teks). Kirim satu foto wajah di chat ini.\n"
-            "Atau ketik /start untuk membatalkan.",
-            parse_mode="Markdown",
+            "Sekarang bot menunggu <b>foto</b> (bukan teks). Kirim satu foto wajah di chat ini.\n"
+            "Atau ketik /start untuk membatalkan."
         )
         return
 
@@ -111,7 +110,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         lab = fdef.label if fdef else field_label_for_key(field_key)
         await update.message.reply_text(
-            f"✅ {lab} untuk `{target_tid}` disimpan."
+            f"✅ {lab} untuk <code>{target_tid}</code> disimpan."
         )
         return
 

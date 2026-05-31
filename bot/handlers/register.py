@@ -2,12 +2,62 @@
 
 from __future__ import annotations
 
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot.database import Database
 
 from . import attendance, commands, ktm, karpeg, messages, triggers, broadcast
 
+
+async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Menu Presensi:\n/presensi buka\n/presensi tutup\n/presensi sesi\n/presensi rekap\n/presensi hadir")
+        return
+    subcmd = context.args[0].lower()
+    original_args = context.args[:]
+    context.args = context.args[1:]
+    try:
+        if subcmd == "buka": await attendance.cmd_buka_presensi(update, context)
+        elif subcmd == "tutup": await attendance.cmd_tutup_presensi(update, context)
+        elif subcmd == "sesi": await attendance.cmd_sesi_aktif(update, context)
+        elif subcmd == "rekap": await attendance.cmd_rekap_hadir(update, context)
+        elif subcmd == "hadir": await attendance.cmd_hadir(update, context)
+        else: await update.message.reply_text("Sub-command tidak ditemukan.")
+    finally:
+        context.args = original_args
+
+
+async def cmd_trigger_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Menu Trigger:\n/trigger add\n/trigger list\n/trigger done\n/trigger del")
+        return
+    subcmd = context.args[0].lower()
+    original_args = context.args[:]
+    context.args = context.args[1:]
+    try:
+        if subcmd == "add": await triggers.cmd_addtrigger(update, context)
+        elif subcmd == "list": await triggers.cmd_listtrigger(update, context)
+        elif subcmd == "done": await triggers.cmd_selesai_trigger(update, context)
+        elif subcmd in ("del", "delete"): await triggers.cmd_deltrigger(update, context)
+        else: await update.message.reply_text("Sub-command tidak ditemukan.")
+    finally:
+        context.args = original_args
+
+
+async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Menu Agra:\n/agra top\n/agra log")
+        return
+    subcmd = context.args[0].lower()
+    original_args = context.args[:]
+    context.args = context.args[1:]
+    try:
+        if subcmd == "top": await commands.cmd_agratop(update, context)
+        elif subcmd == "log": await commands.cmd_agralog(update, context)
+        else: await update.message.reply_text("Sub-command tidak ditemukan.")
+    finally:
+        context.args = original_args
 
 def register_all(application: Application, db: Database) -> None:
     application.bot_data["db"] = db
@@ -42,21 +92,15 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("log", commands.cmd_log))
     application.add_handler(CommandHandler("tagall", commands.cmd_tagall))
     application.add_handler(CommandHandler("all", commands.cmd_tagall))
-    application.add_handler(CommandHandler("buka_presensi", attendance.cmd_buka_presensi))
-    application.add_handler(CommandHandler("tutup_presensi", attendance.cmd_tutup_presensi))
+    
+    # Routers
+    application.add_handler(CommandHandler("presensi", cmd_presensi_router))
+    application.add_handler(CommandHandler("trigger", cmd_trigger_router))
+    application.add_handler(CommandHandler("agra", cmd_agra_router))
     application.add_handler(CommandHandler("hadir", attendance.cmd_hadir))
-    application.add_handler(CommandHandler("agratop", commands.cmd_agratop))
-    application.add_handler(CommandHandler("rekap_hadir", attendance.cmd_rekap_hadir))
-    application.add_handler(CommandHandler("sesi", attendance.cmd_sesi_aktif))
     
     # New handlers
     application.add_handler(CommandHandler("gencode", commands.cmd_gencode))
-    
-    application.add_handler(CommandHandler("addtrigger", triggers.cmd_addtrigger))
-    application.add_handler(CommandHandler("deltrigger", triggers.cmd_deltrigger))
-    application.add_handler(CommandHandler("listtrigger", triggers.cmd_listtrigger))
-    application.add_handler(CommandHandler("selesai_trigger", triggers.cmd_selesai_trigger))
-    
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
 
     application.add_handler(CallbackQueryHandler(commands.on_callback))

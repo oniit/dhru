@@ -19,14 +19,13 @@ async def check_admin(update, context):
 
 async def cmd_addtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
-    parts = update.message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await update.message.reply_text("Gunakan: /addtrigger <keyword>")
+    if not context.args:
+        await update.message.reply_text("Gunakan: /trigger add <keyword>")
         return
-    keyword = parts[1].strip().lower()
+    keyword = " ".join(context.args).strip().lower()
     
     context.user_data["trigger_draft"] = {"keyword": keyword, "messages": []}
-    await update.message.reply_text(f"Mulai membuat trigger untuk keyword: `{keyword}`\nSilakan kirim pesan balasan satu per satu. Jika sudah, ketik /selesai_trigger", parse_mode="Markdown")
+    await update.message.reply_text(f"Mulai membuat trigger untuk keyword: <code>{keyword}</code>\nSilakan kirim pesan balasan satu per satu. Jika sudah, ketik /selesai_trigger")
 
 async def cmd_selesai_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
@@ -49,7 +48,7 @@ async def cmd_selesai_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE
     await conn.commit()
     
     context.user_data.pop("trigger_draft", None)
-    await update.message.reply_text(f"✅ Trigger untuk `{keyword}` berhasil disimpan dengan {len(messages)} pesan balasan.", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ Trigger untuk <code>{keyword}</code> berhasil disimpan dengan {len(messages)} pesan balasan.")
 
 async def cmd_listtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
@@ -59,18 +58,17 @@ async def cmd_listtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not rows:
         await update.message.reply_text("Belum ada trigger yang terdaftar.")
         return
-    lines = ["**Daftar Trigger:**"]
+    lines = ["<b>Daftar Trigger:</b>"]
     for r in rows:
-        lines.append(f"ID {r['id']}: `{r['keyword']}`")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        lines.append(f"ID {r['id']}: <code>{r['keyword']}</code>")
+    await update.message.reply_text("\n".join(lines))
 
 async def cmd_deltrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
-    parts = update.message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await update.message.reply_text("Gunakan: /deltrigger <id>")
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Gunakan: /trigger del <id>")
         return
-    tid = int(parts[1])
+    tid = int(context.args[0])
     conn = _conn(context)
     cur = await conn.execute("DELETE FROM triggers WHERE id = ?", (tid,))
     if cur.rowcount > 0:

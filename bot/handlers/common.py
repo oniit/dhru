@@ -301,7 +301,7 @@ def format_profile_card(
     show_internal: bool,
     user_role: str,
 ) -> str:
-    lines: list[str] = ["📇 *Profil*"]
+    lines: list[str] = ["📇 <b>Profil</b>"]
     if not row:
         lines.append("_Belum terdaftar._")
         return "\n".join(lines)
@@ -367,7 +367,7 @@ def format_profile_card(
         if not label:
             fd = next((x for x in PROFILE_FIELDS if x.key == key), None)
             label = fd.label if fd else key.replace("_", " ").title()
-        lines.append(f"*{label}:* {val_for_display(key)}")
+        lines.append(f"<b>{label}:</b> {val_for_display(key)}")
 
     return "\n".join(lines)
 

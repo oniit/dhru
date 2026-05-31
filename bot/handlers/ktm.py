@@ -123,10 +123,9 @@ async def cmd_ktm_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await db.set_onboarding_step(conn, uid, STEP_KTM_PHOTO)
     await update.message.reply_text(
-        "Kirim *satu foto* (wajah) di chat ini. Foto akan dipotong memenuhi kotak di KTM.\n\n"
+        "Kirim <b>satu foto</b> (wajah) di chat ini. Foto akan dipotong memenuhi kotak di KTM.\n\n"
         "Setelah tersimpan, ketik /ktm untuk melihat kartu.\n"
-        "Kirim foto baru lagi kapan saja dengan `/ktm_foto` untuk mengganti.",
-        parse_mode="Markdown",
+        "Kirim foto baru lagi kapan saja dengan <code>/ktm_foto</code> untuk mengganti."
     )
 
 

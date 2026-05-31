@@ -86,7 +86,7 @@ def _format_presensi_block(
 ) -> str:
     c_lab = _class_label(sess["class_id"])
     lines = [
-        f"📋 *Presensi* `#{sess['id']}` — {c_lab}",
+        f"📋 <b>Presensi</b> <code>#{sess['id']}</code> — {c_lab}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
     ]
     closed_at = sess["closed_at"]
@@ -95,12 +95,12 @@ def _format_presensi_block(
     if closed:
         lines.append("_Sesi ditutup._")
     else:
-        lines.append("Ketuk *Hadir* atau gunakan perintah /hadir.")
+        lines.append("Ketuk <b>Hadir</b> atau gunakan perintah /hadir.")
     lines.append("")
     hadir_records = [r for r in records if dict(r).get("status", "hadir") == "hadir"]
     izin_records = [r for r in records if dict(r).get("status", "hadir") == "izin"]
 
-    lines.append(f"*Hadir ({len(hadir_records)})*")
+    lines.append(f"<b>Hadir ({len(hadir_records)})</b>")
     if not hadir_records:
         lines.append("_Belum ada._")
     else:
@@ -109,13 +109,13 @@ def _format_presensi_block(
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             if show_record_times:
                 lines.append(
-                    f"• {name} — `{format_local_time(r['recorded_at'])}`"
+                    f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
                 )
             else:
                 lines.append(f"• {name}")
                 
     lines.append("")
-    lines.append(f"*Izin ({len(izin_records)})*")
+    lines.append(f"<b>Izin ({len(izin_records)})</b>")
     if not izin_records:
         lines.append("_Belum ada._")
     else:
@@ -124,7 +124,7 @@ def _format_presensi_block(
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             if show_record_times:
                 lines.append(
-                    f"• {name} — `{format_local_time(r['recorded_at'])}`"
+                    f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
                 )
             else:
                 lines.append(f"• {name}")
@@ -172,7 +172,6 @@ async def refresh_presensi_announcement(
             chat_id=sess["chat_id"],
             message_id=sess["announce_message_id"],
             text=text[:4000],
-            parse_mode="Markdown",
             reply_markup=kb,
         )
     except Exception as e:
@@ -184,7 +183,6 @@ async def _send_presensi_dm(context: ContextTypes.DEFAULT_TYPE, uid: int, text: 
         await context.bot.send_message(
             chat_id=uid,
             text=text,
-            parse_mode="Markdown",
         )
     except Exception as e:
         log.warning("DM presensi ke %s: %s", uid, e)
@@ -218,8 +216,7 @@ async def cmd_buka_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
-            "Isi *Kelas yang diampu* dan/atau *Fakultas* di /lengkapi agar ada matkul untuk presensi.",
-            parse_mode="Markdown",
+            "Isi <b>Kelas yang diampu</b> dan/atau <b>Fakultas</b> di /lengkapi agar ada matkul untuk presensi.",
         )
         return
     await update.message.reply_text(
@@ -238,11 +235,10 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not row or not _can_act_on_presensi(row, profile):
         await update.message.reply_text("Tidak diizinkan.")
         return
-    parts = (update.message.text or "").split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        await update.message.reply_text("Pakai: `/tutup_presensi <id_sesi>`", parse_mode="Markdown")
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Pakai: <code>/presensi tutup <id_sesi></code>")
         return
-    sid = int(parts[1])
+    sid = int(context.args[0])
     sess = await db.get_attendance_session(conn, sid)
     if not sess:
         await update.message.reply_text("Sesi tidak ditemukan.")
@@ -251,13 +247,11 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if allowed is not None and sess["class_id"] not in allowed:
         await update.message.reply_text(
             "Sesi ini untuk kelas di luar lingkup presensi kamu.",
-            parse_mode="Markdown",
         )
         return
     if sess["closed_at"] is not None:
         await update.message.reply_text(
-            f"Sesi `{sid}` sudah ditutup sebelumnya.",
-            parse_mode="Markdown",
+            f"Sesi <code>{sid}</code> sudah ditutup sebelumnya.",
         )
         return
     opened_by = int(sess["opened_by"])
@@ -267,7 +261,7 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     recap_dm = _format_presensi_block(
         sess2, records, closed=True, show_record_times=True
     )
-    recap_dm = f"📩 *Rekap presensi (DM)*\n\n{recap_dm}"
+    recap_dm = f"📩 <b>Rekap presensi (DM)</b>\n\n{recap_dm}"
     await _send_presensi_dm(context, opened_by, recap_dm[:4000])
     # Admin/owner juga dapat rekap saat sesi ditutup.
     for mid in await db.list_moderator_telegram_ids(conn):
@@ -281,11 +275,11 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         status = dict(r).get("status", "hadir")
         amt = 25 if status == "hadir" else 10
         status_label = "Hadir" if status == "hadir" else "Izin"
-        notif = f"Sesi presensi *{c_lab}* telah ditutup.\nKamu mendapatkan *{amt} Agra* (Status: {status_label})."
+        notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{amt} Agra</b> (Status: {status_label})."
         await _send_presensi_dm(context, t_uid, notif)
 
     await refresh_presensi_announcement(context, db, conn, sid)
-    await update.message.reply_text(f"Sesi `{sid}` ditutup.", parse_mode="Markdown")
+    await update.message.reply_text(f"Sesi <code>{sid}</code> ditutup.")
 
 
 async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -380,8 +374,7 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is not None and not allowed:
         await update.message.reply_text(
-            "Isi *Kelas yang diampu* dan/atau *Fakultas* di /lengkapi untuk melihat sesi relevan.",
-            parse_mode="Markdown",
+            "Isi <b>Kelas yang diampu</b> dan/atau <b>Fakultas</b> di /lengkapi untuk melihat sesi relevan.",
         )
         return
 
@@ -391,13 +384,13 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not open_sess:
         await update.message.reply_text("Tidak ada sesi presensi aktif.")
         return
-    lines = ["*Sesi presensi aktif*"]
+    lines = ["<b>Sesi presensi aktif</b>"]
     for s in open_sess:
         lines.append(
-            f"• `#{s['id']}` {_class_label(s['class_id'])} — buka {format_local_time(s['opened_at'])}"
+            f"• <code>#{s['id']}</code> {_class_label(s['class_id'])} — buka {format_local_time(s['opened_at'])}"
         )
-    lines.append("\nTutup dengan `/tutup_presensi <id>`")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    lines.append("\nTutup dengan <code>/tutup_presensi <id></code>")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -409,20 +402,17 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not row:
         return
     profile = profile_from_row(row)
-    parts = (update.message.text or "").split()
-    if len(parts) < 2:
+    if not context.args:
         await update.message.reply_text(
-            "Pakai: `/rekap_hadir <id_sesi>` atau `/rekap_hadir all` atau `/rekap_hadir total`",
-            parse_mode="Markdown",
+            "Pakai: <code>/presensi rekap <id_sesi></code> atau <code>/presensi rekap all</code> atau <code>/presensi rekap total</code>",
         )
         return
 
-    arg = parts[1]
+    arg = context.args[0]
     allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
             "Belum ada lingkup kelas di profil untuk rekap (dosen: kelas diampu; dekan: fakultas lingkup di /lengkapi).",
-            parse_mode="Markdown",
         )
         return
 
@@ -471,7 +461,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await update.message.reply_text("Belum ada sesi presensi.")
                 return
 
-            lines = ["*Rekap presensi (semua sesi)*"]
+            lines = ["<b>Rekap presensi (semua sesi)</b>"]
             for s in sessions:
                 closed_at = s["closed_at"]
                 opener_name = None
@@ -484,10 +474,10 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 if not opener_name:
                     opener_name = s["opener_first_name"] or str(s["opened_by"])
                 lines.append(
-                    f"• `{format_local_date(s['opened_at'])} #{s['id']} `{_class_label(s['class_id'])} | "
+                    f"• <code>{format_local_date(s['opened_at'])} #{s['id']} </code>{_class_label(s['class_id'])} | "
                     f"_{opener_name}_"
                 )
-            await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+            await update.message.reply_text("\n".join(lines)[:4000])
             return
 
         # arg == "total"
@@ -521,16 +511,15 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text("Belum ada rekap sesi yang sudah ditutup.")
             return
 
-        lines = ["*Rekap presensi per matkul*"]
+        lines = ["<b>Rekap presensi per matkul</b>"]
         for r in rows:
             lines.append(f"• {int(r['session_count'])} sesi — {_class_label(r['class_id'])}")
-        await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+        await update.message.reply_text("\n".join(lines)[:4000])
         return
 
     if not arg.isdigit():
         await update.message.reply_text(
-            "Pakai: `/rekap_hadir <id_sesi>` atau `/rekap_hadir all` atau `/rekap_hadir total`",
-            parse_mode="Markdown",
+            "Pakai: <code>/rekap_hadir <id_sesi></code> atau <code>/rekap_hadir all</code> atau <code>/rekap_hadir total</code>",
         )
         return
 
@@ -548,29 +537,29 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     izin_records = [r for r in records if dict(r).get("status", "hadir") == "izin"]
 
     lines = [
-        f"*Rekap presensi* sesi `{sid}`",
+        f"<b>Rekap presensi</b> sesi <code>{sid}</code>",
         f"Kelas: {_class_label(sess['class_id'])}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
         f"Ditutup: {format_local_time(sess['closed_at']) if sess['closed_at'] else '— (aktif)'}",
         "",
-        f"*Hadir ({len(hadir_records)} orang)*",
+        f"<b>Hadir ({len(hadir_records)} orang)</b>",
     ]
     for r in hadir_records:
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
         lines.append(
-            f"• {name} — `{format_local_time(r['recorded_at'])}`"
+            f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
         )
         
     lines.append("")
-    lines.append(f"*Izin ({len(izin_records)} orang)*")
+    lines.append(f"<b>Izin ({len(izin_records)} orang)</b>")
     for r in izin_records:
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
         lines.append(
-            f"• {name} — `{format_local_time(r['recorded_at'])}`"
+            f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
         )
-    await update.message.reply_text("\n".join(lines)[:4000], parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines)[:4000])
 
 
 async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -619,7 +608,6 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     await q.edit_message_text(
         text[:4000],
-        parse_mode="Markdown",
         reply_markup=kb,
     )
     await db.set_attendance_announce_message(

@@ -49,9 +49,13 @@ def main() -> None:
             "BOT_TOKEN kosong. Buat file .env di folder proyek (lihat .env.example)."
         )
     db = Database()
+    from telegram.ext import Defaults
+    from telegram.constants import ParseMode
+    defaults = Defaults(parse_mode=ParseMode.HTML)
     application = (
         Application.builder()
         .token(BOT_TOKEN)
+        .defaults(defaults)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
