@@ -274,6 +274,16 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if mid == opened_by:
             continue
         await _send_presensi_dm(context, mid, recap_dm[:4000])
+        
+    c_lab = _class_label(sess["class_id"])
+    for r in records:
+        t_uid = r["telegram_id"]
+        status = dict(r).get("status", "hadir")
+        amt = 25 if status == "hadir" else 10
+        status_label = "Hadir" if status == "hadir" else "Izin"
+        notif = f"Sesi presensi *{c_lab}* telah ditutup.\nKamu mendapatkan *{amt} Agra* (Status: {status_label})."
+        await _send_presensi_dm(context, t_uid, notif)
+
     await refresh_presensi_announcement(context, db, conn, sid)
     await update.message.reply_text(f"Sesi `{sid}` ditutup.", parse_mode="Markdown")
 
@@ -326,7 +336,27 @@ async def _record_hadir(
         return False, "Sesi ini untuk kelas lain.", False
     changed, old_status = await db.record_attendance(conn, session_id, uid, status)
     status_label = "Hadir" if status == "hadir" else "Izin"
+    
     if changed:
+        diff = 0
+        if status == "hadir":
+            diff = 25 if not old_status else (25 - 10)
+        elif status == "izin":
+            diff = 10 if not old_status else (10 - 25)
+            
+        if diff != 0:
+            c_lab = _class_label(sess["class_id"])
+            desc = f"Presensi otomatis {status_label} kelas {c_lab}"
+            await db.add_agra(
+                conn,
+                target_id=uid,
+                actor_id=uid,
+                amount=diff,
+                description=desc,
+                chat_id=None,
+                message_id=None
+            )
+
         if old_status:
             return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.", True
         return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.", True

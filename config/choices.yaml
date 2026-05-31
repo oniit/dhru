@@ -4,30 +4,30 @@
 faculties:
   - id: fmipa
     label: Fakultas Matematika dan Ilmu Pengetahuan Alam
-  - id: fti
-    label: Fakultas Teknologi Informasi
-  - id: fsrd
-    label: Fakultas Seni Rupa dan Desain
+  - id: ftik
+    label: Fakultas Teknologi dan Ilmu Komputer
+  - id: fib
+    label: Fakultas Ilmu Budaya
 
 majors:
   - id: if
     label: Ilmu Fisika
     faculty: fmipa
   - id: ik
-    label: Kimia
+    label: Ilmu Kimia
     faculty: fmipa
   - id: pm
     label: Pemrograman
-    faculty: fti
-  - id: ki
-    label: Keamanan Informasi
-    faculty: fti
-  - id: ms
-    label: Musik
-    faculty: fsrd
-  - id: kr
-    label: Kreatif
-    faculty: fsrd
+    faculty: ftik
+  - id: ks
+    label: Keamanan Siber
+    faculty: ftik
+  - id: sm
+    label: Seni Musik
+    faculty: fib
+  - id: kv
+    label: Komunikasi Visual
+    faculty: fib
 
 classes:
   # Kuliah Umum (Otomatis untuk semua)
@@ -65,34 +65,34 @@ classes:
     majors: pm
     sks: 3
 
-  # FTIK - Keamanan Informasi
-  - id: ks
-    label: Keamanan Siber
-    majors: ki
+  # FTIK - Keamanan Siber
+  - id: ki
+    label: Keamanan Informasi
+    majors: ks
     sks: 3
   - id: aks
     label: Analisis Kejahatan Siber
-    majors: ki
+    majors: ks
     sks: 3
 
   # FIB - Musik
   - id: sm
     label: Sejarah Musik
-    majors: ms
+    majors: sm
     sks: 3
   - id: mp
     label: Membaca Partitur
-    majors: ms
+    majors: sm
     sks: 3
 
   # FIB - Kreatif
   - id: dg
     label: Desain Grafis
-    majors: kr
+    majors: kv
     sks: 3
   - id: st
     label: Storytelling
-    majors: kr
+    majors: kv
     sks: 3
 
 positions:

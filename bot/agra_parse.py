@@ -19,7 +19,7 @@ class ParsedAdd:
 
 def parse_add_command(message: Message) -> ParsedAdd | None:
     text = message.text or ""
-    m = re.match(r"^/add(?:@\S+)?\s+(-?\d+)\s*", text)
+    m = re.match(r"^/(?:add|transfer)(?:@\S+)?\s+(-?\d+)\s*", text)
     if not m:
         return None
     amount = int(m.group(1))

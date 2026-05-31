@@ -573,6 +573,21 @@ class Database:
         )
         return await cur.fetchall()
 
+    async def agra_report_user(
+        self, conn: aiosqlite.Connection, telegram_id: int, limit: int = 50
+    ) -> list[aiosqlite.Row]:
+        cur = await conn.execute(
+            """
+            SELECT l.*, u.username AS target_username, u.first_name AS target_first
+            FROM agra_ledger l
+            LEFT JOIN users u ON u.telegram_id = l.target_telegram_id
+            WHERE l.target_telegram_id = ?
+            ORDER BY l.id DESC LIMIT ?
+            """,
+            (telegram_id, limit),
+        )
+        return await cur.fetchall()
+
     async def open_attendance_session(
         self,
         conn: aiosqlite.Connection,

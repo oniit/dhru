@@ -124,6 +124,39 @@ def can_daftar_as_dean(role: str, profile: dict | None) -> bool:
     return is_dekan_profile(profile) and bool(dean_faculty_id(profile))
 
 
+def is_lecturer_profile(profile: dict | None) -> bool:
+    jabs = get_user_jabatans(profile)
+    return "d_dosen" in jabs or "d_coach" in jabs
+
+
+def lecturer_class_ids(profile: dict | None) -> list[str]:
+    if not profile:
+        return []
+    jabs = get_user_jabatans(profile)
+    ids = []
+    if "d_dosen" in jabs:
+        ids.extend(normalize_multi_choice_value(profile.get("teaching_classes")))
+    if "d_coach" in jabs:
+        ids.extend(normalize_multi_choice_value(profile.get("club_enrolled")))
+    return list(dict.fromkeys(ids))
+
+
+def user_in_lecturer_scope(p: dict, class_ids: list[str]) -> bool:
+    if not class_ids:
+        return False
+    enrolled = set(normalize_multi_choice_value(p.get("class_enrolled")))
+    teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
+    club_enrolled = set(normalize_multi_choice_value(p.get("club_enrolled")))
+    target_classes = set(class_ids)
+    return bool((enrolled | teaching | club_enrolled) & target_classes)
+
+
+def can_daftar_as_lecturer(role: str, profile: dict | None) -> bool:
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        return True
+    return is_lecturer_profile(profile) and bool(lecturer_class_ids(profile))
+
+
 def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | None:
     """None = boleh semua kelas (admin/owner). List kosong = tidak ada akses."""
     p = profile or {}
@@ -149,11 +182,8 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
 
 
 def can_manage_agra(role: str, profile: dict | None) -> bool:
-    if role in (ROLE_OWNER, ROLE_ADMIN):
-        return True
-    jabatans = get_user_jabatans(profile)
-    # Semua yang bertugas mengajar atau SDM
-    return "d_dosen" in jabatans or "d_coach" in jabatans or "d_umum_sdm" in jabatans
+    return role in (ROLE_OWNER, ROLE_ADMIN)
+
 
 
 def can_assign_roles(role: str, profile: dict | None) -> bool:
