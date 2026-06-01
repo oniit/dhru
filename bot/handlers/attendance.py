@@ -11,9 +11,10 @@ from telegram.ext import ContextTypes
 from bot.database import (
     ROLE_ADMIN,
     ROLE_OWNER,
+    ROLE_STUDENT,
 )
 from bot.settings import CHOICES
-from bot.timefmt import TZ, format_local_time
+from bot.timefmt import TZ, format_local_time, format_time_only
 
 from .common import (
     can_report,
@@ -38,7 +39,8 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _class_label(class_id: str) -> str:
-    for item in CHOICES.get("classes", []):
+    items = CHOICES.get("classes", []) + CHOICES.get("clubs", [])
+    for item in items:
         if item.get("id") == class_id:
             return str(item.get("label", class_id))
     return class_id
@@ -93,7 +95,7 @@ def _format_presensi_block(
     if closed_at is not None:
         lines.append(f"Ditutup: {format_local_time(closed_at)}")
     if closed:
-        lines.append("_Sesi ditutup._")
+        lines.append("<i>Sesi ditutup.</i>")
     else:
         lines.append("Ketuk <b>Hadir</b> atau gunakan perintah /hadir.")
     lines.append("")
@@ -102,14 +104,14 @@ def _format_presensi_block(
 
     lines.append(f"<b>Hadir ({len(hadir_records)})</b>")
     if not hadir_records:
-        lines.append("_Belum ada._")
+        lines.append("<i>Belum ada.</i>")
     else:
         for r in hadir_records:
             pj = json.loads(r["profile_json"] or "{}")
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             if show_record_times:
                 lines.append(
-                    f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
+                    f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
                 )
             else:
                 lines.append(f"• {name}")
@@ -117,14 +119,14 @@ def _format_presensi_block(
     lines.append("")
     lines.append(f"<b>Izin ({len(izin_records)})</b>")
     if not izin_records:
-        lines.append("_Belum ada._")
+        lines.append("<i>Belum ada.</i>")
     else:
         for r in izin_records:
             pj = json.loads(r["profile_json"] or "{}")
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             if show_record_times:
                 lines.append(
-                    f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
+                    f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
                 )
             else:
                 lines.append(f"• {name}")
@@ -191,7 +193,10 @@ async def _send_presensi_dm(context: ContextTypes.DEFAULT_TYPE, uid: int, text: 
 def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeyboardMarkup:
     rows = []
     allowed_set = set(allowed_class_ids) if allowed_class_ids is not None else None
-    for item in CHOICES.get("classes", []):
+    
+    items = CHOICES.get("classes", []) + CHOICES.get("clubs", [])
+    
+    for item in items:
         cid = item.get("id", "")
         if allowed_set is not None and cid not in allowed_set:
             continue
@@ -236,7 +241,7 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Tidak diizinkan.")
         return
     if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("Pakai: <code>/presensi tutup <id_sesi></code>")
+        await update.message.reply_text("Pakai: <code>/presensi tutup &lt;id_sesi&gt;</code>")
         return
     sid = int(context.args[0])
     sess = await db.get_attendance_session(conn, sid)
@@ -389,7 +394,7 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         lines.append(
             f"• <code>#{s['id']}</code> {_class_label(s['class_id'])} — buka {format_local_time(s['opened_at'])}"
         )
-    lines.append("\nTutup dengan <code>/tutup_presensi <id></code>")
+    lines.append("\nTutup dengan <code>/presensi tutup &lt;id&gt;</code>")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -404,7 +409,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     profile = profile_from_row(row)
     if not context.args:
         await update.message.reply_text(
-            "Pakai: <code>/presensi rekap <id_sesi></code> atau <code>/presensi rekap all</code> atau <code>/presensi rekap total</code>",
+            "Pakai: <code>/presensi rekap &lt;id_sesi&gt;</code> atau <code>/presensi rekap all</code> atau <code>/presensi rekap total</code>",
         )
         return
 
@@ -548,7 +553,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
         lines.append(
-            f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
+            f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
         )
         
     lines.append("")
@@ -557,7 +562,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
         lines.append(
-            f"• {name} — <code>{format_local_time(r['recorded_at'])}</code>"
+            f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
         )
     await update.message.reply_text("\n".join(lines)[:4000])
 
@@ -646,3 +651,52 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
         await _send_presensi_dm(context, uid, msg)
     else:
         await q.answer(msg, show_alert=True)
+
+
+async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    role = row["role"] if row else ROLE_STUDENT
+    prof = profile_from_row(row) if row else {}
+    
+    if not context.args:
+        allowed_classes = presence_allowed_class_ids(role, prof)
+        can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
+        
+        lines = ["<b>Sistem Presensi</b>"]
+        
+        if can_report(role, prof) or can_open_presensi:
+            if can_open_presensi:
+                lines.append("<code>/presensi buka</code> — Buka sesi kelas")
+                lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
+            
+            lines.append("<code>/presensi sesi</code> — Sesi aktif" + (" <i>(terfilter)</i>" if allowed_classes is not None else ""))
+            lines.append("<code>/presensi rekap</code> — Rekap kehadiran")
+            
+            if "d_dosen" in prof.get("position_detail", []):
+                lines.append("\n<i>Catatan Dosen: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
+            elif "d_dekan" in prof.get("position_detail", []):
+                lines.append("\n<i>Catatan Dekan: data presensi otomatis terfilter ke fakultas lingkup.</i>")
+        else:
+            lines.append("<code>/presensi hadir</code> — Presensi ke sesi aktif")
+            lines.append("<code>/presensi sesi</code> — Lihat daftar sesi aktif")
+        
+        await update.message.reply_text("\n".join(lines))
+        return
+        
+    subcmd = context.args[0].lower()
+    original_args = context.args[:]
+    context.args = context.args[1:]
+    try:
+        if subcmd == "buka": await cmd_buka_presensi(update, context)
+        elif subcmd == "tutup": await cmd_tutup_presensi(update, context)
+        elif subcmd == "sesi": await cmd_sesi_aktif(update, context)
+        elif subcmd == "rekap": await cmd_rekap_hadir(update, context)
+        elif subcmd == "hadir": await cmd_hadir(update, context)
+        else: await update.message.reply_text("Sub-command Presensi tidak ditemukan. Ketik /presensi untuk panduan.")
+    finally:
+        context.args = original_args

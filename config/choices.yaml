@@ -197,12 +197,12 @@ bem_positions:
     detail: Divisi Komunikasi & Relasi
 
 clubs:
-  - id: ukm_debat
-    label: Debat
+  - id: ud
+    label: Klub Debat
     sks: 2
-  - id: ukm_memasak
-    label: Memasak
+  - id: um
+    label: Klub Memasak
     sks: 2
-  - id: ukm_sinden
-    label: Sinden
+  - id: us
+    label: Klub Sinden
     sks: 2

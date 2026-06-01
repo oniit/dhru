@@ -19,7 +19,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         
     parts = update.message.text.split(maxsplit=2)
     if len(parts) < 3:
-        await update.message.reply_text("Gunakan: /broadcast <all|nonpublic|role_name> <pesan>\nContoh: /broadcast student halo semua!")
+        await update.message.reply_text("Gunakan: /broadcast &lt;all|nonpublic|role_name&gt; &lt;pesan&gt;\nContoh: /broadcast student halo semua!")
         return
         
     target = parts[1].lower()

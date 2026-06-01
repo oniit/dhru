@@ -14,7 +14,8 @@ from .common import (
     profile_from_row,
     user_row,
 )
-from .ktm import STEP_KTM_PHOTO
+from .ktm import STEP_KTM_PHOTO, on_ktm_photo
+from .karpeg import STEP_KARPEG_PHOTO, on_karpeg_photo
 
 ADMIN_PROFILE_TARGET_UD = "admin_profile_target"
 LENGKAPI_DONE_KEY = "__lengkapi_done"
@@ -42,6 +43,22 @@ async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
     if not missing_required_fields(profile, row["role"]):
         await db.set_profile_partial(conn, telegram_id, {LENGKAPI_DONE_KEY: True})
 
+
+async def on_private_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.message.photo:
+        return
+    uid = update.effective_user.id
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, uid)
+    if not row:
+        return
+    step = row["onboarding_step"] or ""
+    
+    if step == STEP_KTM_PHOTO:
+        await on_ktm_photo(update, context)
+    elif step == STEP_KARPEG_PHOTO:
+        await on_karpeg_photo(update, context)
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.text:
@@ -169,6 +186,18 @@ async def track_group_activity(
 async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.text:
         return
+        
+    conn = _conn(context)
+    text = update.message.text.strip()
+    
+    try:
+        from .triggers import check_and_execute_trigger
+        is_trigger = await check_and_execute_trigger(conn, update, context, text)
+        if is_trigger:
+            return
+    except ImportError:
+        pass
+        
     if not FORWARD_GROUP_ID or update.effective_chat.id != FORWARD_GROUP_ID:
         return
         
@@ -182,3 +211,28 @@ async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
             except Exception as e:
                 await update.message.reply_text(f"Gagal mengirim balasan: {e}")
+
+from telegram import ChatMember
+async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.my_chat_member:
+        return
+    
+    conn = _conn(context)
+    db = _db(context)
+    
+    chat = update.my_chat_member.chat
+    new_status = update.my_chat_member.new_chat_member.status
+    
+    is_active = new_status in (
+        ChatMember.MEMBER,
+        ChatMember.ADMINISTRATOR,
+        ChatMember.RESTRICTED,
+    )
+    
+    await db.upsert_bot_chat(
+        conn=conn,
+        chat_id=chat.id,
+        chat_type=chat.type,
+        title=chat.title or "Tanpa Nama",
+        is_active=is_active
+    )

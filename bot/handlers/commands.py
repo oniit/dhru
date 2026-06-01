@@ -302,34 +302,25 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "/start — Daftar & sinkron profil Telegram",
         "/profile — Profil & total Agra",
         "/lengkapi — Isi data wajib awal (sekali)",
-        "<i>Mahasiswa: isi Fakultas sebelum Jurusan.</i>",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "<i>Satu struktur padavi per profil; kombinasi dosen + dekan memakai kelas diampu + kelas fakultas (presensi).</i>",
-        "",
-        "Informasi Agra",
-        "/agra top — Lihat top Agra (17 besar)",
-        "/agra log — Lihat riwayat Agra pribadi",
         "",
     ]
     if role in (ROLE_STUDENT, ROLE_BEM):
         lines.append(
             "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
             "/ktm — Kartu tanda mahasiswa\n"
-            "/ktm_foto — Unggah foto wajah untuk KTM\n"
+            "/ktm_foto — Unggah foto wajah KTM\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
             "<b>Staf / Dosen</b>\n/karpeg — Kartu Pegawai\n"
-            "/karpeg_foto — Unggah foto wajah untuk Karpeg\n"
+            "/karpeg_foto — Unggah foto wajah Karpeg\n"
         )
     if can_manage_agra(role, prof):
         lines.extend(
             [
                 "<b>Manajemen Agra</b>",
-                "/add [nominal] @user … | [deskripsi]",
-                "Contoh: <code>/add 10 @user1 @user2 | Tugas 1</code>",
-                "Bisa <b>reply</b> pesan user + <code>/add 10 | alasan</code>",
-                "/transfer [nominal] @user | [deskripsi] — Transfer Agra",
+                "/agra — Menu Manajemen Agra",
                 "",
             ]
         )
@@ -337,71 +328,48 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
     can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
     
     if can_report(role, prof) or can_open_presensi:
-        lines.append("<b>Menu Presensi</b>")
-        if can_open_presensi:
-            lines.append("<code>/presensi buka</code> — Buka sesi kelas")
-            lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
-        
-        lines.append(
-            "/presensi sesi — Sesi aktif"
-            + (" <i>(terfilter)</i>" if allowed_classes is not None else "")
-        )
-        lines.append("<code>/presensi rekap [id_sesi]</code> — Rekap kehadiran")
-        lines.append("")
-        
-        if "d_dosen" in prof.get("position_detail", []):
-            lines.append("<i>Catatan Dosen: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
-            lines.append("")
-        elif "d_dekan" in prof.get("position_detail", []):
-            lines.append("<i>Catatan Dekan: data presensi/rekap otomatis terfilter ke fakultas lingkup.</i>")
-            lines.append("")
-    if can_approve_profile(role, prof):
-        lines.extend(
-            [
-                "<b>Admin / Owner</b>",
-                "/pending — Antrean ubah profil",
-                "<code>/admin_data [id]</code> — Ubah profil user",
-                "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
-                "",
-            ]
-        )
+        lines.extend([
+            "<b>Sistem Presensi</b>",
+            "/presensi — Menu Utama Presensi",
+            ""
+        ])
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        lines.extend([
+            "<b>Auto-reply (Trigger)</b>",
+            "/trigger — Menu Auto-reply",
+            ""
+        ])
     if can_view_sensitive_logs(role, prof):
         lines.extend(
             [
-                "/log — Audit & Agra (deskripsi)",
-                "<i>Tanpa filter: semua log terbaru.</i>",
-                "<i>Filter:</i>",
-                "<code>/log fakultas [id]</code>",
-                "<code>/log kelas [id]</code>",
-                "<code>/log nama [teks]</code>",
-                "<code>/log agra [all|@user]</code> — Riwayat global/spesifik",
-                "",
+                "<b>Audit & Log</b>",
+                "/log — Ringkasan & Menu Log",
+                ""
             ]
         )
     if can_report(role, prof) or can_daftar_as_dean(role, prof):
         lines.extend(
             [
-                "<b>Daftar pengguna</b>",
-                "<i>Hanya nama & username</i>"
-                + (" <i>(dekan: otomatis terfilter ke fakultas lingkup)</i>" if can_daftar_as_dean(role, prof) else ""),
-                "<code>/daftar all</code>",
-                "<code>/daftar [unit] [id]</code>",
-                "<code>/daftar id …</code> —  untuk memunculkan ID.",
-                "<code>/list_id</code> — Lihat daftar ID unit yang valid.",
-                "",
+                "<b>Daftar Pengguna</b>",
+                "/daftar — Menu Daftar Pengguna",
+                ""
             ]
         )
     if can_tag_all(role, prof):
         lines.extend(
             [
-                "<b>Mention grup</b>",
-                "/tagall — Mention semua user",
-                "<code>/tagall role [id]</code> — Filter berdasar role",
-                "<code>/tagall fakultas [id]</code> — Filter fakultas",
-                "<code>/tagall jurusan [id]</code> — Filter jurusan",
-                "<code>/tagall ukm [id]</code> — Filter ukm",
-                "/all [pesan] — Kirim pesan + mention",
-                "<i>Dipecah ke beberapa pesan</i>",
+                "<b>Mention Grup</b>",
+                "/tagall — Menu Mention & Broadcast",
+                ""
+            ]
+        )
+    if can_approve_profile(role, prof):
+        lines.extend(
+            [
+                "<b>Admin</b>",
+                "/pending — Antrean ubah profil",
+                "<code>/admin_data [id/username]</code> — Ubah profil user",
+                "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
                 "",
             ]
         )
@@ -409,9 +377,10 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         lines.extend(
             [
                 "<b>Owner</b>",
-                "<code>/setrole [role] @user1 @user2 …</code>",
-                "atau reply + <code>/setrole [role]</code>",
-                "<i>Role: admin · lecturer · staff · student</i>",
+                "<code>/setrole [role] @user123…</code> / reply",
+                "<i>Role: admin · internal · bem · student · public</i>",
+                "<code>/gencode [jumlah]</code> — Generate kode akses",
+                "<code>/owner_reset</code> — Reset semua user",
                 "",
             ]
         )
@@ -490,7 +459,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         show_internal=show_raw,
         user_role=row["role"] if row else ROLE_STUDENT,
     )
-    await update.message.reply_text(f"**No. ID:** <code>{reg_id}</code>\n\n{text}")
+    await update.message.reply_text(f"<b>No. ID</b>: <code>{reg_id}</code>\n\n{text}")
 
 
 async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1316,7 +1285,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 return
             tid_target = context.user_data.get(ADMIN_TARGET_KEY)
             if not tid_target:
-                await q.edit_message_text("Pilih user dulu: /admin_data <id>.")
+                await q.edit_message_text("Pilih user dulu: /admin_data <id/username>.")
                 return
             trow = await user_row(conn, db, tid_target)
             if not trow:
@@ -2033,8 +2002,8 @@ async def _notify_moderators_profile(
     text = (
         f"📩 Pengajuan ubah profil #{request_id}\n"
         f"Dari: <code>{proposer_id}</code> @{un}\n"
-        f"Data awal: <code>{before_preview}</code>\n"
-        f"Usulan: <code>{preview}</code>"
+        f"Data awal: <code>{html.escape(before_preview)}</code>\n"
+        f"Usulan: <code>{html.escape(preview)}</code>"
     )
     await db.set_profile_request_moderator_prompt(conn, request_id, text)
     for mid in mods:
@@ -2065,8 +2034,8 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     parsed = parse_add_command(update.message)
     if not parsed:
         await update.message.reply_text(
-            "Format: <code>/add <angka> @user … | <deskripsi></code> atau reply pesan user lalu "
-            "<code>/add <angka> | <deskripsi></code>",
+            "Format: <code>/add &lt;angka&gt; @user … | &lt;deskripsi&gt;</code> atau reply pesan user lalu "
+            "<code>/add &lt;angka&gt; | &lt;deskripsi&gt;</code>",
         )
         return
 
@@ -2104,14 +2073,14 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         new_total = await db.agra_total(conn, tid)
         prof = profile_from_row(urow)
-        full_name = (
+        full_name = html.escape(str(
             prof.get("full_name")
             or f"{urow['first_name'] or ''} {urow['last_name'] or ''}".strip()
             or (f"@{urow['username']}" if urow["username"] else str(tid))
-        )
+        ))
         lines.append(f"→ {full_name}") # (total {new_total})
         try:
-            desc_text = f"\nKeterangan: {parsed.description}" if parsed.description else ""
+            desc_text = f"\nKeterangan: {html.escape(str(parsed.description))}" if parsed.description else ""
             await context.bot.send_message(
                 chat_id=tid,
                 text=f"Kamu menerima <b>{parsed.amount}</b> Agra.{desc_text}",
@@ -2140,7 +2109,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     parsed = parse_add_command(update.message)
     if not parsed:
         await update.message.reply_text(
-            "Format: <code>/transfer <angka> @user … | <deskripsi></code>",
+            "Format: <code>/transfer &lt;angka&gt; @user … | &lt;deskripsi&gt;</code>",
         )
         return
 
@@ -2170,7 +2139,7 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     success_count = 0
     
     actor_prof = profile_from_row(row)
-    actor_full_name = actor_prof.get("full_name") or f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or (f"@{row['username']}" if row["username"] else "User")
+    actor_full_name = html.escape(str(actor_prof.get("full_name") or f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or (f"@{row['username']}" if row["username"] else "User")))
     
     for tid in sorted(targets):
         urow = await user_row(conn, db, tid)
@@ -2179,9 +2148,9 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             continue
             
         prof = profile_from_row(urow)
-        target_full_name = prof.get("full_name") or f"{urow['first_name'] or ''} {urow['last_name'] or ''}".strip() or (f"@{urow['username']}" if urow["username"] else "User")
+        target_full_name = html.escape(str(prof.get("full_name") or f"{urow['first_name'] or ''} {urow['last_name'] or ''}".strip() or (f"@{urow['username']}" if urow["username"] else "User")))
             
-        desc = parsed.description or "Transfer Agra"
+        desc = html.escape(str(parsed.description or "Transfer Agra"))
         
         # Deduct from actor
         await db.add_agra(
@@ -2234,36 +2203,37 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Ketik /start dulu.")
         return
         
+    is_from_log_cmd = getattr(context, "is_from_log_cmd", False)
     is_global = False
     target_uid = uid
     title_suffix = "Kamu"
     
-    if context.args:
-        arg = context.args[0].strip()
-        if arg.lower() == "all":
-            if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
-                await update.message.reply_text("Hanya admin/owner yang bisa melihat log global.")
-                return
+    if is_from_log_cmd:
+        if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+            await update.message.reply_text("Hanya admin/owner yang bisa melihat log Agra global/spesifik.")
+            return
+            
+        if not context.args:
             is_global = True
+        elif context.args[0].startswith("@"):
+            username = context.args[0].lstrip("@")
+            target_ids = await db.find_ids_by_usernames(conn, [username])
+            if not target_ids:
+                await update.message.reply_text(f"User {html.escape(str(context.args[0]))} tidak ditemukan.")
+                return
+            target_uid = target_ids[0]
+            title_suffix = context.args[0]
+        elif context.args[0].isdigit():
+            target_uid = int(context.args[0])
+            title_suffix = f"ID {target_uid}"
         else:
-            if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
-                await update.message.reply_text("Hanya admin/owner yang bisa melihat log user lain.")
-                return
-            if arg.startswith("@"):
-                username = arg.lstrip("@")
-                target_ids = await db.find_ids_by_usernames(conn, [username])
-                if not target_ids:
-                    await update.message.reply_text(f"User {arg} tidak ditemukan.")
-                    return
-                target_uid = target_ids[0]
-                title_suffix = arg
-            elif arg.isdigit():
-                target_uid = int(arg)
-                title_suffix = f"ID {arg}"
-            else:
-                await update.message.reply_text("Format tidak valid. Gunakan /agralog all atau /agralog @username.")
-                return
-        
+            await update.message.reply_text("Format tidak valid. Gunakan /log agra atau /log agra @username.")
+            return
+    else:
+        if context.args:
+            await update.message.reply_text("Perintah /agra log hanya untuk riwayat pribadi. Gunakan /log agra untuk admin.")
+            return
+    
     if is_global:
         logs = await db.agra_report(conn, limit=20)
         title = "📜 <b>Global Agra Log (20 Terbaru)</b>"
@@ -2284,9 +2254,9 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         t_name = r["target_first"] or r["target_username"] or "User"
         
         if is_global:
-            lines.append(f"• <code>{dt}</code> | {t_name} | <b>{sign}{amt}</b> | <i>{r['description']}</i>")
+            lines.append(f"<code>{dt}</code> | {t_name} | <b>{sign}{amt}</b> | <i>{r['description']}</i>")
         else:
-            lines.append(f"• <b>{sign}{amt}</b> | <i>{r['description']}</i>")
+            lines.append(f"<b>{sign}{amt}</b> | <i>{r['description']}</i>")
                 
     await update.message.reply_text("\n".join(lines)[:4000])
 
@@ -2306,14 +2276,32 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     msg = update.message
     parts = (msg.text or "").split()
     target_tid: int | None = None
-    if len(parts) >= 2 and parts[1].isdigit():
-        target_tid = int(parts[1])
+
+    if len(parts) >= 2:
+        token = parts[1].strip()
+        if token.isdigit():
+            if len(token) < 8:
+                cur = await conn.execute("SELECT telegram_id FROM users ORDER BY created_at ASC, telegram_id ASC LIMIT 1 OFFSET ?", (int(token)-1,))
+                rkr = await cur.fetchone()
+                if not rkr:
+                    await update.message.reply_text("User dengan No. ID tsb tidak ditemukan.")
+                    return
+                target_tid = rkr["telegram_id"]
+            else:
+                target_tid = int(token)
+        else:
+            ids = await db.find_ids_by_usernames(conn, [token])
+            if not ids:
+                await update.message.reply_text("User tidak ditemukan.")
+                return
+            target_tid = ids[0]
     elif msg.reply_to_message and msg.reply_to_message.from_user:
         target_tid = msg.reply_to_message.from_user.id
+
     if not target_tid:
         await update.message.reply_text(
             "Balas pesan user yang ingin diedit, atau:\n"
-            "<code>/admin_data <telegram_id></code>",
+            "<code>/admin_data &lt;telegram_id/username/no_id&gt;</code>",
         )
         return
     trow = await user_row(conn, db, target_tid)
@@ -2359,7 +2347,7 @@ async def _reply_daftar_chunks(
     max_lines: int = 40,
     max_chars: int = 3400,
     pause_sec: float = 0.45,
-    parse_mode: str | None = None,
+    parse_mode: str | None = "HTML",
 ) -> None:
     if not lines:
         await update.message.reply_text(f"{title}\n\nKosong.")
@@ -2405,26 +2393,38 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     if not context.args:
         await update.message.reply_text(
-            "Daftar pengguna (nama + username)\n\n"
-            "/daftar all\n"
-            "/daftar mhs\n"
-            "/daftar fakultas <id>\n"
-            "/daftar jurusan <id>\n"
-            "/daftar kelas <id>\n"
-            "/daftar admin\n"
-            "/daftar staf\n"
-            "/daftar dosen\n"
-            "/daftar all_staf\n\n"
-            "Gunakan /daftar id <jenis> untuk sertakan Telegram ID di output.\n"
-            "Data panjang otomatis dipecah ke beberapa pesan (~40 baris tiap pesan, "
-            "jeda singkat antarpesan mengurangi risiko flood limit Telegram)."
+            "<b>Menu Daftar Pengguna:</b>\n"
+            "<code>/daftar all</code> — Semua pengguna\n"
+            "<code>/daftar mhs</code> — Semua mahasiswa\n"
+            "<code>/daftar fakultas &lt;id&gt;</code>\n"
+            "<code>/daftar jurusan &lt;id&gt;</code>\n"
+            "<code>/daftar kelas &lt;id&gt;</code>\n"
+            "<code>/daftar ukm &lt;id&gt;</code>\n"
+            "<code>/daftar admin</code>\n"
+            "<code>/daftar staf</code>\n"
+            "<code>/daftar dosen</code>\n"
+            "<code>/daftar all_staf</code>\n\n"
+            "<b>Info Data Server (Admin/Owner):</b>\n"
+            "<code>/daftar grup</code> — Lihat daftar grup yang diikuti bot\n"
+            "<code>/daftar channel</code> — Lihat daftar channel yang diikuti bot\n\n"
+            "Gunakan <code>/daftar id &lt;jenis&gt;</code> untuk memunculkan Telegram ID pengguna."
             + (
-                "\n\n_Dekan/Dosen: hasil dibatasi ke pengguna di lingkup kamu._"
+                "\n\n<i>Catatan: Dekan/Dosen hanya melihat hasil di lingkup masing-masing.</i>"
                 if (dean_mode and dean_fid) or (lec_mode and lec_cids)
                 else ""
             )
         )
         return
+        
+    if len(context.args) == 1:
+        arg_lower = context.args[0].lower()
+        if arg_lower == "id":
+            return await cmd_list_id(update, context)
+        elif arg_lower == "grup":
+            return await cmd_list_grup(update, context)
+        elif arg_lower == "channel":
+            return await cmd_list_channel(update, context)
+
     show_telegram_id = False
     kind_idx = 0
     if len(context.args) >= 2 and context.args[0].lower() == "id":
@@ -2480,7 +2480,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         for r in all_rows:
             if r["role"] == ROLE_INTERNAL:
                 p = json.loads(r["profile_json"] or "{}")
-                if "d_dosen" not in p.get("position_detail", []):
+                if "d_dosen" not in normalize_multi_choice_value(p.get("position_detail")):
                     push_row(r, p)
     elif kind == "all_staf":
         title = "Daftar staf (admin + internal)"
@@ -2491,26 +2491,26 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif kind == "dosen":
         title = "Daftar dosen"
         for r in all_rows:
-            if r["role"] == ROLE_INTERNAL:
+            if r["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
                 p = json.loads(r["profile_json"] or "{}")
-                if "d_dosen" in p.get("position_detail", []):
+                if "d_dosen" in normalize_multi_choice_value(p.get("position_detail")):
                     push_row(r, p)
     elif kind == "fakultas" and len(parts) > kind_idx + 1:
-        fid = parts[kind_idx + 1]
+        fid = parts[kind_idx + 1].lower()
         title = f"Daftar — fakultas {fid}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             if p.get("faculty") == fid:
                 push_row(r, p)
     elif kind == "jurusan" and len(parts) > kind_idx + 1:
-        mid = parts[kind_idx + 1]
+        mid = parts[kind_idx + 1].lower()
         title = f"Daftar — jurusan {mid}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             if p.get("major") == mid:
                 push_row(r, p)
     elif kind == "kelas" and len(parts) > kind_idx + 1:
-        cid = parts[kind_idx + 1]
+        cid = parts[kind_idx + 1].lower()
         title = f"Daftar — kelas {cid}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
@@ -2518,13 +2518,22 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             teaching = normalize_multi_choice_value(p.get("teaching_classes"))
             if cid in enrolled or cid in teaching:
                 push_row(r, p)
+    elif kind == "ukm" and len(parts) > kind_idx + 1:
+        uid = parts[kind_idx + 1].lower()
+        title = f"Daftar — UKM {uid}"
+        for r in all_rows:
+            p = json.loads(r["profile_json"] or "{}")
+            enrolled = normalize_multi_choice_value(p.get("club_enrolled"))
+            if uid in enrolled:
+                push_row(r, p)
     else:
         await update.message.reply_text(
             "Format tidak dikenali. Ketik /daftar untuk bantuan singkat."
         )
         return
 
-    if (dean_mode and dean_fid) or (lec_mode and lec_cids):
+    is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
+    if not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids)):
         kept: list[tuple[str, str | None, int]] = []
         for name, un, tid in matching:
             r = next((x for x in all_rows if int(x["telegram_id"]) == tid), None)
@@ -2553,7 +2562,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply_daftar_chunks(
         update,
         title,
-        out_lines if show_telegram_id else None,
+        out_lines,
     )
 
 
@@ -2575,25 +2584,81 @@ async def cmd_list_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines = []
     
-    lines.append("<b>Fakultas:</b>")
+    lines.append("🏢 <b>FAKULTAS</b>")
+    lines.append("<blockquote>")
     for f in CHOICES.get("faculties", []):
-        lines.append(f"• <code>{f.get('id', '')}</code> — {f.get('label', '')}")
-    lines.append("")
+        lines.append(f"<code>{f.get('id', '')}</code> : {f.get('label', '')}")
+    lines.append("\n</blockquote>")
     
-    lines.append("<b>Jurusan:</b>")
+    lines.append("📚 <b>JURUSAN</b>")
+    lines.append("<blockquote>")
     for m in CHOICES.get("majors", []):
-        lines.append(f"• <code>{m.get('id', '')}</code> — {m.get('label', '')}")
-    lines.append("")
+        lines.append(f"<code>{m.get('id', '')}</code> : {m.get('label', '')}")
+    lines.append("\n</blockquote>")
     
-    lines.append("<b>Kelas:</b>")
+    lines.append("🏫 <b>KELAS</b>")
+    lines.append("<blockquote>")
     for c in CHOICES.get("classes", []):
-        lines.append(f"• <code>{c.get('id', '')}</code> — {c.get('label', '')}")
+        lines.append(f"<code>{c.get('id', '')}</code> : {c.get('label', '')}")
+    lines.append("\n</blockquote>")
+
+    lines.append("🏆 <b>UKM</b>")
+    lines.append("<blockquote>")
+    for u in CHOICES.get("clubs", []):
+        lines.append(f"<code>{u.get('id', '')}</code> : {u.get('label', '')}")
+    lines.append("\n</blockquote>")
+        
+    lines.append("⠀")
         
     await _reply_daftar_chunks(
         update,
         "Daftar ID Unit",
         lines
     )
+
+
+async def cmd_list_grup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Hanya admin atau owner yang bisa menggunakan fitur ini.")
+        return
+
+    chats = await db.list_active_bot_chats(conn, chat_type="group")
+    if not chats:
+        await update.message.reply_text("Bot belum terdeteksi aktif di grup mana pun.")
+        return
+
+    lines = ["<b>Daftar Grup yang Diikuti Bot:</b>", ""]
+    for cid, title in chats:
+        lines.append(f"<code>{cid}</code> — {title}")
+    
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_list_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Hanya admin atau owner yang bisa menggunakan fitur ini.")
+        return
+
+    chats = await db.list_active_bot_chats(conn, chat_type="channel")
+    if not chats:
+        await update.message.reply_text("Bot belum terdeteksi aktif di channel mana pun.")
+        return
+
+    lines = ["<b>Daftar Channel yang Diikuti Bot:</b>", ""]
+    for cid, title in chats:
+        lines.append(f"<code>{cid}</code> — {title}")
+    
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2773,33 +2838,48 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not row or not can_view_sensitive_logs(row["role"], profile_from_row(row)):
         await update.message.reply_text("Anda tidak berhak melihat log audit.")
         return
-    faculty_id = class_id = name_sub = None
+    if not context.args or context.args[0].lower() == "help":
+        await update.message.reply_text(
+            "<b>Menu Log Sistem:</b>\n"
+            "<code>/log terbaru</code> — Ringkasan 15 log terbaru\n"
+            "<code>/log agra [all|@user]</code> — Riwayat Agra\n"
+            "<code>/log fakultas &lt;id&gt;</code> — Filter fakultas\n"
+            "<code>/log jurusan &lt;id_jurusan&gt;</code> — Filter jurusan\n"
+            "<code>/log kelas &lt;id_kelas&gt;</code> — Filter kelas\n"
+            "<code>/log ukm &lt;id_ukm&gt;</code> — Filter UKM\n"
+            "<code>/log nama &lt;potongan nama&gt;</code> — Filter nama\n"
+        )
+        return
+
+    faculty_id = major_id = class_id = ukm_id = name_sub = None
     if len(context.args) >= 2 and context.args[0].lower() == "fakultas":
         faculty_id = context.args[1]
+    elif len(context.args) >= 2 and context.args[0].lower() == "jurusan":
+        major_id = context.args[1]
     elif len(context.args) >= 2 and context.args[0].lower() == "kelas":
         class_id = context.args[1]
+    elif len(context.args) >= 2 and context.args[0].lower() == "ukm":
+        ukm_id = context.args[1]
     elif len(context.args) >= 2 and context.args[0].lower() == "nama":
         name_sub = " ".join(context.args[1:])
     elif len(context.args) >= 1 and context.args[0].lower() == "agra":
         context.args = context.args[1:]
+        context.is_from_log_cmd = True
         return await cmd_agralog(update, context)
-    elif len(context.args) > 0:
-        await update.message.reply_text(
-            "<b>Format filter /log:</b>\n"
-            "<code>/log</code> — ringkasan terbaru\n"
-            "<code>/log agra [all|@user]</code>\n"
-            "<code>/log fakultas <id></code> — contoh: <code>fmipa</code>\n"
-            "<code>/log kelas <id_kelas></code>\n"
-            "<code>/log nama <potongan nama></code>",
-        )
+    elif len(context.args) == 1 and context.args[0].lower() == "terbaru":
+        pass
+    else:
+        await update.message.reply_text("Filter log tidak valid. Ketik /log untuk panduan.")
         return
 
-    filtered = faculty_id is not None or class_id is not None or name_sub is not None
+    filtered = faculty_id is not None or major_id is not None or class_id is not None or ukm_id is not None or name_sub is not None
     if filtered:
         ids = await db.user_ids_matching_profile_filter(
             conn,
             faculty_id=faculty_id,
+            major_id=major_id,
             class_id=class_id,
+            ukm_id=ukm_id,
             name_substring=name_sub,
         )
         if not ids:
@@ -2810,8 +2890,12 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         hdr = []
         if faculty_id:
             hdr.append(f"fakultas <code>{faculty_id}</code>")
+        if major_id:
+            hdr.append(f"jurusan <code>{major_id}</code>")
         if class_id:
             hdr.append(f"kelas <code>{class_id}</code>")
+        if ukm_id:
+            hdr.append(f"ukm <code>{ukm_id}</code>")
         if name_sub:
             hdr.append(f"nama <code>{name_sub}</code>")
         lines = [f"<b>Log</b> (filter: {', '.join(hdr)})", ""]
@@ -2845,11 +2929,39 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def cmd_all_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    await update.message.reply_text(
+        "<b>Menu Mention Grup (/tagall)</b>\n"
+        "<code>/all [pesan]</code> — Mention semua anggota grup\n"
+        "<code>/all role &lt;id&gt; [pesan]</code> — Filter berdasar role\n"
+        "<code>/all fakultas &lt;id&gt; [pesan]</code> — Filter fakultas\n"
+        "<code>/all jurusan &lt;id&gt; [pesan]</code> — Filter jurusan\n"
+        "<code>/all kelas &lt;id&gt; [pesan]</code> — Filter kelas\n"
+        "<code>/all ukm &lt;id&gt; [pesan]</code> — Filter UKM\n\n"
+        "Pesan bersifat opsional. Data yang dikirim akan otomatis dipecah agar tidak terkena limit."
+    )
+
 async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    actor = update.effective_user.id
+    row = await user_row(conn, db, actor)
+    if not row or not can_tag_all(row["role"], profile_from_row(row)):
+        await update.message.reply_text("Hanya Staf, Pengajar, atau BEM yang bisa mengakses menu ini.")
+        return
+        
+    return await cmd_all_help(update, context)
+
+async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.effective_chat:
         return
     if update.effective_chat.type not in ("group", "supergroup"):
-        await update.message.reply_text("/tagall hanya bisa dipakai di grup.")
+        await update.message.reply_text("/all hanya bisa dipakai di grup.")
         return
 
     conn = _conn(context)
@@ -2857,7 +2969,7 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     actor = update.effective_user.id
     row = await user_row(conn, db, actor)
     if not row or not can_tag_all(row["role"], profile_from_row(row)):
-        await update.message.reply_text("Hanya Staf/Pengajar yang bisa tag all.")
+        await update.message.reply_text("Hanya Staf, Pengajar, atau BEM yang bisa melakukan tag all.")
         return
 
     all_ids = await db.list_group_seen_user_ids(conn, update.effective_chat.id)
@@ -2877,15 +2989,23 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     
     if len(parts) > 1:
         possible_type = parts[1].lower()
-        if possible_type in ("role", "fakultas", "jurusan", "ukm") and len(parts) > 2:
-            filter_type = possible_type
-            filter_val = parts[2].lower()
-            if len(parts) > 3:
-                custom_body = parts[3]
+        if possible_type in ("role", "fakultas", "jurusan", "ukm", "kelas"):
+            if len(parts) > 2:
+                filter_type = possible_type
+                filter_val = parts[2].lower()
+                if len(parts) > 3:
+                    custom_body = parts[3]
+            else:
+                await update.message.reply_text(f"Nilai {possible_type} belum ditentukan.")
+                return
+        elif possible_type == "umum":
+            filter_type = "umum"
+            if len(parts) > 2:
+                custom_body = parts[2]
         else:
-            p_split = raw_text.split(maxsplit=1)
-            custom_body = p_split[1] if len(p_split) > 1 else ""
-
+            # Not a filter keyword, so it's a message for all
+            custom_body = raw_text.split(maxsplit=1)[1]
+    
     filtered_ids = []
     if filter_type:
         for tid in ids:
@@ -2902,9 +3022,19 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 match = True
             elif filter_type == "jurusan" and str(u_prof.get("major", "")).lower() == filter_val:
                 match = True
+            elif filter_type == "umum":
+                enrolled = normalize_multi_choice_value(u_prof.get("class_enrolled", []))
+                teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
+                if "umum" in [str(x).lower() for x in enrolled + teaching]:
+                    match = True
             elif filter_type == "ukm":
                 enrolled = normalize_multi_choice_value(u_prof.get("club_enrolled", []))
                 if filter_val in [str(x).lower() for x in enrolled]:
+                    match = True
+            elif filter_type == "kelas":
+                enrolled = normalize_multi_choice_value(u_prof.get("class_enrolled", []))
+                teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
+                if filter_val in [str(x).lower() for x in enrolled + teaching]:
                     match = True
             
             if match:
@@ -2915,6 +3045,10 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Tidak ada user yang cocok dengan filter tagall tersebut.")
         return
 
+    await _execute_mention_batch(update, context, ids, custom_body)
+
+async def _execute_mention_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, ids: list[int], custom_body: str) -> None:
+    import html
     custom_body_html = html.escape(custom_body)
 
     batch_size = 7
@@ -2948,6 +3082,9 @@ async def cmd_tagall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if custom_body_html:
         await update.message.reply_text("Summon ended.")
 
+    conn = _conn(context)
+    db = _db(context)
+    actor = update.effective_user.id
     await db.add_audit(
         conn,
         actor,
@@ -2989,3 +3126,41 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             lines.append(f"{idx}. {r['total']} - {name}")
     await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    role = row["role"] if row else ROLE_STUDENT
+    prof = profile_from_row(row) if row else {}
+    
+    if not context.args:
+        lines = [
+            "<b>Menu Agra</b>",
+            "<code>/agra top</code> — Lihat peringkat Agra (17 besar)",
+            "<code>/agra log</code> — Lihat riwayat Agra pribadi"
+        ]
+        
+        if can_manage_agra(role, prof):
+            lines.extend([
+                "",
+                "<b>Admin Agra</b>",
+                "<code>/add [nominal] @user | [deskripsi]</code>",
+                "<code>/transfer [nominal] @user | [deskripsi]</code>"
+            ])
+        await update.message.reply_text("\n".join(lines))
+        return
+        
+    subcmd = context.args[0].lower()
+    original_args = context.args[:]
+    context.args = context.args[1:]
+    try:
+        if subcmd == "top": await cmd_agratop(update, context)
+        elif subcmd == "log": await cmd_agralog(update, context)
+        else: await update.message.reply_text("Sub-command Agra tidak ditemukan. Gunakan /agra untuk melihat menu.")
+    finally:
+        context.args = original_args

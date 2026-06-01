@@ -13,3 +13,9 @@ def format_local_time(ts: float | None) -> str:
         return "—"
     dt = datetime.fromtimestamp(float(ts), tz=TZ)
     return dt.strftime("%d/%m/%Y %H:%M WIB")
+
+def format_time_only(ts: float | None) -> str:
+    if ts is None:
+        return "—"
+    dt = datetime.fromtimestamp(float(ts), tz=TZ)
+    return dt.strftime("%H:%M:%S WIB")

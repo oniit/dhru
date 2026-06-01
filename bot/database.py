@@ -230,6 +230,14 @@ CREATE TABLE IF NOT EXISTS triggers (
     actions_json TEXT NOT NULL,
     created_by INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bot_chats (
+    chat_id INTEGER PRIMARY KEY,
+    type TEXT,
+    title TEXT,
+    is_active INTEGER DEFAULT 1,
+    updated_at REAL
+);
 """
 
 
@@ -880,6 +888,35 @@ class Database:
         rows = await cur.fetchall()
         return [int(r["telegram_id"]) for r in rows]
 
+    async def upsert_bot_chat(
+        self, conn: aiosqlite.Connection, chat_id: int, chat_type: str, title: str, is_active: bool
+    ) -> None:
+        await conn.execute(
+            """
+            INSERT INTO bot_chats (chat_id, type, title, is_active, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                type = excluded.type,
+                title = excluded.title,
+                is_active = excluded.is_active,
+                updated_at = excluded.updated_at
+            """,
+            (chat_id, chat_type, title, 1 if is_active else 0, time.time())
+        )
+        await conn.commit()
+
+    async def list_active_bot_chats(
+        self, conn: aiosqlite.Connection, chat_type: str = "group"
+    ) -> list[tuple[int, str]]:
+        if chat_type == "group":
+            query = "SELECT chat_id, title FROM bot_chats WHERE is_active = 1 AND type IN ('group', 'supergroup')"
+        else:
+            query = f"SELECT chat_id, title FROM bot_chats WHERE is_active = 1 AND type = '{chat_type}'"
+            
+        cur = await conn.execute(query)
+        rows = await cur.fetchall()
+        return [(int(r["chat_id"]), r["title"]) for r in rows]
+
     @staticmethod
     def _rowcount(cur: aiosqlite.Cursor) -> int:
         rc = getattr(cur, "rowcount", None)
@@ -1236,7 +1273,9 @@ class Database:
         conn: aiosqlite.Connection,
         *,
         faculty_id: str | None = None,
+        major_id: str | None = None,
         class_id: str | None = None,
+        ukm_id: str | None = None,
         name_substring: str | None = None,
     ) -> list[int]:
         cur = await conn.execute("SELECT telegram_id, profile_json FROM users")
@@ -1246,6 +1285,8 @@ class Database:
             p = json.loads(r["profile_json"] or "{}")
             if faculty_id and p.get("faculty") != faculty_id:
                 continue
+            if major_id and p.get("major") != major_id:
+                continue
             if class_id:
                 raw = p.get("class_enrolled")
                 enrolled: list[str] = []
@@ -1254,6 +1295,15 @@ class Database:
                 elif isinstance(raw, str) and raw.strip():
                     enrolled = [raw.strip()]
                 if class_id not in enrolled:
+                    continue
+            if ukm_id:
+                raw = p.get("club_enrolled")
+                enrolled: list[str] = []
+                if isinstance(raw, list):
+                    enrolled = [str(x) for x in raw if x is not None and str(x).strip()]
+                elif isinstance(raw, str) and raw.strip():
+                    enrolled = [raw.strip()]
+                if ukm_id not in enrolled:
                     continue
             if name_substring:
                 name = (p.get("full_name") or "").lower()
