@@ -110,8 +110,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         text=f"🔑 <b>Kode Akses Digunakan</b>\n"
                              f"<b>Oleh:</b> {name_str} ({username_str})\n"
                              f"<b>ID:</b> <code>{u.id}</code>\n"
-                             f"<b>Kode:</b> <code>{code}</code>",
-                        parse_mode="HTML"
+                             f"<b>Kode:</b> <code>{code}</code>"
                     )
                 except Exception:
                     pass
@@ -165,6 +164,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         await db.set_profile_partial(conn, uid, {field_key: text})
         await _mark_lengkapi_done_if_complete(conn, db, uid)
+        
+        from .common import award_lengkapi_agra
+        await award_lengkapi_agra(conn, db, uid, field_key, profile, context, update.message.chat_id)
+        
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)

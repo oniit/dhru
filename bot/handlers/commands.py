@@ -1819,6 +1819,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await q.answer()
         await db.set_profile_partial(conn, uid, {field_key: ids_list})
         await _mark_lengkapi_done_if_complete(conn, db, uid)
+        
+        from .common import award_lengkapi_agra
+        await award_lengkapi_agra(conn, db, uid, field_key, profile_now, context, q.message.chat_id)
+        
         _multi_clear(context)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
@@ -1963,6 +1967,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         await db.set_profile_partial(conn, uid, update_dict)
         await _mark_lengkapi_done_if_complete(conn, db, uid)
+        
+        from .common import award_lengkapi_agra
+        await award_lengkapi_agra(conn, db, uid, field_key, prof_before, context, q.message.chat_id)
+        
         await _revalidate_filtered_choice_fields(conn, db, uid)
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
@@ -2494,7 +2502,6 @@ async def _reply_daftar_chunks(
     max_lines: int = 40,
     max_chars: int = 3400,
     pause_sec: float = 0.45,
-    parse_mode: str | None = "HTML",
 ) -> None:
     if not lines:
         await update.message.reply_text(f"{title}\n\nKosong.")
@@ -2516,7 +2523,7 @@ async def _reply_daftar_chunks(
     for i, part in enumerate(chunks):
         head = title if total == 1 else f"{title} ({i + 1}/{total})"
         body = "\n".join(part)
-        await update.message.reply_text(f"{head}\n\n{body}", parse_mode=parse_mode)
+        await update.message.reply_text(f"{head}\n\n{body}")
         if i < total - 1:
             await asyncio.sleep(pause_sec)
 
@@ -3220,7 +3227,6 @@ async def _execute_mention_batch(update: Update, context: ContextTypes.DEFAULT_T
         )
         await update.message.reply_text(
             text,
-            parse_mode="HTML",
             disable_web_page_preview=True,
         )
         if idx < total:

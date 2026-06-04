@@ -49,6 +49,43 @@ def profile_from_row(row) -> dict:
     return json.loads(row["profile_json"] or "{}")
 
 
+async def award_lengkapi_agra(conn: aiosqlite.Connection, db: Database, uid: int, field_key: str, profile_before: dict, context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    # Hanya untuk field utama (bukan tambahan)
+    excluded_fields = {"teaching_classes", "club_enrolled", "auto_class_enrolled"}
+    if field_key in excluded_fields:
+        return
+        
+    # Cek apakah field sebelumnya sudah terisi (berarti bukan isi pertama kali)
+    val_before = profile_before.get(field_key)
+    if val_before is not None and val_before != "" and val_before != []:
+        return
+        
+    # Cek batas maksimal Agra yang sudah didapatkan dari /lengkapi (max 5)
+    count = profile_before.get("__lengkapi_agra_count", 0)
+    if count >= 5:
+        return
+        
+    amount = 15
+    await db.add_agra(
+        conn,
+        target_id=uid,
+        actor_id=uid,
+        amount=amount,
+        description=f"Melengkapi profil: {field_label_for_key(field_key)}",
+        chat_id=chat_id,
+        message_id=None,
+    )
+    await db.set_profile_partial(conn, uid, {"__lengkapi_agra_count": count + 1})
+    
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🎁 Kamu mendapatkan <b>{amount} Agra</b> karena telah mengisi <b>{field_label_for_key(field_key)}</b> perdana!"
+        )
+    except Exception:
+        pass
+
+
 def normalize_multi_choice_value(raw) -> list[str]:
     """Satu nilai string lama (choice tunggal) tetap didukung."""
     if raw is None:
