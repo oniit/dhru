@@ -13,7 +13,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db = _db(context)
     uid = update.effective_user.id
     row = await user_row(conn, db, uid)
-    if not row or row["role"] not in ("owner", "admin", "co_founder"):
+    if not row or row["role"] not in ("owner", "admin"):
         await update.message.reply_text("Tidak diizinkan.")
         return
         

@@ -229,7 +229,7 @@ def render_karpeg_png_bytes(
     pd_raw = payload.get("position_detail")
     detail_text = multi_choice_labels("position_details", pd_raw if isinstance(pd_raw, list) else [pd_raw] if pd_raw else []) or "—"
 
-    agra_s = str(payload.get("agra", "0"))
+    agra_s = f"{payload.get('agra', 0):,}".replace(",", ".")
 
     # Nama (satu baris; potong jika melebihi lebar kolom kanan)
     max_name_w = W - value_x - margin_r
@@ -254,7 +254,12 @@ def render_karpeg_png_bytes(
                 pos = item.get("position")
                 if pos and pos not in positions:
                     positions.append(pos)
-        position_label = ", ".join(choice_label("positions", pos) for pos in positions) if positions else "—"
+        if positions:
+            pos_order = {item.get("id"): i for i, item in enumerate(CHOICES.get("positions", []))}
+            highest_pos = min(positions, key=lambda p: pos_order.get(p, 999))
+            position_label = choice_label("positions", highest_pos)
+        else:
+            position_label = "—"
 
     else:
         position_label = choice_label("positions", position_raw)

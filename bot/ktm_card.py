@@ -226,7 +226,7 @@ def render_ktm_png_bytes(
     nim = (payload["student_id"] or "—").strip() or "—"
     major_label = choice_label("majors", payload["major"] or None)
     club_text = multi_choice_labels("clubs", payload["club_ids"]) if payload["club_ids"] else "—"
-    agra_s = str(payload["agra"])
+    agra_s = f"{payload['agra']:,}".replace(",", ".")
 
     # Nama (satu baris; potong jika melebihi lebar kolom kanan)
     max_name_w = W - value_x - margin_r

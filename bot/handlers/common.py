@@ -274,7 +274,15 @@ def missing_required_fields(profile: dict, role: str) -> list:
     for f in PROFILE_FIELDS:
         if not field_applies_to_role(f, role, profile):
             continue
-        if not f.required:
+        is_req = f.required
+        if f.key == "club_enrolled":
+            if role in ("student", "bem") or "d_coach" in get_user_jabatans(profile):
+                is_req = True
+        elif f.key == "teaching_classes":
+            if "d_dosen" in get_user_jabatans(profile):
+                is_req = True
+        
+        if not is_req:
             continue
         v = profile.get(f.key)
         if f.type == "multi_choice":
@@ -314,10 +322,21 @@ def format_profile_card(
         if key == "username":
             u = row["username"]
             return f"@{u}" if u else "—"
+        if key == "full_name":
+            raw = profile.get("full_name")
+            if not raw:
+                return "—"
+            u = row["username"]
+            if u:
+                return f'<a href="https://t.me/{u}">{raw}</a>'
+            return f'<a href="tg://user?id={row["telegram_id"]}">{raw}</a>'
+        if key == "student_id":
+            raw = profile.get("student_id")
+            return f"<code>{raw}</code>" if raw else "—"
         if key == "role":
             return role_display(row["role"])
         if key == "agra_total":
-            return str(agra)
+            return f"{agra:,}".replace(",", ".")
         if key == "auto_class_enrolled":
             major = profile.get("major")
             auto = []
@@ -339,7 +358,11 @@ def format_profile_card(
                         pos = item.get("position")
                         if pos and pos not in positions:
                             positions.append(pos)
-                return ", ".join(choice_label("positions", p) for p in positions) if positions else "—"
+                if positions:
+                    pos_order = {item.get("id"): i for i, item in enumerate(CHOICES.get("positions", []))}
+                    highest_pos = min(positions, key=lambda p: pos_order.get(p, 999))
+                    return choice_label("positions", highest_pos)
+                return "—"
             return choice_label("positions", raw)
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)

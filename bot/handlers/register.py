@@ -17,6 +17,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("start", commands.cmd_start))
     application.add_handler(CommandHandler("help", commands.cmd_help))
     application.add_handler(CommandHandler("profile", commands.cmd_profile))
+    application.add_handler(CommandHandler("profile_dtl", commands.cmd_profile_dtl))
     application.add_handler(CommandHandler("profil", commands.cmd_profile))
     application.add_handler(CommandHandler("lengkapi", commands.cmd_lengkapi))
     application.add_handler(
@@ -26,7 +27,7 @@ def register_all(application: Application, db: Database) -> None:
         CommandHandler("ktm_foto", ktm.cmd_ktm_foto, filters=ktm.KT_PRIVATE),
     )
     application.add_handler(
-        CommandHandler("karpeg", karpeg.cmd_karpeg, filters=karpeg.KARPEG_PRIVATE),
+        CommandHandler("karpeg", karpeg.cmd_karpeg),
     )
     application.add_handler(
         CommandHandler("karpeg_foto", karpeg.cmd_karpeg_foto, filters=karpeg.KARPEG_PRIVATE),
@@ -52,6 +53,7 @@ def register_all(application: Application, db: Database) -> None:
     
     # New handlers
     application.add_handler(CommandHandler("gencode", commands.cmd_gencode))
+    application.add_handler(CommandHandler("gencode_avail", commands.cmd_gencode_avail))
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
 
     from telegram.ext import ChatMemberHandler

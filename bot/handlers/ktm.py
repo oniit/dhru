@@ -87,7 +87,7 @@ async def cmd_ktm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Gagal membuat gambar KTM. Coba lagi nanti.")
         return
 
-    cap = "Kartu tanda mahasiswa (digital)."
+    cap = "Kartu Tanda Mahasiswa. /ktm_foto untuk update foto."
     if fid and photo_bytes is None:
         cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /ktm_foto.)"
 

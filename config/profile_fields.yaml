@@ -8,6 +8,16 @@ fields:
     type: text
     required: true
 
+  - key: muse
+    label: Muse
+    type: text
+    required: true
+
+  - key: birth_date
+    label: Tanggal lahir
+    type: text
+    required: true
+
   - key: faculty
     label: Fakultas
     type: choice
@@ -22,13 +32,6 @@ fields:
     filter_by_field: faculty
     roles: [student, bem]
     required: true
-
-  - key: club_enrolled
-    label: Club / UKM
-    type: multi_choice
-    choices_key: clubs
-    roles: [student, bem, internal, owner, admin]
-    required: false
 
   - key: student_id
     label: NIM
@@ -62,6 +65,13 @@ fields:
     type: multi_choice
     choices_key: classes
     roles: [owner, admin, internal]
+    required: false
+
+  - key: club_enrolled
+    label: UKM
+    type: multi_choice
+    choices_key: clubs
+    roles: [student, bem, internal, owner, admin]
     required: false
 
 profile_display:

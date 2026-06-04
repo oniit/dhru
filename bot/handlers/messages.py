@@ -97,6 +97,25 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await db.set_role(conn, uid, "student")
             await db.set_onboarding_step(conn, uid, None)
             await conn.commit()
+            
+            from bot.settings import OWNER_ID
+            if OWNER_ID and str(OWNER_ID) != "0":
+                u = update.effective_user
+                username_str = f"@{u.username}" if u.username else "Tanpa Username"
+                name_str = u.first_name
+                if u.last_name: name_str += f" {u.last_name}"
+                try:
+                    await context.bot.send_message(
+                        chat_id=OWNER_ID,
+                        text=f"🔑 <b>Kode Akses Digunakan</b>\n"
+                             f"<b>Oleh:</b> {name_str} ({username_str})\n"
+                             f"<b>ID:</b> <code>{u.id}</code>\n"
+                             f"<b>Kode:</b> <code>{code}</code>",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+            
             await update.message.reply_text("Kode valid! Role Anda telah diperbarui menjadi student.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
             await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
@@ -108,6 +127,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Atau ketik /start untuk membatalkan."
         )
         return
+    if step.startswith("ADMIN_TEXT_LC:") or step.startswith("TEXT_LC:") or step.startswith("TEXT_EC:"):
+        field_key = step.split(":", 1)[1]
+        if field_key == "birth_date":
+            if not re.match(r"^\d{6}$", text):
+                await update.message.reply_text("Format tanggal lahir harus ddmmyy (contoh: 311299). Silakan ulangi:")
+                return
 
     if step.startswith("ADMIN_TEXT_LC:"):
         field_key = step.split(":", 1)[1]
@@ -149,6 +174,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if step.startswith("TEXT_EC:"):
         field_key = step.split(":", 1)[1]
+        if row["role"] in ("owner", "admin"):
+            await db.set_profile_partial(conn, uid, {field_key: text})
+            await db.set_onboarding_step(conn, uid, None)
+            await db.add_audit(conn, uid, "profile_direct_update", field_key)
+            fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
+            lab = fdef.label if fdef else field_label_for_key(field_key)
+            await update.message.reply_text(f"✅ {lab} disimpan (auto-approved).")
+            return
+            
         rid = await db.add_profile_request(conn, uid, {field_key: text})
         await db.set_onboarding_step(conn, uid, None)
         await db.add_audit(conn, uid, "profile_change_request", f"id={rid}")

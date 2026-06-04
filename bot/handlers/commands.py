@@ -294,8 +294,36 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes))
 
 
+async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] != ROLE_OWNER:
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+    
+    cur = await conn.execute("SELECT code FROM access_codes WHERE used_by IS NULL ORDER BY created_at DESC")
+    rows = await cur.fetchall()
+    if not rows:
+        await update.message.reply_text("Tidak ada kode akses yang tersedia (belum diklaim).")
+        return
+        
+    codes = [r["code"] for r in rows]
+    text = f"Terdapat {len(codes)} kode akses yang belum diklaim:\n\n"
+    text += "\n".join(f"<code>{c}</code>" for c in codes)
+    
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n...(terpotong karena terlalu panjang)"
+        
+    await update.message.reply_text(text)
+
+
 def help_for_role(role: str, profile: dict | None = None) -> str:
     prof = profile if profile is not None else {}
+    allowed_classes = presence_allowed_class_ids(role, prof)
+    can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
 
     lines = [
         "<b>Perintah umum</b>",
@@ -316,38 +344,13 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             "<b>Staf / Dosen</b>\n/karpeg — Kartu Pegawai\n"
             "/karpeg_foto — Unggah foto wajah Karpeg\n"
         )
-    if can_manage_agra(role, prof):
-        lines.extend(
-            [
-                "<b>Manajemen Agra</b>",
-                "/agra — Menu Manajemen Agra",
-                "",
-            ]
-        )
-    allowed_classes = presence_allowed_class_ids(role, prof)
-    can_open_presensi = allowed_classes is None or len(allowed_classes) > 0
-    
     if can_report(role, prof) or can_open_presensi:
         lines.extend([
             "<b>Sistem Presensi</b>",
             "/presensi — Menu Utama Presensi",
             ""
         ])
-    if role in (ROLE_OWNER, ROLE_ADMIN):
-        lines.extend([
-            "<b>Auto-reply (Trigger)</b>",
-            "/trigger — Menu Auto-reply",
-            ""
-        ])
-    if can_view_sensitive_logs(role, prof):
-        lines.extend(
-            [
-                "<b>Audit & Log</b>",
-                "/log — Ringkasan & Menu Log",
-                ""
-            ]
-        )
-    if can_report(role, prof) or can_daftar_as_dean(role, prof):
+    if can_report(role, prof) or can_daftar_as_dean(role, prof) or can_daftar_as_lecturer(role, prof):
         lines.extend(
             [
                 "<b>Daftar Pengguna</b>",
@@ -360,6 +363,29 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             [
                 "<b>Mention Grup</b>",
                 "/tagall — Menu Mention & Broadcast",
+                ""
+            ]
+        )
+    if can_manage_agra(role, prof):
+        lines.extend(
+            [
+                "<b>Manajemen Agra</b>",
+                "/agra — Menu Manajemen Agra",
+                "",
+            ]
+        )
+
+    if role in (ROLE_OWNER, ROLE_ADMIN):
+        lines.extend([
+            "<b>Auto-reply (Trigger)</b>",
+            "/trigger — Menu Auto-reply",
+            ""
+        ])
+    if can_view_sensitive_logs(role, prof):
+        lines.extend(
+            [
+                "<b>Audit & Log</b>",
+                "/log — Ringkasan & Menu Log",
                 ""
             ]
         )
@@ -380,6 +406,8 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "<code>/setrole [role] @user123…</code> / reply",
                 "<i>Role: admin · internal · bem · student · public</i>",
                 "<code>/gencode [jumlah]</code> — Generate kode akses",
+                "<code>/gencode_avail</code> — Cek kode belum diklaim",
+                "<code>/broadcast [role] [text]</code> — Broadcast pesan dari bot",
                 "<code>/owner_reset</code> — Reset semua user",
                 "",
             ]
@@ -459,7 +487,103 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         show_internal=show_raw,
         user_role=row["role"] if row else ROLE_STUDENT,
     )
-    await update.message.reply_text(f"<b>No. ID</b>: <code>{reg_id}</code>\n\n{text}")
+    await update.message.reply_text(
+        f"<b>No. ID</b>: <code>{reg_id}</code>\n\n{text}",
+        disable_web_page_preview=True #hapus koma ke baris ini kalo pengen ada thumbnail di bawah
+    )
+
+
+def _format_birth_date(raw: str) -> str:
+    raw = (raw or "").strip()
+    if len(raw) != 6 or not raw.isdigit():
+        return raw or "—"
+    dd = raw[:2]
+    mm = raw[2:4]
+    yy = raw[4:]
+    
+    months = {
+        "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
+        "05": "Mei", "06": "Juni", "07": "Juli", "08": "Agustus",
+        "09": "September", "10": "Oktober", "11": "November", "12": "Desember"
+    }
+    m_name = months.get(mm, mm)
+    
+    y = int(yy)
+    if y >= 30:
+        year = f"19{yy}"
+    else:
+        year = f"20{yy}"
+        
+    return f"{dd} {m_name} {year}"
+
+
+async def cmd_profile_dtl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    requester_id = update.effective_user.id
+    requester_row = await user_row(conn, db, requester_id)
+    requester_role = requester_row["role"] if requester_row else ROLE_STUDENT
+
+    parts = (update.message.text or "").split()
+    target_id = requester_id
+    if len(parts) >= 2:
+        if requester_role not in (ROLE_OWNER, ROLE_ADMIN):
+            await update.message.reply_text(
+                "Hanya admin/owner yang bisa cek profil dtl user lain."
+            )
+            return
+        token = parts[1].strip()
+        if token.isdigit():
+            if len(token) < 8:
+                cur = await conn.execute("SELECT telegram_id FROM users ORDER BY created_at ASC, telegram_id ASC LIMIT 1 OFFSET ?", (int(token)-1,))
+                rkr = await cur.fetchone()
+                if not rkr:
+                    await update.message.reply_text("User dengan No. ID tsb tidak ditemukan.")
+                    return
+                target_id = rkr["telegram_id"]
+            else:
+                target_id = int(token)
+        else:
+            ids = await db.find_ids_by_usernames(conn, [token])
+            if not ids:
+                await update.message.reply_text("User tidak ditemukan.")
+                return
+            target_id = ids[0]
+
+    row = await user_row(conn, db, target_id)
+    if not row:
+        await update.message.reply_text("User tidak ditemukan.")
+        return
+    
+    profile = profile_from_row(row)
+    
+    cur = await conn.execute("SELECT created_at FROM users WHERE telegram_id = ?", (target_id,))
+    rt = await cur.fetchone()
+    if rt:
+        ca = rt["created_at"]
+        cur = await conn.execute("SELECT COUNT(*) AS n FROM users WHERE created_at < ? OR (created_at = ? AND telegram_id <= ?)", (ca, ca, target_id))
+        rr = await cur.fetchone()
+        reg_id = f"{(rr['n'] or 1):04d}"
+    else:
+        reg_id = "0000"
+
+    full_name = profile.get("full_name") or "—"
+    muse = profile.get("muse") or "—"
+    birth_date = _format_birth_date(profile.get("birth_date"))
+
+    text = (
+        f"<b>No. ID</b>: <code>{reg_id}</code>\n"
+        f"<b>Nama Lengkap</b>: {full_name}\n"
+        f"<b>Muse</b>: {muse}\n"
+        f"<b>Tanggal Lahir</b>: {birth_date}"
+    )
+    
+    await update.message.reply_text(
+        text,
+        disable_web_page_preview=True
+    )
 
 
 async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -486,8 +610,13 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
         )
         return
-    # Wajib yang belum lengkap + opsional yang belum pernah diselesaikan (mis. club/UKM).
-    target_fields = miss + optional_fields_still_open(profile, role)
+    target_fields_raw = miss + optional_fields_still_open(profile, role)
+    target_fields = []
+    seen = set()
+    for f in target_fields_raw:
+        if f.key not in seen:
+            target_fields.append(f)
+            seen.add(f.key)
 
     await update.message.reply_text(
         "Pilih data yang ingin diisi / diperbarui (langsung tersimpan):",
@@ -1773,6 +1902,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.answer("Pilih minimal satu opsi.", show_alert=True)
             return
         await q.answer()
+        
+        if step_row and step_row["role"] in ("owner", "admin"):
+            await db.set_profile_partial(conn, uid, {field_key: ids_list})
+            _multi_clear(context)
+            await db.set_onboarding_step(conn, uid, None)
+            await db.add_audit(conn, uid, "profile_direct_update", field_key)
+            lab = fdef.label if fdef else field_key
+            await q.edit_message_text(f"✅ {lab} disimpan (auto-approved).", reply_markup=None)
+            return
+
         rid = await db.add_profile_request(conn, uid, {field_key: ids_list})
         _multi_clear(context)
         await db.set_onboarding_step(conn, uid, None)
@@ -1867,6 +2006,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     break
             if pos_id:
                 req_dict["position"] = pos_id
+
+        if step_row and step_row["role"] in ("owner", "admin"):
+            await db.set_profile_partial(conn, uid, req_dict)
+            await db.set_onboarding_step(conn, uid, None)
+            await db.add_audit(conn, uid, "profile_direct_update", field_key)
+            lab = fdef.label if fdef else field_key
+            await q.edit_message_text(f"✅ {lab} disimpan (auto-approved).", reply_markup=None)
+            return
 
         rid = await db.add_profile_request(conn, uid, req_dict)
         await db.set_onboarding_step(conn, uid, None)
@@ -3124,7 +3271,8 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 or (f"@{r['username']}" if r["username"] else None)
                 or "—"
             )
-            lines.append(f"{idx}. {r['total']} - {name}")
+            total_s = f"{r['total']:,}"
+            lines.append(f"{idx}. {total_s} - {name}")
     await update.message.reply_text("\n".join(lines))
 
 
