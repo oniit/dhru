@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 import time
 import re
 
-from bot.settings import PROFILE_FIELDS, FORWARD_GROUP_ID
+from bot.settings import PROFILE_FIELDS, FORWARD_GID
 
 from .common import (
     can_report,
@@ -79,9 +79,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except ImportError:
             pass
             
-        if not is_trigger and FORWARD_GROUP_ID:
+        if not is_trigger and FORWARD_GID:
             await context.bot.send_message(
-                chat_id=FORWARD_GROUP_ID,
+                chat_id=FORWARD_GID,
                 text=f"Pesan dari {update.effective_user.first_name} (@{update.effective_user.username}):\n\n{text}\n\n#ID_{uid}"
             )
             if row["role"] == "public":
@@ -128,6 +128,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     if step.startswith("ADMIN_TEXT_LC:") or step.startswith("TEXT_LC:") or step.startswith("TEXT_EC:"):
         field_key = step.split(":", 1)[1]
+        
+        if field_key == "full_name":
+            text = text.title()
+        elif field_key == "muse":
+            text = text.upper()
+            
         if field_key == "birth_date":
             if not re.match(r"^\d{6}$", text):
                 await update.message.reply_text("Format tanggal lahir harus ddmmyy (contoh: 311299). Silakan ulangi:")
@@ -235,7 +241,7 @@ async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except ImportError:
         pass
         
-    if not FORWARD_GROUP_ID or update.effective_chat.id != FORWARD_GROUP_ID:
+    if not FORWARD_GID or update.effective_chat.id != FORWARD_GID:
         return
         
     reply = update.message.reply_to_message

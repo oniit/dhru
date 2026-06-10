@@ -202,17 +202,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at REAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS group_seen_users (
-    chat_id INTEGER NOT NULL,
-    telegram_id INTEGER NOT NULL,
-    username TEXT,
-    first_name TEXT,
-    last_name TEXT,
-    is_bot INTEGER NOT NULL DEFAULT 0,
-    last_seen_at REAL NOT NULL,
-    PRIMARY KEY (chat_id, telegram_id)
-);
-
 CREATE INDEX IF NOT EXISTS idx_agra_target ON agra_ledger(target_telegram_id);
 CREATE INDEX IF NOT EXISTS idx_pending_profile ON profile_change_requests(status);
 CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
@@ -241,6 +230,20 @@ CREATE TABLE IF NOT EXISTS bot_chats (
 """
 
 
+TAGALL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tagall.group_seen_users (
+    chat_id INTEGER NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    last_seen_at REAL NOT NULL,
+    PRIMARY KEY (chat_id, telegram_id)
+);
+"""
+
+
 class Database:
     def __init__(self, path: Path = DB_PATH) -> None:
         self.path = path
@@ -249,7 +252,18 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = await aiosqlite.connect(self.path)
         conn.row_factory = aiosqlite.Row
+        
+        tagall_path = self.path.parent / "tagall.db"
+        await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
+        
         await conn.executescript(SCHEMA)
+        await conn.executescript(TAGALL_SCHEMA)
+        
+        try:
+            await conn.execute("INSERT OR IGNORE INTO tagall.group_seen_users SELECT * FROM main.group_seen_users")
+            await conn.execute("DROP TABLE main.group_seen_users")
+        except Exception:
+            pass
         cur = await conn.execute("PRAGMA table_info(attendance_sessions)")
         cols = {str(r[1]) for r in await cur.fetchall()}
         if "announce_message_id" not in cols:
@@ -769,6 +783,19 @@ class Database:
         rows = await cur.fetchall()
         return [int(r["telegram_id"]) for r in rows]
 
+    async def get_all_staff_ids(
+        self, conn: aiosqlite.Connection
+    ) -> list[int]:
+        cur = await conn.execute(
+            """
+            SELECT telegram_id FROM users
+            WHERE role = ? ORDER BY telegram_id
+            """,
+            ("internal",),
+        )
+        rows = await cur.fetchall()
+        return [int(r["telegram_id"]) for r in rows]
+
     async def find_ids_by_usernames(
         self, conn: aiosqlite.Connection, usernames: list[str]
     ) -> list[int]:
@@ -851,7 +878,7 @@ class Database:
         now = time.time()
         await conn.execute(
             """
-            INSERT INTO group_seen_users (
+            INSERT INTO tagall.group_seen_users (
                 chat_id, telegram_id, username, first_name, last_name, is_bot, last_seen_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(chat_id, telegram_id) DO UPDATE SET
@@ -879,7 +906,7 @@ class Database:
         cur = await conn.execute(
             """
             SELECT telegram_id
-            FROM group_seen_users
+            FROM tagall.group_seen_users
             WHERE chat_id = ? AND is_bot = 0
             ORDER BY last_seen_at DESC
             """,
@@ -1108,7 +1135,7 @@ class Database:
         return n
 
     async def reset_group_seen_users_all(self, conn: aiosqlite.Connection) -> int:
-        cur = await conn.execute("DELETE FROM group_seen_users")
+        cur = await conn.execute("DELETE FROM tagall.group_seen_users")
         n = self._rowcount(cur)
         await conn.commit()
         return n
@@ -1117,7 +1144,7 @@ class Database:
         self, conn: aiosqlite.Connection, telegram_id: int
     ) -> int:
         cur = await conn.execute(
-            "DELETE FROM group_seen_users WHERE telegram_id = ?", (telegram_id,)
+            "DELETE FROM tagall.group_seen_users WHERE telegram_id = ?", (telegram_id,)
         )
         n = self._rowcount(cur)
         await conn.commit()

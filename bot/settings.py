@@ -71,11 +71,20 @@ PROFILE_FIELDS, PROFILE_DISPLAY_KEYS = load_profile_fields()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 
-_fg = os.environ.get("FORWARD_GROUP_ID", "").strip()
-FORWARD_GROUP_ID = int(_fg) if _fg else None
+_fg = os.environ.get("FORWARD_GID", "").strip()
+FORWARD_GID = int(_fg) if _fg else None
 
-_bc = os.environ.get("BACKUP_CHANNEL_ID", "").strip()
-BACKUP_CHANNEL_ID = int(_bc) if _bc else None
+_bc = os.environ.get("BACKUP_CH_ID", "").strip()
+BACKUP_CH_ID = int(_bc) if _bc else None
+
+_pc = os.environ.get("PRESENCE_CH_ID", "").strip()
+PRESENCE_CH_ID = int(_pc) if _pc else None
+
+# Agra Rewards Configuration
+AGRA_REWARD_CLASS_HADIR = int(os.environ.get("AGRA_REWARD_CLASS_HADIR", "25") or 25)
+AGRA_REWARD_CLASS_IZIN = int(os.environ.get("AGRA_REWARD_CLASS_IZIN", "10") or 10)
+AGRA_REWARD_STAFF_AUTO = int(os.environ.get("AGRA_REWARD_STAFF_AUTO", "2") or 2)
+AGRA_REWARD_LENGKAPI = int(os.environ.get("AGRA_REWARD_LENGKAPI", "15") or 15)
 
 
 def _parse_id_list(s: str | None) -> set[int]:

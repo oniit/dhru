@@ -84,7 +84,7 @@ async def cmd_karpeg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Gagal membuat gambar Kartu Pegawai. Coba lagi nanti.")
         return
 
-    cap = "Kartu Pegawai. /karpeg_foto untuk update foto."
+    cap = "Kirim /karpeg_foto untuk mengganti foto."
     if fid and photo_bytes is None:
         cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /karpeg_foto.)"
 

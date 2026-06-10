@@ -46,10 +46,6 @@ async def _download_telegram_photo(context: ContextTypes.DEFAULT_TYPE, file_id: 
 async def cmd_ktm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
-    if not _private_only_reply(update):
-        await update.message.reply_text("Perintah /ktm hanya bisa dipakai di chat privat dengan bot.")
-        return
-
     uid = update.effective_user.id
     conn = _conn(context)
     db = _db(context)
@@ -87,7 +83,7 @@ async def cmd_ktm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Gagal membuat gambar KTM. Coba lagi nanti.")
         return
 
-    cap = "Kartu Tanda Mahasiswa. /ktm_foto untuk update foto."
+    cap = "Kirim /ktm_foto untuk mengganti foto."
     if fid and photo_bytes is None:
         cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /ktm_foto.)"
 

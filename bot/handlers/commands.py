@@ -337,12 +337,10 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         lines.append(
             "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
             "/ktm — Kartu tanda mahasiswa\n"
-            "/ktm_foto — Unggah foto wajah KTM\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
             "<b>Staf / Dosen</b>\n/karpeg — Kartu Pegawai\n"
-            "/karpeg_foto — Unggah foto wajah Karpeg\n"
         )
     if can_report(role, prof) or can_open_presensi:
         lines.extend([
@@ -1382,7 +1380,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         await attendance.cb_open_presensi(update, context)
         return
-    if data.startswith("h:") or data.startswith("i:"):
+    if data.startswith("h:") or data.startswith("i:") or data.startswith("sh:"):
         from . import attendance
 
         await attendance.cb_attendance_action(update, context)
@@ -2484,13 +2482,13 @@ def _daftar_format_lines(
     show_telegram_id: bool = False,
 ) -> list[str]:
     lines = []
-    for name, uname, tid in entries:
+    for idx, (name, uname, tid) in enumerate(entries, 1):
         dn = _daftar_clean_display(name)
         prefix = f"<code>{tid}</code> " if show_telegram_id else ""
         if uname:
-            lines.append(f"{prefix}{dn} — @{uname}")
+            lines.append(f"{idx}. {prefix}{dn} — @{uname}")
         else:
-            lines.append(f"{prefix}{dn} — (tanpa username)")
+            lines.append(f"{idx}. {prefix}{dn} — (tanpa username)")
     return lines
 
 
@@ -2597,7 +2595,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         """
         SELECT telegram_id, username, first_name, last_name, role, profile_json
         FROM users
-        ORDER BY LOWER(COALESCE(first_name, '')), telegram_id
+        ORDER BY created_at ASC, telegram_id ASC
         """
     )
     all_rows = await cur.fetchall()
@@ -2705,7 +2703,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 kept.append((name, un, tid))
         matching = kept
 
-    matching.sort(key=lambda x: x[0].lower())
+    # Removed alphabetical sort to preserve the SQL order (created_at ASC)
     out_lines = _daftar_format_lines(matching, show_telegram_id=show_telegram_id)
     await db.add_audit(
         conn,

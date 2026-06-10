@@ -17,6 +17,7 @@ from bot.settings import (
     CHOICES,
     PROFILE_DISPLAY_KEYS,
     PROFILE_FIELDS,
+    AGRA_REWARD_LENGKAPI,
     FieldDef,
     choice_label,
     field_applies_to_role,
@@ -65,7 +66,7 @@ async def award_lengkapi_agra(conn: aiosqlite.Connection, db: Database, uid: int
     if count >= 5:
         return
         
-    amount = 15
+    amount = AGRA_REWARD_LENGKAPI
     await db.add_agra(
         conn,
         target_id=uid,

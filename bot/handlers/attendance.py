@@ -12,8 +12,14 @@ from bot.database import (
     ROLE_ADMIN,
     ROLE_OWNER,
     ROLE_STUDENT,
+    ROLE_INTERNAL,
 )
-from bot.settings import CHOICES
+from bot.settings import (
+    CHOICES,
+    AGRA_REWARD_CLASS_HADIR,
+    AGRA_REWARD_CLASS_IZIN,
+    AGRA_REWARD_STAFF_AUTO,
+)
 from bot.timefmt import TZ, format_local_time, format_time_only
 
 from .common import (
@@ -39,6 +45,8 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _class_label(class_id: str) -> str:
+    if class_id == "staff_auto": return "Presensi Harian Staf"
+    if class_id == "staff_manual": return "Presensi Staf"
     items = CHOICES.get("classes", []) + CHOICES.get("clubs", [])
     for item in items:
         if item.get("id") == class_id:
@@ -87,17 +95,33 @@ def _format_presensi_block(
     show_record_times: bool,
 ) -> str:
     c_lab = _class_label(sess["class_id"])
-    lines = [
-        f"📋 <b>Presensi</b> <code>#{sess['id']}</code> — {c_lab}",
-        f"Dibuka: {format_local_time(sess['opened_at'])}",
-    ]
-    closed_at = sess["closed_at"]
-    if closed_at is not None:
-        lines.append(f"Ditutup: {format_local_time(closed_at)}")
-    if closed:
-        lines.append("<i>Sesi ditutup.</i>")
+    
+    if sess["class_id"] == "staff_auto":
+        from datetime import datetime
+        from bot.timefmt import TZ
+        dt = datetime.fromtimestamp(float(sess['opened_at']), tz=TZ)
+        date_str = dt.strftime("%d %B %Y")
+        
+        lines = [
+            f"📋 <b>{c_lab}</b> — {date_str}",
+        ]
+        if closed:
+            lines.append("<i>Sesi harian telah ditutup.</i>")
+        else:
+            lines.append("Ketuk tombol <b>Hadir</b> dari pesan Bot (DM) Anda.")
     else:
-        lines.append("Ketuk <b>Hadir</b> atau gunakan perintah /hadir.")
+        lines = [
+            f"📋 <b>Presensi</b> <code>#{sess['id']}</code> — {c_lab}",
+            f"Dibuka: {format_local_time(sess['opened_at'])}",
+        ]
+        closed_at = sess["closed_at"]
+        if closed_at is not None:
+            lines.append(f"Ditutup: {format_local_time(closed_at)}")
+        if closed:
+            lines.append("<i>Sesi ditutup.</i>")
+        else:
+            lines.append("Ketuk <b>Hadir</b> atau gunakan perintah /hadir.")
+            
     lines.append("")
     hadir_records = [r for r in records if dict(r).get("status", "hadir") == "hadir"]
     izin_records = [r for r in records if dict(r).get("status", "hadir") == "izin"]
@@ -115,21 +139,22 @@ def _format_presensi_block(
                 )
             else:
                 lines.append(f"• {name}")
-                
-    lines.append("")
-    lines.append(f"<b>Izin ({len(izin_records)})</b>")
-    if not izin_records:
-        lines.append("<i>Belum ada.</i>")
-    else:
-        for r in izin_records:
-            pj = json.loads(r["profile_json"] or "{}")
-            name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
-            if show_record_times:
-                lines.append(
-                    f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
-                )
+                    
+        if sess["class_id"] != "staff_auto":
+            lines.append("")
+            lines.append(f"<b>Izin ({len(izin_records)})</b>")
+            if not izin_records:
+                lines.append("<i>Belum ada.</i>")
             else:
-                lines.append(f"• {name}")
+                for r in izin_records:
+                    pj = json.loads(r["profile_json"] or "{}")
+                    name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+                    if show_record_times:
+                        lines.append(
+                            f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
+                        )
+                    else:
+                        lines.append(f"• {name}")
     return "\n".join(lines)
 
 
@@ -157,18 +182,19 @@ async def refresh_presensi_announcement(
     )
     kb = None
     if not closed:
-        kb = InlineKeyboardMarkup(
-            [
+        if sess["class_id"] != "staff_auto":
+            kb = InlineKeyboardMarkup(
                 [
-                    InlineKeyboardButton(
-                        "✅ Hadir", callback_data=f"h:{session_id}"[:32]
-                    ),
-                    InlineKeyboardButton(
-                        "⏸️ Izin", callback_data=f"i:{session_id}"[:32]
-                    )
+                    [
+                        InlineKeyboardButton(
+                            "✅ Hadir", callback_data=f"h:{session_id}"[:32]
+                        ),
+                        InlineKeyboardButton(
+                            "⏸️ Izin", callback_data=f"i:{session_id}"[:32]
+                        )
+                    ]
                 ]
-            ]
-        )
+            )
     try:
         await context.bot.edit_message_text(
             chat_id=sess["chat_id"],
@@ -178,6 +204,11 @@ async def refresh_presensi_announcement(
         )
     except Exception as e:
         log.debug("edit presensi message: %s", e)
+
+
+async def refresh_auto_presensi_announcement(context, db, conn, session_id: int):
+    # Wrapper for jobs.py
+    await refresh_presensi_announcement(context, db, conn, session_id)
 
 
 async def _send_presensi_dm(context: ContextTypes.DEFAULT_TYPE, uid: int, text: str) -> None:
@@ -202,6 +233,10 @@ def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeybo
             continue
         lab = str(item.get("label", cid))
         rows.append([InlineKeyboardButton(lab, callback_data=f"o:{cid}"[:64])])
+        
+    if allowed_set is None:
+        rows.append([InlineKeyboardButton("👥 Staf", callback_data="o:staff_manual")])
+        
     rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
 
@@ -254,6 +289,12 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Sesi ini untuk kelas di luar lingkup presensi kamu.",
         )
         return
+        
+    if sess["class_id"] == "staff_auto" and sess["opened_by"] == 0:
+        await update.message.reply_text(
+            "Sesi otomatis ini tidak dapat ditutup secara manual. Sesi ini akan ditutup secara otomatis pada pukul 23:59."
+        )
+        return
     if sess["closed_at"] is not None:
         await update.message.reply_text(
             f"Sesi <code>{sid}</code> sudah ditutup sebelumnya.",
@@ -267,7 +308,8 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         sess2, records, closed=True, show_record_times=True
     )
     recap_dm = f"📩 <b>Rekap presensi (DM)</b>\n\n{recap_dm}"
-    await _send_presensi_dm(context, opened_by, recap_dm[:4000])
+    if opened_by != 0:
+        await _send_presensi_dm(context, opened_by, recap_dm[:4000])
     # Admin/owner juga dapat rekap saat sesi ditutup.
     for mid in await db.list_moderator_telegram_ids(conn):
         if mid == opened_by:
@@ -278,9 +320,15 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for r in records:
         t_uid = r["telegram_id"]
         status = dict(r).get("status", "hadir")
-        amt = 25 if status == "hadir" else 10
+        
         status_label = "Hadir" if status == "hadir" else "Izin"
-        notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{amt} Agra</b> (Status: {status_label})."
+        
+        if sess["class_id"] == "staff_auto":
+            notif = f"Sesi presensi otomatis <b>{c_lab}</b> telah ditutup."
+        else:
+            amt = AGRA_REWARD_CLASS_HADIR if status == "hadir" else AGRA_REWARD_CLASS_IZIN
+            notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{amt} Agra</b> (Status: {status_label})."
+            
         await _send_presensi_dm(context, t_uid, notif)
 
     await refresh_presensi_announcement(context, db, conn, sid)
@@ -299,6 +347,11 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
+    
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+        user_classes.append("staff_manual")
+        # NOTE: staff_auto is specifically excluded here to enforce button click
+        
     if not user_classes:
         await update.message.reply_text(
             "Lengkapi kelas di profil (/lengkapi) — mahasiswa: kelas diikuti; dosen: kelas diampu."
@@ -338,10 +391,14 @@ async def _record_hadir(
     
     if changed:
         diff = 0
-        if status == "hadir":
-            diff = 25 if not old_status else (25 - 10)
-        elif status == "izin":
-            diff = 10 if not old_status else (10 - 25)
+        if sess["class_id"] == "staff_auto":
+            # Only Hadir is possible for staff_auto
+            diff = AGRA_REWARD_STAFF_AUTO if status == "hadir" else 0
+        else:
+            if status == "hadir":
+                diff = AGRA_REWARD_CLASS_HADIR if not old_status else (AGRA_REWARD_CLASS_HADIR - AGRA_REWARD_CLASS_IZIN)
+            elif status == "izin":
+                diff = AGRA_REWARD_CLASS_IZIN if not old_status else (AGRA_REWARD_CLASS_IZIN - AGRA_REWARD_CLASS_HADIR)
             
         if diff != 0:
             c_lab = _class_label(sess["class_id"])
@@ -356,9 +413,10 @@ async def _record_hadir(
                 message_id=None
             )
 
+        agra_text = f" (+{diff} Agra)" if sess["class_id"] == "staff_auto" else ""
         if old_status:
-            return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.", True
-        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.", True
+            return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.{agra_text}", True
+        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.{agra_text}", True
     return True, f"Status kamu tetap {status_label} di sesi ini. Kelas: {_class_label(sess['class_id'])}.", False
 
 
@@ -384,8 +442,14 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     open_sess = await db.recent_open_sessions(conn, 20)
+    # Sembunyikan staff_auto dari daftar sesi
+    open_sess = [s for s in open_sess if s["class_id"] != "staff_auto"]
+    
     if allowed is not None:
-        open_sess = [s for s in open_sess if s["class_id"] in allowed]
+        if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+            open_sess = [s for s in open_sess if s["class_id"] in allowed or s["class_id"] == "staff_manual"]
+        else:
+            open_sess = [s for s in open_sess if s["class_id"] in allowed]
     if not open_sess:
         await update.message.reply_text("Tidak ada sesi presensi aktif.")
         return
@@ -415,6 +479,10 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     arg = context.args[0]
     allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
+    if allowed_class_ids is not None:
+        if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+            allowed_class_ids.extend(["staff_manual", "staff_auto"])
+            
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
             "Belum ada lingkup kelas di profil untuk rekap (dosen: kelas diampu; dekan: fakultas lingkup di /lengkapi).",
@@ -480,7 +548,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     opener_name = s["opener_first_name"] or str(s["opened_by"])
                 lines.append(
                     f"• <code>{format_local_date(s['opened_at'])} #{s['id']} </code>{_class_label(s['class_id'])} | "
-                    f"_{opener_name}_"
+                    f"<i>{opener_name}</i>"
                 )
             await update.message.reply_text("\n".join(lines)[:4000])
             return
@@ -533,7 +601,12 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not sess:
         await update.message.reply_text("Sesi tidak ada.")
         return
-    if not can_rekap_hadir_session(row, profile, sess["class_id"]):
+        
+    can_rekap = can_rekap_hadir_session(row, profile, sess["class_id"])
+    if sess["class_id"] in ("staff_manual", "staff_auto") and row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+        can_rekap = True
+        
+    if not can_rekap:
         await update.message.reply_text(
             "Kamu tidak punya akses rekap untuk sesi ini (bukan admin/owner atau bukan dosen kelas tersebut)."
         )
@@ -620,11 +693,26 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 
+async def cmd_test_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Hanya Owner/Admin yang bisa menggunakan ini.")
+        return
+        
+    from bot.jobs import daily_staff_attendance_open
+    sid = await daily_staff_attendance_open(context, opened_by=update.effective_user.id)
+    await update.message.reply_text(f"✅ Trigger presensi harian otomatis telah dijalankan secara manual.\n\nSesi ID: <code>{sid}</code>\nAnda bisa menutupnya dengan <code>/presensi tutup {sid}</code>")
+
+
 async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     q = update.callback_query
     if not q or not q.data or not q.from_user:
         return
-    action = q.data[0]
+    action = q.data.split(":")[0]
     sid_s = q.data.split(":", 1)[1]
     if not sid_s.isdigit():
         return
@@ -638,10 +726,20 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
+    # Khusus staff_auto, valid jika role == ROLE_INTERNAL
+    if action == "sh":
+        if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+            await q.answer("Hanya untuk staf.", show_alert=True)
+            return
+        user_classes.append("staff_auto")
+    # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+        user_classes.append("staff_manual")
+        
     if not user_classes:
         await q.answer("Lengkapi kelas di profil.", show_alert=True)
         return
-    status = "hadir" if action == "h" else "izin"
+    status = "hadir" if action in ("h", "sh") else "izin"
     ok, msg, _ = await _record_hadir(
         db, conn, sid, uid, row["role"], user_classes, status=status
     )
@@ -651,6 +749,12 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
         await _send_presensi_dm(context, uid, msg)
     else:
         await q.answer(msg, show_alert=True)
+        
+    try:
+        if q.message and q.message.chat.type == "private":
+            await q.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
 
 async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -673,6 +777,9 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
             if can_open_presensi:
                 lines.append("<code>/presensi buka</code> — Buka sesi kelas")
                 lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
+            
+            if role in (ROLE_OWNER, ROLE_ADMIN):
+                lines.append("<code>/presensi testauto</code> — Test presensi harian (staff_auto)")
             
             lines.append("<code>/presensi sesi</code> — Sesi aktif" + (" <i>(terfilter)</i>" if allowed_classes is not None else ""))
             lines.append("<code>/presensi rekap</code> — Rekap kehadiran")
@@ -697,6 +804,7 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif subcmd == "sesi": await cmd_sesi_aktif(update, context)
         elif subcmd == "rekap": await cmd_rekap_hadir(update, context)
         elif subcmd == "hadir": await cmd_hadir(update, context)
+        elif subcmd == "testauto": await cmd_test_auto(update, context)
         else: await update.message.reply_text("Sub-command Presensi tidak ditemukan. Ketik /presensi untuk panduan.")
     finally:
         context.args = original_args
