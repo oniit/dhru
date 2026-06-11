@@ -2632,7 +2632,8 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         for r in all_rows:
             if r["role"] == ROLE_INTERNAL:
                 p = json.loads(r["profile_json"] or "{}")
-                if "d_dosen" not in normalize_multi_choice_value(p.get("position_detail")):
+                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
+                if "d_dosen" not in p_jabs and "d_guru_besar" not in p_jabs:
                     push_row(r, p)
     elif kind == "all_staf":
         title = "Daftar staf (admin + internal)"
@@ -2645,7 +2646,8 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         for r in all_rows:
             if r["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
                 p = json.loads(r["profile_json"] or "{}")
-                if "d_dosen" in normalize_multi_choice_value(p.get("position_detail")):
+                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
+                if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs:
                     push_row(r, p)
     elif kind == "fakultas" and len(parts) > kind_idx + 1:
         fid = parts[kind_idx + 1].lower()
@@ -3177,7 +3179,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             elif filter_type == "umum":
                 enrolled = normalize_multi_choice_value(u_prof.get("class_enrolled", []))
                 teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
-                if "umum" in [str(x).lower() for x in enrolled + teaching]:
+                if any(str(x).lower().startswith("umum_") for x in enrolled + teaching):
                     match = True
             elif filter_type == "ukm":
                 enrolled = normalize_multi_choice_value(u_prof.get("club_enrolled", []))

@@ -4,24 +4,16 @@
 faculties:
   - id: fmipa
     label: Fakultas Matematika dan Ilmu Pengetahuan Alam
-  - id: ftik
-    label: Fakultas Teknologi dan Ilmu Komputer
   - id: fib
     label: Fakultas Ilmu Budaya
 
 majors:
-  - id: if
-    label: Ilmu Fisika
-    faculty: fmipa
   - id: ik
     label: Ilmu Kimia
     faculty: fmipa
-  - id: pm
-    label: Pemrograman
-    faculty: ftik
-  - id: ks
-    label: Keamanan Siber
-    faculty: ftik
+  - id: if
+    label: Ilmu Fisika
+    faculty: fmipa
   - id: sm
     label: Seni Musik
     faculty: fib
@@ -31,9 +23,12 @@ majors:
 
 classes:
   # Kuliah Umum (Otomatis untuk semua)
-  - id: umum
-    label: Kuliah Umum
-    sks: 4
+  - id: umum_kk
+    label: Kaidah Kebahasaan
+    sks: 2
+  - id: umum_pd
+    label: Pengembangan Diri
+    sks: 2
   
   # FMIPA - Ilmu Fisika
   - id: fd
@@ -104,11 +99,9 @@ positions:
     label: Kuladhipati I कुलाधीपति I
   - id: warek2
     label: Kuladhipati II कुलाधीपति II
-  - id: warek3
-    label: Kuladhipati III कुलाधीपति III
   - id: dekan
     label: Pradhanāchārya प्रधानाचार्य
-  - id: sarpras
+  - id: guru_besar
     label: Prāchārya प्रचार्य
   - id: dosen
     label: Āchārya आचार्य
@@ -116,9 +109,13 @@ positions:
     label: Āchāryaka आचार्यक
   - id: pembina
     label: Āchāryata आचार्यता
-  - id: umum
+  - id: sarpras
     label: Upāchārya उपचर्या
-  - id: kerjasama
+  - id: editor
+    label: Upāchārya उपचर्या
+  - id: hrd
+    label: Parichārya परिचर्या
+  - id: eksternal
     label: Parichārya परिचर्या
   - id: lainnya
     label: Lainnya
@@ -136,15 +133,12 @@ position_details:
   - id: d_warek2
     label: Wakil Rektor II
     position: warek2
-  - id: d_warek3
-    label: Wakil Rektor III
-    position: warek3
   - id: d_dekan
     label: Dekan
     position: dekan
-  - id: d_sarpras
-    label: Sarana & Prasarana
-    position: sarpras
+  - id: d_guru_besar
+    label: Guru Besar
+    position: guru_besar
   - id: d_dosen
     label: Dosen
     position: dosen
@@ -154,24 +148,18 @@ position_details:
   - id: d_pembina
     label: Pembina BEM
     position: pembina
-  - id: d_umum_penyunting
-    label: Penyunting
-    position: umum
-  - id: d_umum_sdm
+  - id: d_sarpras
+    label: Sarana & Prasarana
+    position: sarpras
+  - id: d_editor
+    label: Editorial & Konten
+    position: editor
+  - id: d_hrd
     label: Pengembangan SDM
-    position: umum
-  - id: d_umum_admin
-    label: Administrasi
-    position: umum
-  - id: d_kerjasama_mpps
-    label: MPPS
-    position: kerjasama
-  - id: d_kerjasama_sfs
-    label: SFS
-    position: kerjasama
-  - id: d_kerjasama_konten
-    label: Konten
-    position: kerjasama
+    position: hrd
+  - id: d_eksternal
+    label: Hubungan Eksternal
+    position: eksternal
   - id: d_lain
     label: Lainnya
     position: lainnya

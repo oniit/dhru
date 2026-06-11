@@ -113,7 +113,7 @@ def classes_for_staff_faculty(faculty_id: str) -> list[str]:
         cid = str(item.get("id") or "")
         if not cid:
             continue
-        if cid == "umum":
+        if cid.startswith("umum_"):
             out.append(cid)
             continue
         if item.get("majors") in majors_in:
@@ -164,7 +164,7 @@ def can_daftar_as_dean(role: str, profile: dict | None) -> bool:
 
 def is_lecturer_profile(profile: dict | None) -> bool:
     jabs = get_user_jabatans(profile)
-    return "d_dosen" in jabs or "d_coach" in jabs
+    return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs
 
 
 def lecturer_class_ids(profile: dict | None) -> list[str]:
@@ -172,7 +172,7 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
         return []
     jabs = get_user_jabatans(profile)
     ids = []
-    if "d_dosen" in jabs:
+    if "d_dosen" in jabs or "d_guru_besar" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("teaching_classes")))
     if "d_coach" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("club_enrolled")))
@@ -204,7 +204,7 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
     ids = []
     has_access = False
     
-    if "d_dosen" in jabatans:
+    if "d_dosen" in jabatans or "d_guru_besar" in jabatans:
         has_access = True
         ids.extend(normalize_multi_choice_value(p.get("teaching_classes")))
     if "d_coach" in jabatans:
@@ -245,7 +245,7 @@ def can_report(role: str, profile: dict | None) -> bool:
 def can_tag_all(role: str, profile: dict | None) -> bool:
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM): return True
     jabatans = get_user_jabatans(profile)
-    return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans
+    return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans or "d_guru_besar" in jabatans
 
 
 def field_label_for_key(field_key: str) -> str:
@@ -317,7 +317,7 @@ def missing_required_fields(profile: dict, role: str) -> list:
             if role in ("student", "bem") or "d_coach" in get_user_jabatans(profile):
                 is_req = True
         elif f.key == "teaching_classes":
-            if "d_dosen" in get_user_jabatans(profile):
+            if "d_dosen" in get_user_jabatans(profile) or "d_guru_besar" in get_user_jabatans(profile):
                 is_req = True
         
         if not is_req:
@@ -380,7 +380,7 @@ def format_profile_card(
             auto = []
             for item in CHOICES.get("classes", []):
                 cid = item.get("id")
-                if cid == "umum":
+                if str(cid).startswith("umum_"):
                     continue
                 m = item.get("majors")
                 if not m or m == major:

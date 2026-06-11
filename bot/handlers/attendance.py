@@ -784,8 +784,9 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
             lines.append("<code>/presensi sesi</code> — Sesi aktif" + (" <i>(terfilter)</i>" if allowed_classes is not None else ""))
             lines.append("<code>/presensi rekap</code> — Rekap kehadiran")
             
-            if "d_dosen" in prof.get("position_detail", []):
-                lines.append("\n<i>Catatan Dosen: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
+            p_jabs = prof.get("position_detail", [])
+            if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs:
+                lines.append("\n<i>Catatan Dosen/Guru Besar: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
             elif "d_dekan" in prof.get("position_detail", []):
                 lines.append("\n<i>Catatan Dekan: data presensi otomatis terfilter ke fakultas lingkup.</i>")
         else:

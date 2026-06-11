@@ -81,10 +81,12 @@ _pc = os.environ.get("PRESENCE_CH_ID", "").strip()
 PRESENCE_CH_ID = int(_pc) if _pc else None
 
 # Agra Rewards Configuration
-AGRA_REWARD_CLASS_HADIR = int(os.environ.get("AGRA_REWARD_CLASS_HADIR", "25") or 25)
-AGRA_REWARD_CLASS_IZIN = int(os.environ.get("AGRA_REWARD_CLASS_IZIN", "10") or 10)
-AGRA_REWARD_STAFF_AUTO = int(os.environ.get("AGRA_REWARD_STAFF_AUTO", "2") or 2)
-AGRA_REWARD_LENGKAPI = int(os.environ.get("AGRA_REWARD_LENGKAPI", "15") or 15)
+_rewards = _load_yaml("rewards.yaml")
+AGRA_REWARD_CLASS_HADIR = int(_rewards.get("class_hadir", 25))
+AGRA_REWARD_CLASS_IZIN = int(_rewards.get("class_izin", 10))
+AGRA_REWARD_STAFF_AUTO = int(_rewards.get("staff_auto", 2))
+AGRA_REWARD_LENGKAPI = int(_rewards.get("lengkapi", 15))
+AGRA_REWARD_TUGAS = int(_rewards.get("tugas", 35))
 
 
 def _parse_id_list(s: str | None) -> set[int]:
@@ -124,6 +126,19 @@ def filtered_choice_items(field_def: FieldDef, profile: dict) -> list[dict]:
     """Opsi untuk field choice/multi_choice; filter by `faculty` di tiap item jika filter_by_field di-set."""
     key = field_def.choices_key or ""
     raw = list(CHOICES.get(key, []))
+    
+    if key == "classes":
+        pd = profile.get("position_detail")
+        jabs = pd if isinstance(pd, list) else ([pd] if pd else [])
+        is_gb = "d_guru_besar" in jabs
+        filtered = []
+        for item in raw:
+            cid = str(item.get("id", ""))
+            if cid.startswith("umum_") and not is_gb:
+                continue
+            filtered.append(item)
+        raw = filtered
+
     parent_key = field_def.filter_by_field
     if not parent_key:
         return raw
@@ -167,7 +182,7 @@ def field_applies_to_role(field_def: FieldDef, role: str, profile: dict | None =
         return False
         
     if field_def.key == "teaching_classes":
-        if has_jabatan("d_dosen"):
+        if has_jabatan("d_dosen") or has_jabatan("d_guru_besar"):
             return True
         return False
 
