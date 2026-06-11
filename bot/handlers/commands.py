@@ -1451,12 +1451,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if fdef.type == "multi_choice" and fdef.choices_key:
                 _multi_init(context, field_key, "ad", tprof)
                 sel = context.user_data[MULTI_UD_KEY]["ids"]
+                opts = filtered_choice_items(fdef, tprof)
                 kb = keyboard_for_multi_choices(
                     field_key,
                     fdef.choices_key,
                     sel,
                     toggle_prefix="admlc",
                     done_prefix="admld",
+                    options=opts,
                 )
                 await db.set_onboarding_step(conn, uid, f"MULTI_AD_LC:{field_key}")
                 await q.edit_message_text(
@@ -1531,12 +1533,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
             if not fdef or not fdef.choices_key:
                 return
+            trow = await user_row(conn, db, tid_target)
+            tprof_now = profile_from_row(trow) if trow else {}
+            opts = filtered_choice_items(fdef, tprof_now)
             kb = keyboard_for_multi_choices(
                 field_key,
                 fdef.choices_key,
                 ids_set,
                 toggle_prefix="admlc",
                 done_prefix="admld",
+                options=opts,
             )
             await q.edit_message_text(
                 f"Pilih <b>{fdef.label}</b> (multi) untuk <code>{tid_target}</code>.",
@@ -1699,12 +1705,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         _multi_init(context, field_key, "lc", profile)
         sel = context.user_data[MULTI_UD_KEY]["ids"]
+        opts = filtered_choice_items(fdef, profile)
         kb = keyboard_for_multi_choices(
             field_key,
             fdef.choices_key,
             sel,
             toggle_prefix="mlc",
             done_prefix="mld",
+            options=opts,
         )
         await db.set_onboarding_step(conn, uid, f"MULTI_LC:{field_key}")
         await q.edit_message_text(
@@ -1725,12 +1733,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         profile = profile_from_row(row) if row else {}
         _multi_init(context, field_key, "ec", profile)
         sel = context.user_data[MULTI_UD_KEY]["ids"]
+        opts = filtered_choice_items(fdef, profile)
         kb = keyboard_for_multi_choices(
             field_key,
             fdef.choices_key,
             sel,
             toggle_prefix="mec",
             done_prefix="med",
+            options=opts,
         )
         await db.set_onboarding_step(conn, uid, f"MULTI_EC:{field_key}")
         await q.edit_message_text(
@@ -1769,12 +1779,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         if not fdef or not fdef.choices_key:
             return
+        row_now = await user_row(conn, db, uid)
+        prof_now = profile_from_row(row_now) if row_now else {}
+        opts = filtered_choice_items(fdef, prof_now)
         kb = keyboard_for_multi_choices(
             field_key,
             fdef.choices_key,
             ids,
             toggle_prefix="mlc",
             done_prefix="mld",
+            options=opts,
         )
         await q.edit_message_text(
             f"Pilih satu atau lebih <b>{fdef.label}</b> (ketuk untuk centang, lalu <b>Selesai</b>).",
@@ -1866,12 +1880,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         if not fdef or not fdef.choices_key:
             return
+        row_now = await user_row(conn, db, uid)
+        prof_now = profile_from_row(row_now) if row_now else {}
+        opts = filtered_choice_items(fdef, prof_now)
         kb = keyboard_for_multi_choices(
             field_key,
             fdef.choices_key,
             ids,
             toggle_prefix="mec",
             done_prefix="med",
+            options=opts,
         )
         await q.edit_message_text(
             f"Pilih nilai baru <b>{fdef.label}</b> (bisa banyak). Ajuan dikirim setelah <b>Selesai</b>.",

@@ -245,7 +245,7 @@ def can_report(role: str, profile: dict | None) -> bool:
 def can_tag_all(role: str, profile: dict | None) -> bool:
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM): return True
     jabatans = get_user_jabatans(profile)
-    return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans or "d_guru_besar" in jabatans
+    return "d_umum_admin" in jabatans or "d_dekan" in jabatans or "d_dosen" in jabatans or "d_guru_besar" in jabatans or "d_coach" in jabatans
 
 
 def field_label_for_key(field_key: str) -> str:
@@ -467,8 +467,9 @@ def keyboard_for_multi_choices(
     *,
     toggle_prefix: str,
     done_prefix: str,
+    options: list[dict] | None = None,
 ) -> InlineKeyboardMarkup:
-    opts = CHOICES.get(choices_key, [])
+    opts = options if options is not None else CHOICES.get(choices_key, [])
     rows: list[list[InlineKeyboardButton]] = []
     for item in opts:
         cid = str(item.get("id", ""))
