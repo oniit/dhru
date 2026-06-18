@@ -80,6 +80,9 @@ BACKUP_CH_ID = int(_bc) if _bc else None
 _pc = os.environ.get("PRESENCE_CH_ID", "").strip()
 PRESENCE_CH_ID = int(_pc) if _pc else None
 
+_tc = os.environ.get("TASK_CH_ID", "").strip()
+TASK_CH_ID = int(_tc) if _tc else None
+
 # Agra Rewards Configuration
 _rewards = _load_yaml("rewards.yaml")
 AGRA_REWARD_CLASS_HADIR = int(_rewards.get("class_hadir", 25))

@@ -168,13 +168,18 @@ async def _generate_and_send_kontrak(
     start_str, end_str, end_ts = calculate_contract_period(start_ts)
     period_str = f"{start_str} s/d {end_str}"
     
+    # Ambil username
+    username_str = f"@{update.effective_user.username}" if update.effective_user.username else "—"
+    
     msg = await update.message.reply_text("Sedang meng-generate kontrak, mohon tunggu...")
     
     try:
         png_bytes = render_kontrak_png_bytes(
             name=name,
             role_detail=role_detail,
-            period_str=period_str,
+            username=username_str,
+            start_date_str=start_str,
+            end_date_str=end_str,
             ttd_bytes=photo_bytes,
         )
     except Exception as e:
@@ -190,7 +195,7 @@ async def _generate_and_send_kontrak(
             "contract_end_ts": end_ts,
         })
     
-    cap = f"Kontrak Kerja ({role_detail})\nPeriode: {period_str}"
+    cap = f"Kontrak Kerja ({role_detail})\nNama: {name}\nPeriode: {period_str}"
     if is_admin_check:
         cap = f"Kontrak (Admin View) - {name}\nPeriode: {period_str}"
 

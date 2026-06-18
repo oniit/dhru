@@ -13,32 +13,51 @@ from bot.settings import ROOT
 log = logging.getLogger(__name__)
 
 TEMPLATE_PATH = ROOT / "assets" / "kontrak.png"
-FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
+MUKTA_FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 
 # Koordinat perkiraan untuk template A4/Dokumen (misal 1240 x 1754 pixel)
 CARD_W, CARD_H = 1240, 1754
 TEXT_COLOR = (0, 0, 0)
 
 # Posisi teks:
-# (x, y) untuk Nama, Jabatan, Masa Kontrak
-NAME_POS = (450, 600)
-ROLE_POS = (450, 680)
-PERIOD_POS = (450, 760)
+# (x, y) untuk Nama, Jabatan, Masa Akhir Kontrak
+# Ubah angka X dan Y di bawah ini untuk menggeser posisinya!
+NAME_POS = (342, 590)
+ROLE_POS = (342, 622)
+USERNAME_POS = (342, 654)
+END_DATE_POS = (666, 1185)
 
-TEXT_SIZE = 40
+TEXT_SIZE = 25
+
+# Posisi tanggal mulai (di atas TTD)
+START_DATE_POS = (895, 1342)
+
+TEXT_SIZE = 25
 
 # Posisi kotak TTD di bagian bawah dokumen
-TTD_SLOT = (750, 1300, 400, 250) # x, y, width, height
+TTD_SLOT = (820, 1380, 200, 150) # x, y, width, height
+
+# Posisi Nama (ditulis ulang di bawah TTD)
+# Koordinat X (910) adalah titik tengah dari kotak TTD (810 + 200/2)
+NAME_BOTTOM_POS = (920, 1510)
+
+# Ukuran font khusus untuk nama di bawah TTD (misalnya lebih besar sedikit)
+TEXT_SIZE_BOTTOM = 28
 
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _load_mukta_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     try:
-        return ImageFont.truetype(str(FONT_PATH), size=size)
+        return ImageFont.truetype(str(MUKTA_FONT_PATH), size=size)
     except OSError:
-        try:
-            return ImageFont.truetype("arial.ttf", size=size)
-        except OSError:
-            return ImageFont.load_default()
+        return _load_font(size, is_bold=False)
+
+def _load_font(size: int, is_bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    # arialbd.ttf = Arial Bold, arial.ttf = Arial Regular bawaan Windows
+    font_name = "arialbd.ttf" if is_bold else "arial.ttf"
+    try:
+        return ImageFont.truetype(font_name, size=size)
+    except OSError:
+        return ImageFont.load_default()
 
 
 def _paste_ttd_multiply(base: Image.Image, ttd_bytes: bytes, sx: float, sy: float) -> None:
@@ -72,7 +91,9 @@ def render_kontrak_png_bytes(
     *,
     name: str,
     role_detail: str,
-    period_str: str,
+    username: str,
+    start_date_str: str,
+    end_date_str: str,
     ttd_bytes: bytes,
 ) -> bytes:
     if not TEMPLATE_PATH.is_file():
@@ -98,22 +119,47 @@ def render_kontrak_png_bytes(
 
     # Tulis teks
     draw = ImageDraw.Draw(im)
-    font = _load_font(int(TEXT_SIZE * sy))
+    font_regular = _load_font(int(TEXT_SIZE * sy), is_bold=False)
+    font_bold = _load_font(int(TEXT_SIZE * sy), is_bold=True)
+    font_mukta = _load_mukta_font(int(TEXT_SIZE_BOTTOM * sy))
 
-    # Nama
+    # Nama (Bold)
     nx = int(NAME_POS[0] * sx)
     ny = int(NAME_POS[1] * sy)
-    draw.text((nx, ny), name, font=font, fill=TEXT_COLOR)
+    draw.text((nx, ny), name, font=font_bold, fill=TEXT_COLOR)
 
-    # Jabatan
+    # Nama (Di bawah TTD, Mukta, Kapital Semua, Tengah, Truncate)
+    display_name = name.upper()
+    max_w = int(400 * sx)  # Batas lebar maksimal teks diperlebar jadi 450 pixel
+    if draw.textlength(display_name, font=font_mukta) > max_w:
+        while len(display_name) > 0 and draw.textlength(display_name + "...", font=font_mukta) > max_w:
+            display_name = display_name[:-1]
+        display_name += "..."
+
+    nb_x = int(NAME_BOTTOM_POS[0] * sx)
+    nb_y = int(NAME_BOTTOM_POS[1] * sy)
+    # anchor="mt" berarti posisi nb_x adalah middle (tengah), nb_y adalah top (atas)
+    draw.text((nb_x, nb_y), display_name, font=font_mukta, fill=TEXT_COLOR, anchor="mt")
+
+    # Jabatan (Bold)
     rx = int(ROLE_POS[0] * sx)
     ry = int(ROLE_POS[1] * sy)
-    draw.text((rx, ry), role_detail, font=font, fill=TEXT_COLOR)
+    draw.text((rx, ry), role_detail, font=font_bold, fill=TEXT_COLOR)
 
-    # Periode
-    px = int(PERIOD_POS[0] * sx)
-    py = int(PERIOD_POS[1] * sy)
-    draw.text((px, py), period_str, font=font, fill=TEXT_COLOR)
+    # Username (Bold)
+    ux = int(USERNAME_POS[0] * sx)
+    uy = int(USERNAME_POS[1] * sy)
+    draw.text((ux, uy), username, font=font_bold, fill=TEXT_COLOR)
+
+    # Masa Akhir Kontrak (Bold)
+    px = int(END_DATE_POS[0] * sx)
+    py = int(END_DATE_POS[1] * sy)
+    draw.text((px, py), end_date_str, font=font_bold, fill=TEXT_COLOR)
+
+    # Tanggal Mulai Kontrak (Regular)
+    sx_start = int(START_DATE_POS[0] * sx)
+    sy_start = int(START_DATE_POS[1] * sy)
+    draw.text((sx_start, sy_start), start_date_str, font=font_regular, fill=TEXT_COLOR)
 
     # Tanda Tangan
     if ttd_bytes:
