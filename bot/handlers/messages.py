@@ -55,10 +55,14 @@ async def on_private_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     step = row["onboarding_step"] or ""
     
+    from .kontrak import STEP_KONTRAK_TTD, on_kontrak_ttd
+    
     if step == STEP_KTM_PHOTO:
         await on_ktm_photo(update, context)
     elif step == STEP_KARPEG_PHOTO:
         await on_karpeg_photo(update, context)
+    elif step == STEP_KONTRAK_TTD:
+        await on_kontrak_ttd(update, context)
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.text:
@@ -93,8 +97,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
         code_row = await cur.fetchone()
         if code_row:
+            target_role = code_row["target_role"] if "target_role" in code_row.keys() else "student"
             await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ?", (uid, time.time(), code))
-            await db.set_role(conn, uid, "student")
+            await db.set_role(conn, uid, target_role)
             await db.set_onboarding_step(conn, uid, None)
             await conn.commit()
             
@@ -110,12 +115,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         text=f"🔑 <b>Kode Akses Digunakan</b>\n"
                              f"<b>Oleh:</b> {name_str} ({username_str})\n"
                              f"<b>ID:</b> <code>{u.id}</code>\n"
+                             f"<b>Role:</b> <code>{target_role}</code>\n"
                              f"<b>Kode:</b> <code>{code}</code>"
                     )
                 except Exception:
                     pass
             
-            await update.message.reply_text("Kode valid! Role Anda telah diperbarui menjadi student.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
+            if target_role == "internal":
+                await update.message.reply_text("🔑 Kode akses internal valid! Peran Anda kini diubah menjadi Staf Internal.\nSilakan lengkapi profil Anda dengan mengetik /lengkapi.")
+            else:
+                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
             await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
         return
@@ -193,7 +202,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await db.add_audit(conn, uid, "profile_direct_update", field_key)
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         lab = fdef.label if fdef else field_label_for_key(field_key)
-        await update.message.reply_text(f"✅ {lab} disimpan.")
+        
+        new_row = await user_row(conn, db, uid)
+        new_profile = profile_from_row(new_row)
+        if _is_lengkapi_done(new_profile) and not _is_lengkapi_done(profile):
+            if new_row["role"] == "internal":
+                await update.message.reply_text(f"✅ {lab} disimpan.\n\n✨ Profil Anda telah lengkap! Sekarang, silakan buat kontrak kerja Anda dengan mengetik /kontrak.")
+            else:
+                await update.message.reply_text(f"✅ {lab} disimpan.\n\n✨ Profil Anda telah lengkap!")
+        else:
+            await update.message.reply_text(f"✅ {lab} disimpan.")
         return
 
     if step.startswith("TEXT_EC:"):

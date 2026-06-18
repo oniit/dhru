@@ -279,19 +279,27 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     parts = update.message.text.split()
     count = 1
+    target_role = "student"
+    
     if len(parts) > 1 and parts[1].isdigit():
         count = int(parts[1])
+    if len(parts) > 2:
+        target_role = parts[2].lower()
+        if target_role not in (ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT):
+            await update.message.reply_text("Role target tidak valid. Gunakan: admin, internal, bem, atau student.")
+            return
+
     if count > 100: count = 100
     
     codes = []
     now = time.time()
     for _ in range(count):
-        codes.append((''.join(random.choices(string.ascii_uppercase + string.digits, k=10)), now))
+        codes.append((''.join(random.choices(string.ascii_uppercase + string.digits, k=10)), now, target_role))
     
-    await conn.executemany("INSERT INTO access_codes (code, created_at) VALUES (?, ?)", codes)
+    await conn.executemany("INSERT INTO access_codes (code, created_at, target_role) VALUES (?, ?, ?)", codes)
     await conn.commit()
     
-    await update.message.reply_text(f"Berhasil generate {count} kode akses:\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes))
+    await update.message.reply_text(f"Berhasil generate {count} kode akses (Role: {target_role}):\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes))
 
 
 async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -607,9 +615,14 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     miss = missing_required_fields(profile, role)
     if not miss:
         await db.set_profile_partial(conn, uid, {LENGKAPI_DONE_KEY: True})
-        await update.message.reply_text(
-            "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
-        )
+        if role == "internal":
+            await update.message.reply_text(
+                "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Silakan buat kontrak kerja Anda dengan mengetik /kontrak."
+            )
+        else:
+            await update.message.reply_text(
+                "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
+            )
         return
     target_fields_raw = miss + optional_fields_still_open(profile, role)
     target_fields = []

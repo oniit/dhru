@@ -210,7 +210,8 @@ CREATE TABLE IF NOT EXISTS access_codes (
     code TEXT PRIMARY KEY,
     created_at REAL NOT NULL,
     used_by INTEGER,
-    used_at REAL
+    used_at REAL,
+    target_role TEXT NOT NULL DEFAULT 'student'
 );
 
 CREATE TABLE IF NOT EXISTS triggers (
@@ -310,6 +311,12 @@ class Database:
         if "status" not in rec_cols:
             await conn.execute(
                 "ALTER TABLE attendance_records ADD COLUMN status TEXT NOT NULL DEFAULT 'hadir'"
+            )
+        cur = await conn.execute("PRAGMA table_info(access_codes)")
+        ac_cols = {str(r[1]) for r in await cur.fetchall()}
+        if "target_role" not in ac_cols:
+            await conn.execute(
+                "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"
             )
         await conn.commit()
         return conn
