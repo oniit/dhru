@@ -52,12 +52,19 @@ def _load_mukta_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         return _load_font(size, is_bold=False)
 
 def _load_font(size: int, is_bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    # arialbd.ttf = Arial Bold, arial.ttf = Arial Regular bawaan Windows
-    font_name = "arialbd.ttf" if is_bold else "arial.ttf"
+    # Coba load dari folder assets terlebih dahulu (perhatikan case-sensitive di Termux)
+    asset_font_name = "ARIALBD.TTF" if is_bold else "ARIAL.TTF"
+    asset_font_path = ROOT / "assets" / asset_font_name
+    
     try:
-        return ImageFont.truetype(font_name, size=size)
+        return ImageFont.truetype(str(asset_font_path), size=size)
     except OSError:
-        return ImageFont.load_default()
+        # Fallback ke Arial bawaan sistem OS (untuk PC)
+        sys_font_name = "arialbd.ttf" if is_bold else "arial.ttf"
+        try:
+        return ImageFont.truetype(font_name, size=size)
+            except OSError:
+                return ImageFont.load_default()
 
 
 def _paste_ttd_multiply(base: Image.Image, ttd_bytes: bytes, sx: float, sy: float) -> None:
