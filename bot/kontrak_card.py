@@ -17,7 +17,7 @@ MUKTA_FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 
 # Koordinat perkiraan untuk template A4/Dokumen (misal 1240 x 1754 pixel)
 CARD_W, CARD_H = 1240, 1754
-TEXT_COLOR = (0, 0, 0)
+TEXT_COLOR = "#333132"
 
 # Posisi teks:
 # (x, y) untuk Nama, Jabatan, Masa Akhir Kontrak
