@@ -78,10 +78,21 @@ async def daily_backup(context):
     except Exception as e:
         print("Failed to send DB backup:", e)
 
+async def daily_auto_close_tasks(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    closed_ids = await db.auto_close_stale_tasks(conn)
+    if closed_ids:
+        print(f"Auto-closed {len(closed_ids)} stale tasks.")
+
 def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
     
+    # Run daily at midnight UTC
+    jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0))
+
     if BACKUP_CH_ID:
         jq.run_daily(daily_backup, datetime.time(hour=0, minute=0, second=0))
         

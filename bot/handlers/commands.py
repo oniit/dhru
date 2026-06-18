@@ -336,11 +336,14 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
     if role in (ROLE_STUDENT, ROLE_BEM):
         lines.append(
             "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
+            "/tugas — Menu & Dashboard Tugas\n"
             "/ktm — Kartu tanda mahasiswa\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
-            "<b>Staf / Dosen</b>\n/karpeg — Kartu Pegawai\n"
+            "<b>Staf / Pengajar</b>\n"
+            "/tugas — Menu Buka/Kelola Tugas\n"
+            "/karpeg — Kartu Pegawai\n"
         )
     if can_report(role, prof) or can_open_presensi:
         lines.extend([
@@ -1384,6 +1387,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from . import attendance
 
         await attendance.cb_attendance_action(update, context)
+        return
+
+    if (
+        data.startswith("tb:") or data == "tgbuka" or 
+        data.startswith("tsi:") or data.startswith("tdv:") or 
+        data.startswith("tsv:") or data.startswith("tacc:") or 
+        data.startswith("trej:")
+    ):
+        from . import tugas
+        await tugas.cb_tugas(update, context)
         return
 
     conn = _conn(context)

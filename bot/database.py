@@ -227,6 +227,35 @@ CREATE TABLE IF NOT EXISTS bot_chats (
     is_active INTEGER DEFAULT 1,
     updated_at REAL
 );
+
+CREATE TABLE IF NOT EXISTS task_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    is_open INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (created_by) REFERENCES users(telegram_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'submitted',
+    reject_reason TEXT,
+    channel_message_id INTEGER,
+    reviewed_by INTEGER,
+    submitted_at REAL NOT NULL,
+    reviewed_at REAL,
+    UNIQUE(task_id, student_id),
+    FOREIGN KEY (task_id) REFERENCES task_assignments(id),
+    FOREIGN KEY (student_id) REFERENCES users(telegram_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_class ON task_assignments(class_id);
+CREATE INDEX IF NOT EXISTS idx_task_sub ON task_submissions(task_id);
 """
 
 
@@ -943,6 +972,182 @@ class Database:
         cur = await conn.execute(query)
         rows = await cur.fetchall()
         return [(int(r["chat_id"]), r["title"]) for r in rows]
+
+    # ── Task Assignment Methods ──────────────────────────────────────
+
+    async def create_task(
+        self, conn: aiosqlite.Connection, *, class_id: str, title: str, created_by: int
+    ) -> int:
+        now = time.time()
+        cur = await conn.execute(
+            """
+            INSERT INTO task_assignments (class_id, title, created_by, created_at, is_open)
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (class_id, title, created_by, now),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def get_task(self, conn: aiosqlite.Connection, task_id: int) -> aiosqlite.Row | None:
+        cur = await conn.execute("SELECT * FROM task_assignments WHERE id = ?", (task_id,))
+        return await cur.fetchone()
+
+    async def list_tasks_for_classes(
+        self, conn: aiosqlite.Connection, class_ids: list[str], only_open: bool = True
+    ) -> list[aiosqlite.Row]:
+        if not class_ids:
+            return []
+        ph = ",".join("?" * len(class_ids))
+        where = f"class_id IN ({ph})"
+        if only_open:
+            where += " AND is_open = 1"
+        cur = await conn.execute(
+            f"SELECT * FROM task_assignments WHERE {where} ORDER BY created_at DESC",
+            class_ids,
+        )
+        return await cur.fetchall()
+
+    async def list_tasks_by_lecturer(
+        self, conn: aiosqlite.Connection, lecturer_id: int, only_open: bool = False
+    ) -> list[aiosqlite.Row]:
+        if only_open:
+            cur = await conn.execute(
+                "SELECT * FROM task_assignments WHERE created_by = ? AND is_open = 1 ORDER BY created_at DESC",
+                (lecturer_id,),
+            )
+        else:
+            cur = await conn.execute(
+                "SELECT * FROM task_assignments WHERE created_by = ? ORDER BY created_at DESC",
+                (lecturer_id,),
+            )
+        return await cur.fetchall()
+
+    async def submit_task(
+        self, conn: aiosqlite.Connection, *, task_id: int, student_id: int, content: str
+    ) -> int:
+        now = time.time()
+        # Upsert: if rejected or already submitted (not accepted), allow resubmit
+        cur = await conn.execute(
+            "SELECT id, status FROM task_submissions WHERE task_id = ? AND student_id = ?",
+            (task_id, student_id),
+        )
+        existing = await cur.fetchone()
+        if existing:
+            if existing["status"] == "accepted":
+                return -1  # already accepted, cannot resubmit
+            await conn.execute(
+                """
+                UPDATE task_submissions
+                SET content = ?, status = 'submitted', reject_reason = NULL,
+                    channel_message_id = NULL, reviewed_by = NULL,
+                    submitted_at = ?, reviewed_at = NULL
+                WHERE id = ?
+                """,
+                (content, now, existing["id"]),
+            )
+            await conn.commit()
+            return int(existing["id"])
+        cur = await conn.execute(
+            """
+            INSERT INTO task_submissions (task_id, student_id, content, status, submitted_at)
+            VALUES (?, ?, ?, 'submitted', ?)
+            """,
+            (task_id, student_id, content, now),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def get_submission(
+        self, conn: aiosqlite.Connection, submission_id: int
+    ) -> aiosqlite.Row | None:
+        cur = await conn.execute("SELECT * FROM task_submissions WHERE id = ?", (submission_id,))
+        return await cur.fetchone()
+
+    async def get_submission_by_task_student(
+        self, conn: aiosqlite.Connection, task_id: int, student_id: int
+    ) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM task_submissions WHERE task_id = ? AND student_id = ?",
+            (task_id, student_id),
+        )
+        return await cur.fetchone()
+
+    async def list_submissions_for_task(
+        self, conn: aiosqlite.Connection, task_id: int
+    ) -> list[aiosqlite.Row]:
+        cur = await conn.execute(
+            """
+            SELECT ts.*, u.username, u.first_name, u.profile_json
+            FROM task_submissions ts
+            JOIN users u ON u.telegram_id = ts.student_id
+            WHERE ts.task_id = ?
+            ORDER BY ts.submitted_at DESC
+            """,
+            (task_id,),
+        )
+        return await cur.fetchall()
+
+    async def review_submission(
+        self,
+        conn: aiosqlite.Connection,
+        submission_id: int,
+        *,
+        accept: bool,
+        reviewed_by: int,
+        reason: str | None = None,
+    ) -> bool:
+        cur = await conn.execute(
+            "SELECT * FROM task_submissions WHERE id = ?", (submission_id,)
+        )
+        row = await cur.fetchone()
+        if not row or row["status"] == "accepted":
+            return False
+        now = time.time()
+        status = "accepted" if accept else "rejected"
+        await conn.execute(
+            """
+            UPDATE task_submissions
+            SET status = ?, reviewed_by = ?, reviewed_at = ?, reject_reason = ?
+            WHERE id = ?
+            """,
+            (status, reviewed_by, now, reason if not accept else None, submission_id),
+        )
+        await conn.commit()
+        return True
+
+    async def set_submission_channel_message(
+        self, conn: aiosqlite.Connection, submission_id: int, message_id: int
+    ) -> None:
+        await conn.execute(
+            "UPDATE task_submissions SET channel_message_id = ? WHERE id = ?",
+            (message_id, submission_id),
+        )
+        await conn.commit()
+
+    async def close_task(self, conn: aiosqlite.Connection, task_id: int) -> None:
+        await conn.execute(
+            "UPDATE task_assignments SET is_open = 0 WHERE id = ?", (task_id,)
+        )
+        await conn.commit()
+
+    async def auto_close_stale_tasks(self, conn: aiosqlite.Connection) -> list[int]:
+        """Close tasks older than 7 days. Returns list of closed task IDs."""
+        cutoff = time.time() - 7 * 24 * 3600  # 1 week
+        cur = await conn.execute(
+            "SELECT id FROM task_assignments WHERE is_open = 1 AND created_at < ?",
+            (cutoff,),
+        )
+        rows = await cur.fetchall()
+        closed_ids = [int(r["id"]) for r in rows]
+        if closed_ids:
+            ph = ",".join("?" * len(closed_ids))
+            await conn.execute(
+                f"UPDATE task_assignments SET is_open = 0 WHERE id IN ({ph})",
+                closed_ids,
+            )
+            await conn.commit()
+        return closed_ids
 
     @staticmethod
     def _rowcount(cur: aiosqlite.Cursor) -> int:

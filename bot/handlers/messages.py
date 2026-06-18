@@ -126,6 +126,21 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Atau ketik /start untuk membatalkan."
         )
         return
+
+    if step.startswith("TUGAS_JUDUL:"):
+        from .tugas import handle_tugas_judul
+        await handle_tugas_judul(update, context, step.split(":", 1)[1])
+        return
+
+    if step.startswith("TUGAS_INPUT:"):
+        from .tugas import handle_tugas_input
+        await handle_tugas_input(update, context, int(step.split(":", 1)[1]))
+        return
+
+    if step.startswith("TUGAS_TOLAK:"):
+        from .tugas import handle_tugas_tolak
+        await handle_tugas_tolak(update, context, int(step.split(":", 1)[1]))
+        return
     if step.startswith("ADMIN_TEXT_LC:") or step.startswith("TEXT_LC:") or step.startswith("TEXT_EC:"):
         field_key = step.split(":", 1)[1]
         
