@@ -90,11 +90,11 @@ positions:
   - id: pembina
     label: Āchāryata आचार्यता
   - id: editor
-    label: Sampādaka सम्पादक
+    label: Śilpācārya शिल्पाचार्य
   - id: hrd
     label: Upāchārya उपचर्या
   - id: eksternal
-    label: Sambandha सम्बन्ध
+    label: Kāryācārya कार्याचार्य
   - id: sarpras
     label: Parichārya परिचर्या
   - id: lainnya
