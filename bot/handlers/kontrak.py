@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime
@@ -171,6 +172,24 @@ async def _generate_and_send_kontrak(
     # Ambil username
     username_str = f"@{update.effective_user.username}" if update.effective_user.username else "—"
     
+    # Nomor Surat
+    seq = profile.get("contract_seq_no")
+    if not seq:
+        cur = await conn.execute("SELECT profile_json FROM users")
+        rows = await cur.fetchall()
+        max_seq = 0
+        for r in rows:
+            p = json.loads(r["profile_json"] or "{}")
+            s = p.get("contract_seq_no")
+            if s and isinstance(s, int) and s > max_seq:
+                max_seq = s
+        seq = max_seq + 1
+
+    dt_start = datetime.fromtimestamp(start_ts)
+    romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
+    roman_month = romans[dt_start.month - 1]
+    nomor_surat = f"{seq:04d}/DK.A/{roman_month}/{dt_start.year}"
+    
     msg = await update.message.reply_text("Sedang meng-generate kontrak, mohon tunggu...")
     
     try:
@@ -181,6 +200,7 @@ async def _generate_and_send_kontrak(
             start_date_str=start_str,
             end_date_str=end_str,
             ttd_bytes=photo_bytes,
+            nomor_surat=nomor_surat,
         )
     except Exception as e:
         log.exception("render kontrak gagal uid=%s", uid)
@@ -193,6 +213,7 @@ async def _generate_and_send_kontrak(
             "contract_start": start_str,
             "contract_end": end_str,
             "contract_end_ts": end_ts,
+            "contract_seq_no": seq,
         })
     
     cap = f"Kontrak Kerja ({role_detail})\nNama: {name}\nPeriode: {period_str}"
@@ -255,6 +276,7 @@ async def cmd_kontrak_all(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c_start = p.get("contract_start")
         c_end = p.get("contract_end")
         c_end_ts = p.get("contract_end_ts")
+        c_seq = p.get("contract_seq_no")
         
         status = "❌ Belum TTD"
         if has_ttd:
@@ -268,7 +290,8 @@ async def cmd_kontrak_all(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 status = "Aktif"
                 
         period_info = f"{c_start} - {c_end}" if c_end else "—"
-        lines.append(f"• <b>{name}</b> {uname}")
+        seq_str = f"[ID: {c_seq:04d}] " if isinstance(c_seq, int) else ""
+        lines.append(f"• {seq_str}<b>{name}</b> {uname}")
         lines.append(f"  Status: {status} | Periode: {period_info}")
         
     text = "\n".join(lines)
@@ -340,12 +363,26 @@ async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("Tidak diizinkan.")
             return
         if len(context.args) < 2:
-            await update.message.reply_text("Gunakan: /kontrak check @username")
+            await update.message.reply_text("Gunakan: /kontrak check @username atau /kontrak check <id>")
             return
         target = context.args[1]
-        target_ids = await db.find_ids_by_usernames(conn, [target])
+        
+        target_ids = []
+        if target.isdigit():
+            seq_target = int(target)
+            cur = await conn.execute("SELECT telegram_id, profile_json FROM users")
+            rows = await cur.fetchall()
+            for r in rows:
+                p = json.loads(r["profile_json"] or "{}")
+                if p.get("contract_seq_no") == seq_target:
+                    target_ids.append(r["telegram_id"])
+                    break
+                    
         if not target_ids:
-            await update.message.reply_text("User tidak ditemukan.")
+            target_ids = await db.find_ids_by_usernames(conn, [target])
+            
+        if not target_ids:
+            await update.message.reply_text("User atau ID kontrak tidak ditemukan.")
             return
         await _generate_and_send_kontrak(update, context, target_ids[0], time.time(), is_admin_check=True)
     else:

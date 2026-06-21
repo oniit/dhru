@@ -22,6 +22,8 @@ TEXT_COLOR = "#333132"
 # Posisi teks:
 # (x, y) untuk Nama, Jabatan, Masa Akhir Kontrak
 # Ubah angka X dan Y di bawah ini untuk menggeser posisinya!
+NOMOR_SURAT_POS = (660, 335) # Koordinat tengah untuk Nomor Surat (di atas bgt)
+NOMOR_SURAT_SIZE = 22
 NAME_POS = (342, 590)
 ROLE_POS = (342, 622)
 USERNAME_POS = (342, 654)
@@ -96,6 +98,7 @@ def render_kontrak_png_bytes(
     start_date_str: str,
     end_date_str: str,
     ttd_bytes: bytes,
+    nomor_surat: str = "",
 ) -> bytes:
     if not TEMPLATE_PATH.is_file():
         # Buat gambar putih sementara jika tidak ada template
@@ -123,6 +126,14 @@ def render_kontrak_png_bytes(
     font_regular = _load_font(int(TEXT_SIZE * sy), is_bold=False)
     font_bold = _load_font(int(TEXT_SIZE * sy), is_bold=True)
     font_mukta = _load_mukta_font(int(TEXT_SIZE_BOTTOM * sy))
+
+    # Nomor Surat (Di Atas)
+    if nomor_surat:
+        font_nomor_surat = _load_font(int(NOMOR_SURAT_SIZE * sy), is_bold=False)
+        ns_x = int(NOMOR_SURAT_POS[0] * sx)
+        ns_y = int(NOMOR_SURAT_POS[1] * sy)
+        # anchor="mm" agar teks berada persis di tengah koordinat
+        draw.text((ns_x, ns_y), nomor_surat, font=font_nomor_surat, fill=TEXT_COLOR, anchor="mm")
 
     # Nama (Bold)
     nx = int(NAME_POS[0] * sx)

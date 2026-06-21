@@ -38,7 +38,7 @@ PHOTO_SLOT = (103, 145, 275, 367)
 PHOTO_CORNER_RADIUS_FRAC = 0.11  # relatif ke min(w,h) slot
 
 # Bump jika layout teks / foto diubah (cache lama tidak dipakai lagi).
-_LAYOUT_VERSION = 3
+_LAYOUT_VERSION = 4
 
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 128
@@ -147,6 +147,7 @@ def cache_payload_for_profile(profile: dict, agra: int, role: str) -> dict:
         "role": role,
         "agra": int(agra),
         "karpeg_photo_file_id": (profile.get("karpeg_photo_file_id") or "").strip(),
+        "contract_end": (profile.get("contract_end") or "").strip(),
     }
 
 
@@ -223,6 +224,7 @@ def render_karpeg_png_bytes(
     font_body = _load_font(int(NIM_SIZE * sy))
     font_small = _load_font(int(CLUB_SIZE * sy))
     font_agra = _load_font(int(AGRA_SIZE * sy))
+    font_footer = _load_font(int(18 * sy))
 
     name = (payload.get("full_name") or "—").strip() or "—"
     
@@ -295,6 +297,12 @@ def render_karpeg_png_bytes(
     y += int(6 * sy)
     
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)
+
+    # Berlaku Sampai (Contract End) di footer
+    contract_end = payload.get("contract_end") or "—"
+    footer_x = int(875 * sx)
+    footer_y = int(557 * sy) # asalnya 567, dinaikkan sedikit
+    draw.text((footer_x, footer_y), contract_end, font=font_footer, fill=(255, 255, 255))
 
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)
