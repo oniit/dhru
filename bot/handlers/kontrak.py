@@ -263,8 +263,14 @@ async def cmd_kontrak_all(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Tidak ada staf internal terdaftar.")
         return
         
-    lines = ["📑 <b>Daftar Kontrak Staf Internal</b>", ""]
     now_ts = time.time()
+    start_str, end_str, _ = calculate_contract_period(now_ts)
+    
+    lines = [
+        "📑 <b>Daftar Kontrak Staf Internal</b>",
+        f"Periode: {start_str} - {end_str}",
+        ""
+    ]
     
     for r in rows:
         p = profile_from_row(r)
@@ -272,26 +278,24 @@ async def cmd_kontrak_all(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         uname = f"(@{r['username']})" if r["username"] else ""
         
         has_ttd = bool((p.get("ttd_file_id") or "").strip())
-        c_start = p.get("contract_start")
-        c_end = p.get("contract_end")
         c_end_ts = p.get("contract_end_ts")
         c_seq = p.get("contract_seq_no")
         
-        status = "❌ Belum TTD"
+        status_icon = "❌"
         if has_ttd:
             if not c_end_ts:
-                status = "⚠️ Sudah TTD (Belum Generate)"
+                status_icon = "🔄"
             elif now_ts > float(c_end_ts):
-                status = "Expired"
+                status_icon = "❌"
             elif (float(c_end_ts) - now_ts) < (7 * 24 * 3600):
-                status = "Menjelang Expired"
+                status_icon = "⚠️"
             else:
-                status = "Aktif"
+                status_icon = "✅"
                 
-        period_info = f"{c_start} - {c_end}" if c_end else "—"
         seq_str = f"[ID: {c_seq:04d}] " if isinstance(c_seq, int) else ""
-        lines.append(f"• {seq_str}<b>{name}</b> {uname}")
-        lines.append(f"  Status: {status} | Periode: {period_info}")
+        
+        user_line = f"• {status_icon} {seq_str}<b>{name}</b> {uname}".strip()
+        lines.append(user_line)
         
     text = "\n".join(lines)
     if len(text) > 4000:
