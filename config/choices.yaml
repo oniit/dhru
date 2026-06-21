@@ -17,8 +17,8 @@ majors:
   - id: sm
     label: Seni Musik
     faculty: fib
-  - id: kv
-    label: Komunikasi Visual
+  - id: st
+    label: Seni Teater
     faculty: fib
 
 classes:
@@ -60,14 +60,14 @@ classes:
     majors: sm
     sks: 3
 
-  # FIB - Kreatif
-  - id: dg
-    label: Desain Grafis
-    majors: kv
+  # FIB - Teater
+  - id: dt
+    label: Dasar Teater
+    majors: st
     sks: 3
-  - id: st
-    label: Storytelling
-    majors: kv
+  - id: tp
+    label: Teknik Pementasan
+    majors: st
     sks: 3
 
 positions:
@@ -89,13 +89,13 @@ positions:
     label: Āchāryaka आचार्यक
   - id: pembina
     label: Āchāryata आचार्यता
-  - id: sarpras
-    label: Upāchārya उपचर्या
   - id: editor
     label: Upāchārya उपचर्या
   - id: hrd
-    label: Parichārya परिचर्या
+    label: Upāchārya उपचर्या
   - id: eksternal
+    label: Parichārya परिचर्या
+  - id: sarpras
     label: Parichārya परिचर्या
   - id: lainnya
     label: Lainnya
@@ -128,9 +128,6 @@ position_details:
   - id: d_pembina
     label: Pembina BEM
     position: pembina
-  - id: d_sarpras
-    label: Sarana & Prasarana
-    position: sarpras
   - id: d_editor
     label: Editorial & Konten
     position: editor
@@ -140,6 +137,9 @@ position_details:
   - id: d_eksternal
     label: Hubungan Eksternal
     position: eksternal
+  - id: d_sarpras
+    label: Sarana & Prasarana
+    position: sarpras
   - id: d_lain
     label: Lainnya
     position: lainnya
@@ -169,5 +169,5 @@ clubs:
     label: Klub Memasak
     sks: 2
   - id: us
-    label: Klub Sinden
+    label: Klub Studio Game
     sks: 2
