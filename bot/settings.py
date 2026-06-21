@@ -137,7 +137,9 @@ def filtered_choice_items(field_def: FieldDef, profile: dict) -> list[dict]:
         filtered = []
         for item in raw:
             cid = str(item.get("id", ""))
-            if cid.startswith("umum_") and not is_gb:
+            if is_gb and not cid.startswith("umum_"):
+                continue
+            if not is_gb and cid.startswith("umum_"):
                 continue
             filtered.append(item)
         raw = filtered

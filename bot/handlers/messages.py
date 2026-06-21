@@ -162,6 +162,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if not re.match(r"^\d{6}$", text):
                 await update.message.reply_text("Format tanggal lahir harus ddmmyy (contoh: 311299). Silakan ulangi:")
                 return
+            try:
+                from datetime import datetime
+                datetime.strptime(text, "%d%m%y")
+            except ValueError:
+                await update.message.reply_text("Tanggal lahir tidak valid. Pastikan tanggal ada di kalender (contoh: 311299). Silakan ulangi:")
+                return
 
     if step.startswith("ADMIN_TEXT_LC:"):
         field_key = step.split(":", 1)[1]
@@ -216,6 +222,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if step.startswith("TEXT_EC:"):
         field_key = step.split(":", 1)[1]
+        profile = profile_from_row(row)
+        if profile.get(field_key) == text:
+            await update.message.reply_text("Tidak ada perubahan yang diajukan.")
+            await db.set_onboarding_step(conn, uid, None)
+            return
+
         if row["role"] in ("owner", "admin"):
             await db.set_profile_partial(conn, uid, {field_key: text})
             await db.set_onboarding_step(conn, uid, None)

@@ -1949,6 +1949,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         await q.answer()
         
+        prof = profile_from_row(step_row) if step_row else {}
+        from bot.handlers.common import normalize_multi_choice_value
+        current_ids = sorted(normalize_multi_choice_value(prof.get(field_key)))
+        if current_ids == ids_list:
+            await q.edit_message_text("Tidak ada perubahan yang diajukan.", reply_markup=None)
+            _multi_clear(context)
+            await db.set_onboarding_step(conn, uid, None)
+            return
+
         if step_row and step_row["role"] in ("owner", "admin"):
             await db.set_profile_partial(conn, uid, {field_key: ids_list})
             _multi_clear(context)
@@ -2057,6 +2066,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if pos_id:
                 req_dict["position"] = pos_id
 
+        prof = profile_from_row(step_row) if step_row else {}
+        if prof.get(field_key) == choice_id:
+            await q.edit_message_text("Tidak ada perubahan yang diajukan.", reply_markup=None)
+            await db.set_onboarding_step(conn, uid, None)
+            return
+
         if step_row and step_row["role"] in ("owner", "admin"):
             await db.set_profile_partial(conn, uid, req_dict)
             await db.set_onboarding_step(conn, uid, None)
@@ -2159,14 +2174,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if tid and dec == "1":
             try:
                 nu = await user_row(conn, db, tid)
-                if nu and missing_required_fields(
-                    profile_from_row(nu), nu["role"]
-                ):
+                prof_nu = profile_from_row(nu) if nu else {}
+                if nu and "faculty" in proposed and not prof_nu.get("major"):
                     await context.bot.send_message(
                         chat_id=tid,
                         text=(
                             "Jurusan telah dikosongkan secara otomatis karena baru saja mengganti fakultas. "
-                            "Silakan lengkapi profil."
+                            "Silakan lengkapi profil menggunakan /lengkapi atau /ubah."
                         ),
                     )
             except Exception as e:
