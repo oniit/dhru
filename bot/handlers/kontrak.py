@@ -99,9 +99,8 @@ async def cmd_kontrak_ttd(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await db.set_onboarding_step(conn, uid, STEP_KONTRAK_TTD)
     await update.message.reply_text(
         "✍️ <b>Pengisian Tanda Tangan</b>\n\n"
-        "Silakan tulis tanda tangan Anda dengan pulpen hitam/biru di atas <b>kertas putih bersih</b>.\n"
-        "Lalu foto dan kirimkan gambar tersebut ke chat ini.\n\n"
-        "<i>Pastikan cahaya cukup terang dan tidak ada bayangan pada kertas agar hasil di kontrak terlihat menyatu.</i>"
+        "Silakan kirim tanda tangan digital Anda dalam bentuk foto (bukan file).\n\n"
+        "<b>Tanda tangan harus berwarna hitam dengan background putih.</b>"
     )
 
 
