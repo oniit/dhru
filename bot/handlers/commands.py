@@ -352,6 +352,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             "<b>Staf / Pengajar</b>\n"
             "/tugas — Menu Buka/Kelola Tugas\n"
             "/karpeg — Kartu Pegawai\n"
+            "/kontrak — Kontrak Kerja\n"
         )
     if can_report(role, prof) or can_open_presensi:
         lines.extend([
