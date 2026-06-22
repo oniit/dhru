@@ -891,13 +891,19 @@ class Database:
         att_rec_count = cur.rowcount
         cur = await conn.execute("DELETE FROM attendance_sessions")
         att_sess_count = cur.rowcount
+        cur = await conn.execute("DELETE FROM task_submissions")
+        task_sub_count = cur.rowcount
+        cur = await conn.execute("DELETE FROM task_assignments")
+        task_assign_count = cur.rowcount
         
         await conn.commit()
         return {
             "users_reset_to_public": user_updates,
             "agra_records_deleted": agra_count,
             "attendance_records_deleted": att_rec_count,
-            "attendance_sessions_deleted": att_sess_count
+            "attendance_sessions_deleted": att_sess_count,
+            "task_submissions_deleted": task_sub_count,
+            "task_assignments_deleted": task_assign_count
         }
 
     async def touch_group_seen_user(
@@ -1186,6 +1192,11 @@ class Database:
         cur = await conn.execute("DELETE FROM audit_log")
         audit_log = self._rowcount(cur)
 
+        cur = await conn.execute("DELETE FROM task_submissions")
+        task_submissions = self._rowcount(cur)
+        cur = await conn.execute("DELETE FROM task_assignments")
+        task_assignments = self._rowcount(cur)
+
         await conn.commit()
         return {
             "attendance_records": attendance_records,
@@ -1193,6 +1204,8 @@ class Database:
             "agra_ledger": agra_ledger,
             "profile_change_requests": profile_change_requests,
             "audit_log": audit_log,
+            "task_submissions": task_submissions,
+            "task_assignments": task_assignments,
         }
 
     async def reset_attendance_all(
@@ -1290,6 +1303,14 @@ class Database:
         n = self._rowcount(cur)
         await conn.commit()
         return n
+
+    async def reset_tasks_all(self, conn: aiosqlite.Connection) -> dict[str, int]:
+        cur = await conn.execute("DELETE FROM task_submissions")
+        subs = self._rowcount(cur)
+        cur = await conn.execute("DELETE FROM task_assignments")
+        tasks = self._rowcount(cur)
+        await conn.commit()
+        return {"task_submissions": subs, "task_assignments": tasks}
 
     async def reset_agra_for_user(
         self, conn: aiosqlite.Connection, telegram_id: int
@@ -1392,6 +1413,10 @@ class Database:
             (time.time(), telegram_id),
         )
         out["users_profile_reset"] = self._rowcount(cur)
+
+        cur = await conn.execute("DELETE FROM task_submissions WHERE student_id = ?", (telegram_id,))
+        out["task_submissions"] = self._rowcount(cur)
+
         return out
 
     async def reset_all_users_all_data_except_env(
@@ -1485,6 +1510,12 @@ class Database:
         )
         users_profile_reset = self._rowcount(cur)
 
+        cur = await conn.execute(
+            f"DELETE FROM task_submissions WHERE student_id IN ({p})",
+            target_ids,
+        )
+        task_submissions_deleted = self._rowcount(cur)
+
         await conn.commit()
 
         return {
@@ -1496,6 +1527,7 @@ class Database:
             "profile_change_requests_deleted": profile_change_requests_deleted,
             "audit_log_deleted": audit_log_deleted,
             "users_profile_reset": users_profile_reset,
+            "task_submissions_deleted": task_submissions_deleted,
         }
 
     async def ensure_owner_role(self, conn: aiosqlite.Connection) -> None:

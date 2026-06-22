@@ -855,6 +855,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     ],
                     [
                         InlineKeyboardButton(
+                            "📝 Tugas: semua",
+                            callback_data="orreset:act:TASK_ALL"[:64],
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
                             "🧼 Reset semua user (kecuali env)",
                             callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
                         ),
@@ -1332,6 +1338,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     result = await db.reset_all_users_all_data_except_env(conn)
                 elif scope == "REQ_ALL":
                     result = await db.reset_profile_change_requests_all(conn)
+                elif scope == "TASK_ALL":
+                    result = await db.reset_tasks_all(conn)
                 elif scope == "AUD_ALL":
                     result = await db.reset_audit_log_all(conn)
                 elif scope == "SEEN_ALL":
@@ -2991,6 +2999,9 @@ async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     callback_data="orreset:act:USER_ALL_EXCEPT_ENV"[:64],
                 ),
                 InlineKeyboardButton("🧾 Requests: semua", callback_data="orreset:act:REQ_ALL"[:64]),
+            ],
+            [
+                InlineKeyboardButton("📝 Tugas: semua", callback_data="orreset:act:TASK_ALL"[:64]),
             ],
             [
                 InlineKeyboardButton(
