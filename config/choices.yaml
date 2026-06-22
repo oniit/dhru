@@ -80,7 +80,7 @@ positions:
   - id: warek2
     label: Kuladhipati II कुलाधीपति II
   - id: dekan
-    label: Pradhanāchārya प्रधानाचार्य
+    label: Pradhānāchārya प्रधानाचार्य
   - id: guru_besar
     label: Prāchārya प्रचार्य
   - id: dosen
@@ -90,11 +90,11 @@ positions:
   - id: pembina
     label: Āchāryata आचार्यता
   - id: editor
-    label: Śilpācārya शिल्पाचार्य
+    label: Śilpāchārya शिल्पाचार्य
   - id: hrd
     label: Upāchārya उपचर्या
   - id: eksternal
-    label: Kāryācārya कार्याचार्य
+    label: Kāryāchārya कार्याचार्य
   - id: sarpras
     label: Parichārya परिचर्या
   - id: lainnya
