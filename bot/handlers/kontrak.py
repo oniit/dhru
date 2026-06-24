@@ -169,7 +169,8 @@ async def _generate_and_send_kontrak(
     period_str = f"{start_str} s/d {end_str}"
     
     # Ambil username
-    username_str = f"@{update.effective_user.username}" if update.effective_user.username else "—"
+    target_username = row["username"]
+    username_str = f"@{target_username}" if target_username else "—"
     
     # Nomor Surat
     seq = profile.get("contract_seq_no")

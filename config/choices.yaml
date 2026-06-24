@@ -76,9 +76,9 @@ positions:
   - id: sekre
     label: Sachiva सचिव
   - id: warek1
-    label: Kuladhipati I कुलाधीपति I
+    label: Pratinidhi I प्रतिनिधि I
   - id: warek2
-    label: Kuladhipati II कुलाधीपति II
+    label: Pratinidhi II प्रतिनिधि II
   - id: dekan
     label: Pradhānāchārya प्रधानाचार्य
   - id: guru_besar
@@ -168,6 +168,9 @@ clubs:
   - id: um
     label: Klub Memasak
     sks: 2
-  - id: us
-    label: Klub Studio Game
+  - id: ui
+    label: Klub Bahasa Inggris
+    sks: 2
+  - id: uk
+    label: Klub Kewirausahaan
     sks: 2
