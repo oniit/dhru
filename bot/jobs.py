@@ -90,14 +90,18 @@ def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
     
-    # Run daily at midnight UTC
-    jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0))
+    # Gunakan timezone WIB (UTC+7) secara eksplisit agar jadwal tidak bergeser
+    wib = datetime.timezone(datetime.timedelta(hours=7))
+    
+    # Run daily at midnight WIB
+    jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0, tzinfo=wib))
 
     if BACKUP_CH_ID:
-        jq.run_daily(daily_backup, datetime.time(hour=0, minute=0, second=0))
+        # Backup jam 23:55 WIB
+        jq.run_daily(daily_backup, datetime.time(hour=6, minute=55, second=0, tzinfo=wib))
         
     if PRESENCE_CH_ID:
-        # 00:00 UTC = 07:00 WIB
-        jq.run_daily(daily_staff_attendance_open, datetime.time(hour=0, minute=0, second=0))
-        # 16:59 UTC = 23:59 WIB
-        jq.run_daily(daily_staff_attendance_close, datetime.time(hour=16, minute=59, second=0))
+        # Buka presensi jam 07:00 WIB
+        jq.run_daily(daily_staff_attendance_open, datetime.time(hour=7, minute=0, second=0, tzinfo=wib))
+        # Tutup presensi jam 23:59 WIB
+        jq.run_daily(daily_staff_attendance_close, datetime.time(hour=23, minute=59, second=0, tzinfo=wib))
