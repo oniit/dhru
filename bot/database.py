@@ -687,7 +687,7 @@ class Database:
     async def _auto_close_stale_sessions(self, conn: aiosqlite.Connection) -> None:
         stale_cutoff = time.time() - 7200
         await conn.execute(
-            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ?",
+            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ? AND class_id != 'staff_auto'",
             (stale_cutoff,)
         )
         await conn.commit()
