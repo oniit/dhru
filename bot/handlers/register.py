@@ -39,6 +39,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("all", commands.cmd_all))
     application.add_handler(CommandHandler("pindah_data", commands.cmd_pindah_data))
     application.add_handler(CommandHandler("cek_user", commands.cmd_cek_user))
+    application.add_handler(CommandHandler("orreset_user", commands.cmd_orreset_user))
+    application.add_handler(CommandHandler("orreset_agra", commands.cmd_orreset_agra))
     
     # Routers
     application.add_handler(CommandHandler("presensi", attendance.cmd_presensi_router))

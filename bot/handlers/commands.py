@@ -885,132 +885,34 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             db = _db(context)
 
             if scope == "USER_ALL":
-                context.user_data[ORRESET_SCOPE_KEY] = scope
-                cur = await conn.execute(
-                    """
-                    SELECT telegram_id, role, username, first_name, last_name, profile_json
-                    FROM users
-                    ORDER BY created_at DESC
-                    LIMIT 12
-                    """
-                )
-                rows = await cur.fetchall()
-                if not rows:
-                    await q.edit_message_text("Tidak ada user untuk dipilih.")
-                    return
-                lines = []
-                kb_rows: list[list[InlineKeyboardButton]] = []
-                for r in rows:
-                    pid = int(r["telegram_id"])
-                    prof = json.loads(r["profile_json"] or "{}")
-                    full_name = (
-                        prof.get("full_name")
-                        or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
-                        or (f"@{r['username']}" if r["username"] else None)
-                        or str(pid)
-                    )
-                    # 2 kolom.
-                    kb_rows.append(
-                        [
-                            InlineKeyboardButton(
-                                full_name[:20],
-                                callback_data=f"orreset:pick_user:{pid}"[:64],
-                            )
-                        ]
-                    )
-                    lines.append(f"• {full_name}")
-                # Bikin layout 2 kolom.
-                out_rows: list[list[InlineKeyboardButton]] = []
-                flat = [b for row in kb_rows for b in row]
-                for i in range(0, len(flat), 2):
-                    out_rows.append(flat[i : i + 2])
-                out_rows = out_rows[:6]
-                out_rows.append(
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Back",
-                            callback_data="orreset:back:root"[:64],
-                        ),
-                        InlineKeyboardButton(
-                            "❌ Cancel",
-                            callback_data="orreset:cancel"[:64],
-                        ),
-                    ]
-                )
+                context.user_data.pop(ORRESET_SCOPE_KEY, None)
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Back", callback_data="orreset:back:root"[:64])]
+                ])
                 await q.edit_message_text(
-                    "Pilih user target reset:",
-                    reply_markup=InlineKeyboardMarkup(out_rows),
+                    "Untuk mereset semua data per user, gunakan perintah:\n<code>/orreset_user &lt;id_atau_username&gt;</code>",
+                    reply_markup=kb,
                 )
                 return
 
             if scope == "AGRA_USER":
-                context.user_data[ORRESET_SCOPE_KEY] = scope
-                exclude_ids = [i for i in [OWNER_ID, *ADMIN_IDS] if i and int(i) != 0]
-                params = tuple(exclude_ids)
-                ex_ph = ",".join("?" * len(exclude_ids)) if exclude_ids else ""
-                where_sql = (
-                    f"WHERE telegram_id NOT IN ({ex_ph})" if exclude_ids else ""
-                )
-                cur = await conn.execute(
-                    f"""
-                    SELECT telegram_id, role, username, first_name, last_name, profile_json
-                    FROM users
-                    {where_sql}
-                    ORDER BY created_at DESC
-                    LIMIT 12
-                    """,
-                    params,
-                )
-                rows = await cur.fetchall()
-                if not rows:
-                    await q.edit_message_text("Tidak ada user untuk dipilih.")
-                    return
-                kb_rows: list[list[InlineKeyboardButton]] = []
-                for r in rows:
-                    pid = int(r["telegram_id"])
-                    prof = json.loads(r["profile_json"] or "{}")
-                    full_name = (
-                        prof.get("full_name")
-                        or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
-                        or (f"@{r['username']}" if r["username"] else None)
-                        or str(pid)
-                    )
-                    kb_rows.append(
-                        [
-                            InlineKeyboardButton(
-                                full_name[:20],
-                                callback_data=f"orreset:pick_user:{pid}"[:64],
-                            )
-                        ]
-                    )
-                # 2 kolom layout
-                out_rows: list[list[InlineKeyboardButton]] = []
-                flat = [b for row in kb_rows for b in row]
-                for i in range(0, len(flat), 2):
-                    out_rows.append(flat[i : i + 2])
-                out_rows = out_rows[:6]
-                out_rows.append(
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Back",
-                            callback_data="orreset:back:root"[:64],
-                        ),
-                        InlineKeyboardButton(
-                            "❌ Cancel",
-                            callback_data="orreset:cancel"[:64],
-                        ),
-                    ]
-                )
+                context.user_data.pop(ORRESET_SCOPE_KEY, None)
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ Back", callback_data="orreset:back:root"[:64])]
+                ])
                 await q.edit_message_text(
-                    "Pilih user untuk reset agra:",
-                    reply_markup=InlineKeyboardMarkup(out_rows),
+                    "Untuk mereset agra per user, gunakan perintah:\n<code>/orreset_agra &lt;id_atau_username&gt;</code>",
+                    reply_markup=kb,
                 )
                 return
 
             if scope == "ATT_SESSION":
                 context.user_data[ORRESET_SCOPE_KEY] = scope
+                page = int(parts[3]) if len(parts) >= 4 else 0
+                limit = 10
+                offset = page * limit
                 cur = await conn.execute(
-                    """
+                    f"""
                     SELECT
                         s.id,
                         s.class_id,
@@ -1022,13 +924,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     FROM attendance_sessions s
                     LEFT JOIN users u ON u.telegram_id = s.opened_by
                     ORDER BY s.id DESC
-                    LIMIT 12
+                    LIMIT {limit + 1} OFFSET {offset}
                     """
                 )
                 sessions = await cur.fetchall()
-                if not sessions:
+                if not sessions and page == 0:
                     await q.edit_message_text("Belum ada sesi presensi.")
                     return
+
+                has_next = len(sessions) > limit
+                sessions = sessions[:limit]
 
                 kb: list[list[InlineKeyboardButton]] = []
                 row: list[InlineKeyboardButton] = []
@@ -1052,33 +957,42 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         row = []
                 if row:
                     kb.append(row)
+                    
+                nav_row = []
+                if page > 0:
+                    nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"orreset:act:ATT_SESSION:{page-1}"[:64]))
+                if has_next:
+                    nav_row.append(InlineKeyboardButton("Next ➡️", callback_data=f"orreset:act:ATT_SESSION:{page+1}"[:64]))
+                if nav_row:
+                    kb.append(nav_row)
 
-                if kb:
-                    kb = kb[:6]
                 kb.append(
                     [
-                        InlineKeyboardButton(
-                            "⬅️ Back",
-                            callback_data="orreset:back:root"[:64],
-                        ),
-                        InlineKeyboardButton(
-                            "❌ Cancel",
-                            callback_data="orreset:cancel"[:64],
-                        ),
+                        InlineKeyboardButton("⬅️ Back", callback_data="orreset:back:root"[:64]),
+                        InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64]),
                     ]
                 )
 
                 await q.edit_message_text(
-                    "Pilih sesi presensi untuk di-reset:",
+                    f"Pilih sesi presensi untuk di-reset (Hal {page+1}):",
                     reply_markup=InlineKeyboardMarkup(kb),
                 )
                 return
 
             if scope == "ATT_CLASS":
+                context.user_data[ORRESET_SCOPE_KEY] = scope
+                page = int(parts[3]) if len(parts) >= 4 else 0
+                limit = 10
+                offset = page * limit
+                
                 # Pilih matkul.
+                all_classes = CHOICES.get("classes", [])
+                has_next = len(all_classes) > offset + limit
+                classes_page = all_classes[offset:offset + limit]
+
                 kb = []
                 row: list[InlineKeyboardButton] = []
-                for item in CHOICES.get("classes", []):
+                for item in classes_page:
                     cid = item.get("id", "")
                     lab = str(item.get("label", cid))
                     row.append(
@@ -1092,23 +1006,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         row = []
                 if row:
                     kb.append(row)
-                context.user_data[ORRESET_SCOPE_KEY] = scope
-                if kb:
-                    kb = kb[:10]
+                    
+                nav_row = []
+                if page > 0:
+                    nav_row.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"orreset:act:ATT_CLASS:{page-1}"[:64]))
+                if has_next:
+                    nav_row.append(InlineKeyboardButton("Next ➡️", callback_data=f"orreset:act:ATT_CLASS:{page+1}"[:64]))
+                if nav_row:
+                    kb.append(nav_row)
+
                 kb.append(
                     [
-                        InlineKeyboardButton(
-                            "⬅️ Back",
-                            callback_data="orreset:back:root"[:64],
-                        ),
-                        InlineKeyboardButton(
-                            "❌ Cancel",
-                            callback_data="orreset:cancel"[:64],
-                        ),
+                        InlineKeyboardButton("⬅️ Back", callback_data="orreset:back:root"[:64]),
+                        InlineKeyboardButton("❌ Cancel", callback_data="orreset:cancel"[:64]),
                     ]
                 )
                 await q.edit_message_text(
-                    "Pilih matkul untuk reset presensi:",
+                    f"Pilih matkul untuk reset presensi (Hal {page+1}):",
                     reply_markup=InlineKeyboardMarkup(kb),
                 )
                 return
@@ -3415,8 +3329,8 @@ async def cmd_pindah_data(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
-        await update.message.reply_text("Hanya admin atau owner yang bisa memindahkan data.")
+    if not row or row["role"] != ROLE_OWNER:
+        await update.message.reply_text("Hanya owner yang bisa memindahkan data.")
         return
         
     if len(context.args) < 2:
@@ -3480,3 +3394,59 @@ async def cmd_cek_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Role: {u['role']}"
     ]
     await update.message.reply_text("\n".join(lines))
+
+async def cmd_orreset_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang bisa melakukan reset user.")
+        return
+        
+    if not context.args:
+        await update.message.reply_text("Format: <code>/orreset_user &lt;ID|@username&gt;</code>")
+        return
+        
+    query = context.args[0]
+    u = await db.get_user_by_username_or_id(conn, query)
+    if not u:
+        await update.message.reply_text(f"User {query} tidak ditemukan.")
+        return
+        
+    uid = int(u["telegram_id"])
+    result = await db.reset_user_all_data(conn, uid)
+    if isinstance(result, dict):
+        lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
+        await update.message.reply_text("<b>Reset semua data user selesai.</b>\n" + "\n".join(lines))
+    else:
+        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>")
+
+async def cmd_orreset_agra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang bisa melakukan reset agra.")
+        return
+        
+    if not context.args:
+        await update.message.reply_text("Format: <code>/orreset_agra &lt;ID|@username&gt;</code>")
+        return
+        
+    query = context.args[0]
+    u = await db.get_user_by_username_or_id(conn, query)
+    if not u:
+        await update.message.reply_text(f"User {query} tidak ditemukan.")
+        return
+        
+    uid = int(u["telegram_id"])
+    result = await db.reset_agra_for_user(conn, uid)
+    if isinstance(result, dict):
+        lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
+        await update.message.reply_text("<b>Reset agra user selesai.</b>\n" + "\n".join(lines))
+    else:
+        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>")
