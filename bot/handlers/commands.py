@@ -3321,21 +3321,38 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     conn = _conn(context)
     db = _db(context)
+    
+    where_clause = ""
+    title_suffix = ""
+    
+    if context.args:
+        sub = context.args[0].lower()
+        if sub == "sisya":
+            where_clause = "WHERE u.role IN ('student', 'bem')"
+            title_suffix = " (Sisya)"
+        elif sub == "charya":
+            where_clause = "WHERE u.role IN ('internal', 'admin', 'owner')"
+            title_suffix = " (Charya)"
+        elif sub == "ext":
+            where_clause = "WHERE u.role = 'public'"
+            title_suffix = " (Eksternal)"
+            
     cur = await conn.execute(
-        """
+        f"""
         SELECT t.target_telegram_id, t.total, u.profile_json, u.first_name, u.username
         FROM (
             SELECT target_telegram_id, SUM(amount) AS total
             FROM agra_ledger
             GROUP BY target_telegram_id
-            ORDER BY total DESC
-            LIMIT 17
         ) t
-        LEFT JOIN users u ON u.telegram_id = t.target_telegram_id
+        JOIN users u ON u.telegram_id = t.target_telegram_id
+        {where_clause}
+        ORDER BY t.total DESC
+        LIMIT 17
         """
     )
     rows = await cur.fetchall()
-    lines = ["Top 17 Agra"]
+    lines = [f"Top 17 Agra{title_suffix}"]
     if not rows:
         lines.append("Belum ada data.")
     else:
@@ -3366,6 +3383,9 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lines = [
             "<b>Menu Agra</b>",
             "<code>/agra top</code> — Lihat peringkat Agra (17 besar)",
+            "<code>/agra top sisya</code> — Top 17 (Student & BEM)",
+            "<code>/agra top charya</code> — Top 17 (Staf/Petinggi)",
+            "<code>/agra top ext</code> — Top 17 (Eksternal)",
             "<code>/agra log</code> — Lihat riwayat Agra pribadi"
         ]
         
@@ -3388,3 +3408,75 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else: await update.message.reply_text("Sub-command Agra tidak ditemukan. Gunakan /agra untuk melihat menu.")
     finally:
         context.args = original_args
+
+async def cmd_pindah_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Hanya admin atau owner yang bisa memindahkan data.")
+        return
+        
+    if len(context.args) < 2:
+        await update.message.reply_text("Format: <code>/pindah_data &lt;id_lama|@username_lama&gt; &lt;id_baru|@username_baru&gt;</code>")
+        return
+        
+    old_query = context.args[0]
+    new_query = context.args[1]
+    
+    old_user = await db.get_user_by_username_or_id(conn, old_query)
+    if not old_user:
+        await update.message.reply_text(f"User lama {old_query} tidak ditemukan di database.")
+        return
+        
+    new_user = await db.get_user_by_username_or_id(conn, new_query)
+    new_id = int(new_user["telegram_id"]) if new_user else (int(new_query) if new_query.isdigit() else None)
+    
+    if not new_id:
+        await update.message.reply_text(f"User baru {new_query} tidak ditemukan. Jika belum pernah /start, harus pakai ID berupa angka.")
+        return
+        
+    old_id = int(old_user["telegram_id"])
+    if old_id == new_id:
+        await update.message.reply_text("ID lama dan baru sama!")
+        return
+        
+    success = await db.migrate_user_data(conn, old_id, new_id)
+    if success:
+        await update.message.reply_text(f"Berhasil memindahkan data dari <code>{old_query}</code> ke <code>{new_query}</code>.")
+    else:
+        await update.message.reply_text("Gagal memindahkan data.")
+
+async def cmd_cek_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+        await update.message.reply_text("Hanya staf/admin yang bisa cek user.")
+        return
+        
+    if not context.args:
+        await update.message.reply_text("Format: <code>/cek_user &lt;ID|@username&gt;</code>")
+        return
+        
+    query = context.args[0]
+    u = await db.get_user_by_username_or_id(conn, query)
+    if not u:
+        await update.message.reply_text(f"User {query} tidak ditemukan.")
+        return
+        
+    pj = json.loads(u["profile_json"] or "{}")
+    name = pj.get("full_name") or u["first_name"] or "—"
+    
+    lines = [
+        f"<b>Data User:</b>",
+        f"ID: <code>{u['telegram_id']}</code>",
+        f"Username: @{u['username']}" if u['username'] else "Username: —",
+        f"Nama: {name}",
+        f"Role: {u['role']}"
+    ]
+    await update.message.reply_text("\n".join(lines))

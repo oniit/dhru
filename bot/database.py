@@ -1622,6 +1622,80 @@ class Database:
             (*target_ids, limit),
         )
         return await cur.fetchall()
+    async def get_user_by_username_or_id(
+        self, conn: aiosqlite.Connection, query: str
+    ) -> aiosqlite.Row | None:
+        if query.startswith("@"):
+            username = query.lstrip("@").lower()
+            cur = await conn.execute(
+                "SELECT * FROM users WHERE lower(username) = ?",
+                (username,)
+            )
+            return await cur.fetchone()
+        elif query.isdigit():
+            return await self.get_user(conn, int(query))
+        return None
+
+    async def migrate_user_data(
+        self, conn: aiosqlite.Connection, old_id: int, new_id: int
+    ) -> bool:
+        """
+        Migrasi semua data dari old_id ke new_id.
+        Jika new_id sudah terdaftar (sudah /start), kita ambil field-field dasarnya
+        (seperti username, first_name) lalu hapus, sehingga kita bisa update old_id menjadi new_id.
+        """
+        cur = await conn.execute("SELECT * FROM users WHERE telegram_id = ?", (new_id,))
+        new_user = await cur.fetchone()
+        
+        cur = await conn.execute("SELECT * FROM users WHERE telegram_id = ?", (old_id,))
+        old_user = await cur.fetchone()
+        if not old_user:
+            return False # user lama tidak ditemukan
+            
+        username_new = new_user["username"] if new_user else old_user["username"]
+        first_name_new = new_user["first_name"] if new_user else old_user["first_name"]
+        last_name_new = new_user["last_name"] if new_user else old_user["last_name"]
+        
+        if new_user:
+            # Delete new_id's existing operational data to avoid UNIQUE constraint conflicts
+            await conn.execute("DELETE FROM attendance_records WHERE telegram_id = ?", (new_id,))
+            await conn.execute("DELETE FROM attendance_records WHERE session_id IN (SELECT id FROM attendance_sessions WHERE opened_by = ?)", (new_id,))
+            await conn.execute("DELETE FROM attendance_sessions WHERE opened_by = ?", (new_id,))
+            await conn.execute("DELETE FROM agra_ledger WHERE target_telegram_id = ? OR actor_telegram_id = ?", (new_id, new_id))
+            await conn.execute("DELETE FROM profile_request_mod_messages WHERE request_id IN (SELECT id FROM profile_change_requests WHERE telegram_id = ?)", (new_id,))
+            await conn.execute("DELETE FROM profile_change_requests WHERE telegram_id = ?", (new_id,))
+            await conn.execute("DELETE FROM task_submissions WHERE student_id = ?", (new_id,))
+            await conn.execute("DELETE FROM task_assignments WHERE created_by = ?", (new_id,))
+            await conn.execute("DELETE FROM audit_log WHERE actor_id = ?", (new_id,))
+            await conn.execute("DELETE FROM tagall.group_seen_users WHERE telegram_id = ?", (new_id,))
+            
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (new_id,))
+
+        # Now migrate old_id to new_id
+        await conn.execute(
+            """
+            UPDATE users SET 
+                telegram_id = ?, 
+                username = ?, 
+                first_name = ?, 
+                last_name = ?
+            WHERE telegram_id = ?
+            """,
+            (new_id, username_new, first_name_new, last_name_new, old_id)
+        )
+
+        await conn.execute("UPDATE profile_change_requests SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE agra_ledger SET target_telegram_id = ? WHERE target_telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE agra_ledger SET actor_telegram_id = ? WHERE actor_telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE attendance_sessions SET opened_by = ? WHERE opened_by = ?", (new_id, old_id))
+        await conn.execute("UPDATE attendance_records SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE task_assignments SET created_by = ? WHERE created_by = ?", (new_id, old_id))
+        await conn.execute("UPDATE task_submissions SET student_id = ? WHERE student_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE audit_log SET actor_id = ? WHERE actor_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE tagall.group_seen_users SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        
+        await conn.commit()
+        return True
 
 
 __all__ = [
