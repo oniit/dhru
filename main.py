@@ -19,7 +19,7 @@ from telegram.ext import Application
 from bot.database import Database
 from bot.handlers import setup_handlers
 from bot.handlers.common import sync_roles_from_env
-from bot.settings import BOT_TOKEN
+from bot.settings import BOT_TOKEN, BACKUP_CH_ID
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -30,6 +30,21 @@ log = logging.getLogger(__name__)
 
 async def post_init(application: Application) -> None:
     db: Database = application.bot_data["db"]
+    
+    if not db.path.exists() and BACKUP_CH_ID:
+        try:
+            chat = await application.bot.get_chat(BACKUP_CH_ID)
+            if chat.pinned_message and chat.pinned_message.document:
+                log.info("Mengunduh database dari backup channel...")
+                file = await chat.pinned_message.document.get_file()
+                db.path.parent.mkdir(parents=True, exist_ok=True)
+                await file.download_to_drive(db.path)
+                log.info("Database berhasil diunduh.")
+            else:
+                log.warning("Tidak ada file backup yang di-pin di channel.")
+        except Exception as e:
+            log.error(f"Gagal mengunduh backup: {e}")
+
     conn = await db.connect()
     await sync_roles_from_env(db, conn)
     application.bot_data["conn"] = conn

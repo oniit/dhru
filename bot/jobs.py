@@ -69,12 +69,17 @@ async def daily_backup(context):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with open(db_path, "rb") as f:
-            await context.bot.send_document(
+            msg = await context.bot.send_document(
                 chat_id=BACKUP_CH_ID, 
                 document=f, 
                 filename=f"bot_backup_{now.replace(':', '-')}.db",
                 caption=f"Daily Database Backup - {now}"
             )
+            try:
+                await context.bot.unpin_all_chat_messages(chat_id=BACKUP_CH_ID)
+                await msg.pin(disable_notification=True)
+            except Exception as e:
+                print("Failed to pin DB backup:", e)
     except Exception as e:
         print("Failed to send DB backup:", e)
 
