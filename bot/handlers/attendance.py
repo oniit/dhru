@@ -781,7 +781,7 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
                 lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
             
             if role in (ROLE_OWNER, ROLE_ADMIN):
-                lines.append("<code>/presensi testauto</code> — Test presensi harian (staff_auto)")
+                lines.append("<code>/presensi testauto</code> — Test presensi harian")
             
             lines.append("<code>/presensi sesi</code> — Sesi aktif" + (" <i>(terfilter)</i>" if allowed_classes is not None else ""))
             lines.append("<code>/presensi rekap</code> — Rekap kehadiran")

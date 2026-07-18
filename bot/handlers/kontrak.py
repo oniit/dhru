@@ -135,7 +135,7 @@ async def on_kontrak_ttd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _generate_and_send_kontrak(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, uid: int, start_ts: float, is_admin_check: bool = False
+    update: Update, context: ContextTypes.DEFAULT_TYPE, uid: int, start_ts: float, is_admin_check: bool = False, allow_unsigned: bool = False
 ) -> None:
     conn = _conn(context)
     db = _db(context)
@@ -145,17 +145,19 @@ async def _generate_and_send_kontrak(
     
     profile = profile_from_row(row)
     fid = (profile.get("ttd_file_id") or "").strip()
+    photo_bytes = None
     if not fid:
-        if not is_admin_check:
-            await update.message.reply_text("Tanda tangan belum tersedia. Silakan unggah terlebih dahulu menggunakan perintah:\n/kontrak ttd")
-        else:
-            await update.message.reply_text(f"Staf tersebut (ID {uid}) belum mengunggah tanda tangan kontrak.")
-        return
-        
-    photo_bytes = await _download_telegram_photo(context, fid)
-    if not photo_bytes:
-        await update.message.reply_text("Gagal mengunduh tanda tangan dari server Telegram. Silakan unggah ulang TTD Anda dengan /kontrak ttd")
-        return
+        if not allow_unsigned:
+            if not is_admin_check:
+                await update.message.reply_text("Tanda tangan belum tersedia. Silakan unggah terlebih dahulu menggunakan perintah:\n/kontrak ttd")
+            else:
+                await update.message.reply_text(f"Staf tersebut (ID {uid}) belum mengunggah tanda tangan kontrak.")
+            return
+    else:
+        photo_bytes = await _download_telegram_photo(context, fid)
+        if not photo_bytes:
+            await update.message.reply_text("Gagal mengunduh tanda tangan dari server Telegram. Silakan unggah ulang TTD Anda dengan /kontrak ttd")
+            return
 
     # Ambil detail nama dan jabatan
     name = (profile.get("full_name") or row["first_name"] or "Tanpa Nama").strip()
@@ -255,21 +257,30 @@ async def cmd_kontrak_all(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
         
     cur = await conn.execute(
-        "SELECT telegram_id, username, first_name, role, profile_json FROM users WHERE role IN (?, ?) ORDER BY first_name ASC",
+        "SELECT telegram_id, username, first_name, role, profile_json FROM users WHERE role IN (?, ?)",
         (ROLE_INTERNAL, ROLE_ADMIN)
     )
-    rows = await cur.fetchall()
+    db_rows = await cur.fetchall()
     
-    if not rows:
+    if not db_rows:
         await update.message.reply_text("Tidak ada staf internal terdaftar.")
         return
+        
+    def sort_key(r):
+        p = profile_from_row(r)
+        seq = p.get("contract_seq_no")
+        seq_val = seq if isinstance(seq, int) else 999999
+        name_val = (p.get("full_name") or r["first_name"] or "").lower()
+        return (seq_val, name_val)
+        
+    rows = sorted(db_rows, key=sort_key)
         
     now_ts = time.time()
     start_str, end_str, _ = calculate_contract_period(now_ts)
     
     lines = [
         "📑 <b>Daftar Kontrak Staf Internal</b>",
-        f"Periode: {start_str} - {end_str}",
+        f"Akhir Periode: {end_str}",
         ""
     ]
     
@@ -319,17 +330,29 @@ async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Fitur kontrak hanya untuk staf internal.")
         return
         
-    if not context.args:
-        profile = profile_from_row(row)
-        fid = (profile.get("ttd_file_id") or "").strip()
-        if not fid:
-            await update.message.reply_text(
-                "Tanda tangan Anda belum tersedia.\n"
-                "Silakan unggah terlebih dahulu menggunakan perintah:\n"
-                "<code>/kontrak ttd</code>"
+    def _show_menu():
+        admin_menu = ""
+        if row["role"] in (ROLE_ADMIN, ROLE_OWNER):
+            admin_menu = (
+                "<code>/kontrak all</code> — Lihat daftar kontrak staf\n"
+                "<code>/kontrak check &lt;id/username&gt;</code> — Cek detail kontrak per orang\n"
             )
-            return
-            
+        return update.message.reply_text(
+            "<b>Menu Kontrak:</b>\n"
+            "<code>/kontrak saya</code> — Lihat draf/kontrak kerja Anda\n"
+            "<code>/kontrak ttd</code> — Upload tanda tangan baru\n"
+            "<code>/kontrak renew</code> — Perbarui masa kontrak\n"
+            + admin_menu
+        )
+
+    if not context.args:
+        await _show_menu()
+        return
+
+    subcmd = context.args[0].lower()
+    
+    if subcmd == "saya":
+        profile = profile_from_row(row)
         c_end_ts = profile.get("contract_end_ts")
         now_ts = time.time()
         
@@ -350,13 +373,10 @@ async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
             
-        # Jika masih aktif atau baru pertama kali punya TTD tapi belum pernah generate
-        await _generate_and_send_kontrak(update, context, uid, now_ts, is_admin_check=False)
-        return
+        # Jika belum ada TTD, ini akan menampilkan draf kosong
+        await _generate_and_send_kontrak(update, context, uid, now_ts, is_admin_check=False, allow_unsigned=True)
 
-    subcmd = context.args[0].lower()
-    
-    if subcmd == "ttd":
+    elif subcmd == "ttd":
         await cmd_kontrak_ttd(update, context)
     elif subcmd == "renew":
         await cmd_kontrak_renew(update, context)
@@ -390,10 +410,4 @@ async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         await _generate_and_send_kontrak(update, context, target_ids[0], time.time(), is_admin_check=True)
     else:
-        await update.message.reply_text(
-            "<b>Menu Kontrak:</b>\n"
-            "<code>/kontrak</code> — Generate/Lihat kontrak kerja\n"
-            "<code>/kontrak ttd</code> — Upload tanda tangan baru\n"
-            "<code>/kontrak renew</code> — Perbarui masa kontrak\n"
-            + ("<code>/kontrak all</code> — Lihat daftar kontrak staf\n" if row["role"] in (ROLE_ADMIN, ROLE_OWNER) else "")
-        )
+        await _show_menu()
