@@ -1652,9 +1652,9 @@ class Database:
         if not old_user:
             return False # user lama tidak ditemukan
             
-        username_new = new_user["username"] if new_user else old_user["username"]
-        first_name_new = new_user["first_name"] if new_user else old_user["first_name"]
-        last_name_new = new_user["last_name"] if new_user else old_user["last_name"]
+        username_new = new_user["username"] if new_user else None
+        first_name_new = new_user["first_name"] if new_user else None
+        last_name_new = new_user["last_name"] if new_user else None
         
         if new_user:
             # Delete new_id's existing operational data to avoid UNIQUE constraint conflicts
