@@ -312,15 +312,14 @@ async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Tidak diizinkan.")
         return
     
-    cur = await conn.execute("SELECT code FROM access_codes WHERE used_by IS NULL ORDER BY created_at DESC")
+    cur = await conn.execute("SELECT code, target_role FROM access_codes WHERE used_by IS NULL ORDER BY created_at DESC")
     rows = await cur.fetchall()
     if not rows:
         await update.message.reply_text("Tidak ada kode akses yang tersedia (belum diklaim).")
         return
         
-    codes = [r["code"] for r in rows]
-    text = f"Terdapat {len(codes)} kode akses yang belum diklaim:\n\n"
-    text += "\n".join(f"<code>{c}</code>" for c in codes)
+    text = f"Terdapat {len(rows)} kode akses yang belum diklaim:\n\n"
+    text += "\n".join(f"<code>{r['code']}</code> (Role: {r['target_role']})" for r in rows)
     
     if len(text) > 4000:
         text = text[:4000] + "\n\n...(terpotong karena terlalu panjang)"
@@ -3450,3 +3449,169 @@ async def cmd_orreset_agra(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("<b>Reset agra user selesai.</b>\n" + "\n".join(lines))
     else:
         await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>")
+
+async def cmd_addtag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if update.effective_chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("/addtag hanya bisa dipakai di grup.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+    actor = update.effective_user.id
+    row = await user_row(conn, db, actor)
+    if not row or not can_tag_all(row["role"], profile_from_row(row)):
+        await update.message.reply_text("Hanya Staf, Pengajar, atau BEM yang bisa melakukan add tag.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Format: <code>/addtag 123456, 789012, ...</code>")
+        return
+
+    raw_args = " ".join(context.args)
+    parts = [p.strip() for p in raw_args.replace(",", " ").split() if p.strip().isdigit()]
+    
+    if not parts:
+        await update.message.reply_text("Tidak ada Telegram ID valid yang ditemukan.")
+        return
+
+    added = 0
+    chat_id = update.effective_chat.id
+    for tid_str in parts:
+        tid = int(tid_str)
+        u_row = await user_row(conn, db, tid)
+        if u_row:
+            username = u_row["username"]
+            first_name = u_row["first_name"]
+            last_name = u_row["last_name"]
+            is_bot = u_row["is_bot"]
+        else:
+            username = None
+            first_name = f"Manual Added {tid}"
+            last_name = None
+            is_bot = 0
+
+        await db.touch_group_seen_user(
+            conn,
+            chat_id=chat_id,
+            telegram_id=tid,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            is_bot=bool(is_bot)
+        )
+        added += 1
+
+    await update.message.reply_text(f"Berhasil menambahkan {added} ID ke daftar tagall grup ini.")
+
+async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in ("owner", "admin"):
+        await update.message.reply_text("Hanya Owner atau Admin yang dapat mengelola data pengguna.")
+        return
+
+    if not context.args:
+        lines = [
+            "<b>Menu Manajemen Pengguna</b>",
+            "<code>/users stats</code> — Menampilkan statistik total pengguna per role",
+            "<code>/users find &lt;nama&gt;</code> — Mencari Telegram ID berdasarkan nama pengguna",
+            "<code>/users staff</code> — Menampilkan daftar semua staf internal",
+            "<code>/users admin</code> — Menampilkan daftar semua Admin dan Owner"
+        ]
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    subcmd = context.args[0].lower()
+
+    if subcmd == "stats":
+        cur = await conn.execute("SELECT role, COUNT(*) as c FROM users GROUP BY role")
+        rows = await cur.fetchall()
+        
+        total = 0
+        role_counts = {}
+        for r in rows:
+            role = r["role"]
+            c = r["c"]
+            role_counts[role] = c
+            total += c
+
+        lines = [
+            "<b>Statistik Pengguna</b>",
+            f"Total Pengguna: <b>{total}</b>\n",
+            "<b>Rincian per Role:</b>"
+        ]
+        
+        for role, count in sorted(role_counts.items(), key=lambda x: x[1], reverse=True):
+            lines.append(f"• {role.title()}: {count}")
+
+        await update.message.reply_text("\n".join(lines))
+
+    elif subcmd == "find":
+        if len(context.args) < 2:
+            await update.message.reply_text("Format: <code>/users find &lt;nama&gt;</code>")
+            return
+            
+        query = " ".join(context.args[1:]).lower()
+        matched = await db.user_ids_matching_profile_filter(conn, name_substring=query)
+        
+        # also search by first_name directly
+        cur = await conn.execute("SELECT telegram_id FROM users WHERE lower(first_name) LIKE ?", (f"%{query}%",))
+        first_name_matches = await cur.fetchall()
+        for m in first_name_matches:
+            if m["telegram_id"] not in matched:
+                matched.append(m["telegram_id"])
+        
+        if not matched:
+            await update.message.reply_text(f"Tidak ditemukan pengguna dengan nama mengandung '{query}'.")
+            return
+            
+        lines = [f"<b>Hasil Pencarian '{query}' ({len(matched)} user):</b>"]
+        for tid in matched[:50]: # limit to 50
+            u_row = await user_row(conn, db, tid)
+            if u_row:
+                pj = profile_from_row(u_row)
+                full_name = pj.get("full_name") or u_row["first_name"] or "Unknown"
+                role = u_row["role"]
+                lines.append(f"• <code>{tid}</code> - {full_name} ({role})")
+                
+        if len(matched) > 50:
+            lines.append(f"<i>...dan {len(matched)-50} lainnya.</i>")
+            
+        await update.message.reply_text("\n".join(lines))
+
+    elif subcmd == "staff":
+        staff_ids = await db.get_all_staff_ids(conn)
+        if not staff_ids:
+            await update.message.reply_text("Belum ada staf internal terdaftar.")
+            return
+            
+        lines = [f"<b>Daftar Staf Internal ({len(staff_ids)}):</b>"]
+        for tid in staff_ids:
+            u_row = await user_row(conn, db, tid)
+            if u_row:
+                username = f"@{u_row['username']}" if u_row["username"] else u_row["first_name"]
+                lines.append(f"• <code>{tid}</code> - {username}")
+        await update.message.reply_text("\n".join(lines))
+
+    elif subcmd == "admin":
+        admin_ids = await db.list_moderator_telegram_ids(conn)
+        if not admin_ids:
+            await update.message.reply_text("Tidak ada admin yang terdaftar.")
+            return
+            
+        lines = [f"<b>Daftar Admin & Owner ({len(admin_ids)}):</b>"]
+        for tid in admin_ids:
+            u_row = await user_row(conn, db, tid)
+            if u_row:
+                username = f"@{u_row['username']}" if u_row["username"] else u_row["first_name"]
+                role = u_row["role"]
+                lines.append(f"• <code>{tid}</code> - {username} ({role})")
+        await update.message.reply_text("\n".join(lines))
+        
+    else:
+        await update.message.reply_text("Sub-perintah tidak dikenali. Ketik /users untuk melihat menu.")

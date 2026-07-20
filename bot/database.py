@@ -257,11 +257,8 @@ CREATE TABLE IF NOT EXISTS task_submissions (
 
 CREATE INDEX IF NOT EXISTS idx_task_class ON task_assignments(class_id);
 CREATE INDEX IF NOT EXISTS idx_task_sub ON task_submissions(task_id);
-"""
 
-
-TAGALL_SCHEMA = """
-CREATE TABLE IF NOT EXISTS tagall.group_seen_users (
+CREATE TABLE IF NOT EXISTS group_seen_users (
     chat_id INTEGER NOT NULL,
     telegram_id INTEGER NOT NULL,
     username TEXT,
@@ -283,17 +280,18 @@ class Database:
         conn = await aiosqlite.connect(self.path)
         conn.row_factory = aiosqlite.Row
         
-        tagall_path = self.path.parent / "tagall.db"
-        await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
-        
         await conn.executescript(SCHEMA)
-        await conn.executescript(TAGALL_SCHEMA)
         
-        try:
-            await conn.execute("INSERT OR IGNORE INTO tagall.group_seen_users SELECT * FROM main.group_seen_users")
-            await conn.execute("DROP TABLE main.group_seen_users")
-        except Exception:
-            pass
+        tagall_path = self.path.parent / "tagall.db"
+        if tagall_path.exists():
+            try:
+                await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
+                await conn.execute("INSERT OR IGNORE INTO group_seen_users SELECT * FROM tagall.group_seen_users")
+                await conn.execute("DETACH DATABASE tagall")
+                tagall_path.rename(tagall_path.parent / "tagall.db.bak")
+            except Exception:
+                pass
+
         cur = await conn.execute("PRAGMA table_info(attendance_sessions)")
         cols = {str(r[1]) for r in await cur.fetchall()}
         if "announce_message_id" not in cols:
@@ -920,7 +918,7 @@ class Database:
         now = time.time()
         await conn.execute(
             """
-            INSERT INTO tagall.group_seen_users (
+            INSERT INTO group_seen_users (
                 chat_id, telegram_id, username, first_name, last_name, is_bot, last_seen_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(chat_id, telegram_id) DO UPDATE SET
@@ -948,7 +946,7 @@ class Database:
         cur = await conn.execute(
             """
             SELECT telegram_id
-            FROM tagall.group_seen_users
+            FROM group_seen_users
             WHERE chat_id = ? AND is_bot = 0
             ORDER BY last_seen_at DESC
             """,
@@ -1368,7 +1366,7 @@ class Database:
         return n
 
     async def reset_group_seen_users_all(self, conn: aiosqlite.Connection) -> int:
-        cur = await conn.execute("DELETE FROM tagall.group_seen_users")
+        cur = await conn.execute("DELETE FROM group_seen_users")
         n = self._rowcount(cur)
         await conn.commit()
         return n
@@ -1377,7 +1375,7 @@ class Database:
         self, conn: aiosqlite.Connection, telegram_id: int
     ) -> int:
         cur = await conn.execute(
-            "DELETE FROM tagall.group_seen_users WHERE telegram_id = ?", (telegram_id,)
+            "DELETE FROM group_seen_users WHERE telegram_id = ?", (telegram_id,)
         )
         n = self._rowcount(cur)
         await conn.commit()
@@ -1667,7 +1665,7 @@ class Database:
             await conn.execute("DELETE FROM task_submissions WHERE student_id = ?", (new_id,))
             await conn.execute("DELETE FROM task_assignments WHERE created_by = ?", (new_id,))
             await conn.execute("DELETE FROM audit_log WHERE actor_id = ?", (new_id,))
-            await conn.execute("DELETE FROM tagall.group_seen_users WHERE telegram_id = ?", (new_id,))
+            await conn.execute("DELETE FROM group_seen_users WHERE telegram_id = ?", (new_id,))
             
             await conn.execute("DELETE FROM users WHERE telegram_id = ?", (new_id,))
 
@@ -1692,7 +1690,7 @@ class Database:
         await conn.execute("UPDATE task_assignments SET created_by = ? WHERE created_by = ?", (new_id, old_id))
         await conn.execute("UPDATE task_submissions SET student_id = ? WHERE student_id = ?", (new_id, old_id))
         await conn.execute("UPDATE audit_log SET actor_id = ? WHERE actor_id = ?", (new_id, old_id))
-        await conn.execute("UPDATE tagall.group_seen_users SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE group_seen_users SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
         
         await conn.commit()
         return True
