@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
 import aiosqlite
+
+try:
+    import libsql_client
+except ImportError:
+    libsql_client = None
 
 from bot.settings import ADMIN_IDS, CHOICES, OWNER_ID
 
@@ -270,12 +276,80 @@ CREATE TABLE IF NOT EXISTS group_seen_users (
 );
 """
 
+class AiosqliteRowMock:
+    def __init__(self, libsql_row, columns):
+        self._row = libsql_row
+        self.keys = columns
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            try:
+                idx = self.keys.index(key)
+                return self._row[idx]
+            except ValueError:
+                raise KeyError(key)
+        return self._row[key]
+        
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+class AiosqliteCursorMock:
+    def __init__(self, result_set):
+        self.rs = result_set
+        self._idx = 0
+        self.lastrowid = getattr(result_set, 'last_insert_rowid', None)
+        self.rowcount = getattr(result_set, 'rows_affected', 0)
+
+    async def fetchone(self):
+        if self._idx < len(self.rs.rows):
+            row = self.rs.rows[self._idx]
+            self._idx += 1
+            return AiosqliteRowMock(row, self.rs.columns)
+        return None
+
+    async def fetchall(self):
+        rows = []
+        while self._idx < len(self.rs.rows):
+            rows.append(AiosqliteRowMock(self.rs.rows[self._idx], self.rs.columns))
+            self._idx += 1
+        return rows
+
+class AiosqliteConnectionMock:
+    def __init__(self, client):
+        self.client = client
+        self.row_factory = None
+
+    async def execute(self, sql, parameters=()):
+        rs = await self.client.execute(sql, list(parameters) if parameters else [])
+        return AiosqliteCursorMock(rs)
+
+    async def executescript(self, sql_script):
+        statements = [s.strip() for s in sql_script.split(';') if s.strip()]
+        for stmt in statements:
+            await self.client.execute(stmt)
+
+    async def commit(self):
+        pass
+
+    async def close(self):
+        await self.client.close()
+
 
 class Database:
     def __init__(self, path: Path = DB_PATH) -> None:
         self.path = path
 
     async def connect(self) -> aiosqlite.Connection:
+        turso_url = os.environ.get("TURSO_DB_URL")
+        turso_token = os.environ.get("TURSO_AUTH_TOKEN")
+        
+        if turso_url and turso_token and libsql_client:
+            client = libsql_client.create_client(url=turso_url, auth_token=turso_token)
+            return AiosqliteConnectionMock(client)
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = await aiosqlite.connect(self.path)
         conn.row_factory = aiosqlite.Row

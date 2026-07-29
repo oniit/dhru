@@ -61,27 +61,7 @@ async def daily_staff_attendance_close(context):
     from bot.handlers.attendance import refresh_auto_presensi_announcement
     await refresh_auto_presensi_announcement(context, db, conn, sess["id"])
 
-async def daily_backup(context):
-    if not BACKUP_CH_ID: return
-    db_path = ROOT / "data" / "bot.db"
-    if not db_path.exists(): return
-    
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        with open(db_path, "rb") as f:
-            msg = await context.bot.send_document(
-                chat_id=BACKUP_CH_ID, 
-                document=f, 
-                filename=f"bot_backup_{now.replace(':', '-')}.db",
-                caption=f"Daily Database Backup - {now}"
-            )
-            try:
-                await context.bot.unpin_all_chat_messages(chat_id=BACKUP_CH_ID)
-                await msg.pin(disable_notification=True)
-            except Exception as e:
-                print("Failed to pin DB backup:", e)
-    except Exception as e:
-        print("Failed to send DB backup:", e)
+
 
 async def daily_auto_close_tasks(context):
     db = context.application.bot_data.get("db")
@@ -101,10 +81,7 @@ def setup_jobs(application: Application):
     # Run daily at midnight WIB
     jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0, tzinfo=wib))
 
-    if BACKUP_CH_ID:
-        # Backup jam 23:55 WIB
-        jq.run_daily(daily_backup, datetime.time(hour=6, minute=55, second=0, tzinfo=wib))
-        
+
     if PRESENCE_CH_ID:
         # Buka presensi jam 07:00 WIB
         jq.run_daily(daily_staff_attendance_open, datetime.time(hour=7, minute=0, second=0, tzinfo=wib))
