@@ -58,6 +58,10 @@ def register_all(application: Application, db: Database) -> None:
 
     from telegram.ext import ChatMemberHandler
     application.add_handler(ChatMemberHandler(messages.on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
+    
+    application.add_handler(CommandHandler("kick", commands.cmd_kick))
+    application.add_handler(CallbackQueryHandler(commands.on_kick_callback, pattern="^kick:"))
+    
     application.add_handler(CallbackQueryHandler(commands.on_callback))
     application.add_handler(
         MessageHandler(

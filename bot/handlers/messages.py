@@ -270,6 +270,13 @@ async def track_group_activity(
         last_name=u.last_name,
         is_bot=u.is_bot,
     )
+    await db.upsert_bot_chat(
+        conn=conn,
+        chat_id=update.effective_chat.id,
+        chat_type=update.effective_chat.type,
+        title=update.effective_chat.title or "Tanpa Nama",
+        is_active=True
+    )
 
 async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.text:
