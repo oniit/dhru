@@ -34,7 +34,7 @@ from bot.settings import (
     is_choice_allowed_for_profile,
     is_owner,
 )
-from bot.timefmt import format_local_time
+from bot.timefmt import format_local_time, days_until_next_birthday
 
 from .common import (
     field_label_for_key,
@@ -2464,10 +2464,10 @@ def _daftar_format_lines(
 ) -> list[str]:
     lines = []
     for idx, (name, uname, tid) in enumerate(entries, 1):
-        dn = _daftar_clean_display(name)
+        dn = html.escape(_daftar_clean_display(name))
         prefix = f"<code>{tid}</code> " if show_telegram_id else ""
         if uname:
-            lines.append(f"{idx}. {prefix}{dn} — @{uname}")
+            lines.append(f"{idx}. {prefix}{dn} — @{html.escape(uname)}")
         else:
             lines.append(f"{idx}. {prefix}{dn} — (tanpa username)")
     return lines
@@ -3761,3 +3761,113 @@ async def on_kick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.edit_message_text("Memproses...")
     await _do_kick(update, context, chat_id, target_id, t_name, is_group=False)
 
+
+
+async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    profile = profile_from_row(row) if row else {}
+    dean_mode = can_daftar_as_dean(row["role"], profile) if row else False
+    dean_fid = dean_faculty_id(profile) if dean_mode else ""
+    lec_mode = can_daftar_as_lecturer(row["role"], profile) if row else False
+    lec_cids = lecturer_class_ids(profile) if lec_mode else []
+
+    if not row or not (can_report(row["role"], profile) or dean_mode or lec_mode):
+        await update.message.reply_text("Hanya admin, owner, dekan, atau dosen/coach.")
+        return
+    if not context.args:
+        await update.message.reply_text("Gunakan format seperti /daftar, contoh: /detail all, /detail mhs")
+        return
+
+    kind = context.args[0].lower()
+    cur = await conn.execute(
+        "SELECT telegram_id, username, first_name, last_name, role, profile_json FROM users"
+    )
+    all_rows = await cur.fetchall()
+    
+    parsed_users = []
+    
+    def push_row(r, p: dict) -> None:
+        name = (p.get("full_name") or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or "—")
+        bdate = p.get("birth_date") or ""
+        muse = p.get("muse") or "—"
+        dist = days_until_next_birthday(bdate)
+        parsed_users.append({
+            "tid": r["telegram_id"],
+            "name": name,
+            "username": r["username"],
+            "bdate": bdate,
+            "muse": muse,
+            "dist": dist
+        })
+
+    title = "Detail Pengguna"
+    if kind == "admin":
+        for r in all_rows:
+            if r["role"] in (ROLE_OWNER, ROLE_ADMIN):
+                push_row(r, json.loads(r["profile_json"] or "{}"))
+    elif kind == "all":
+        for r in all_rows:
+            push_row(r, json.loads(r["profile_json"] or "{}"))
+    elif kind == "mhs":
+        for r in all_rows:
+            if r["role"] == ROLE_STUDENT:
+                push_row(r, json.loads(r["profile_json"] or "{}"))
+    elif kind == "staf":
+        for r in all_rows:
+            if r["role"] == ROLE_INTERNAL:
+                p = json.loads(r["profile_json"] or "{}")
+                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
+                if "d_dosen" not in p_jabs and "d_guru_besar" not in p_jabs:
+                    push_row(r, p)
+    elif kind == "all_staf":
+        for r in all_rows:
+            if r["role"] in (ROLE_ADMIN, ROLE_INTERNAL):
+                push_row(r, json.loads(r["profile_json"] or "{}"))
+    elif kind == "dosen":
+        for r in all_rows:
+            if r["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+                p = json.loads(r["profile_json"] or "{}")
+                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
+                if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs:
+                    push_row(r, p)
+    else:
+        await update.message.reply_text("Format tidak dikenali. Ketik /detail all atau mhs.")
+        return
+
+    is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
+    if not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids)):
+        kept = []
+        for u in parsed_users:
+            r = next((x for x in all_rows if x["telegram_id"] == u["tid"]), None)
+            if not r:
+                continue
+            p = json.loads(r["profile_json"] or "{}")
+            
+            in_scope = False
+            if dean_mode and dean_fid and user_in_dean_faculty_scope(p, dean_fid):
+                in_scope = True
+            if not in_scope and lec_mode and lec_cids and user_in_lecturer_scope(p, lec_cids):
+                in_scope = True
+                
+            if in_scope:
+                kept.append(u)
+        parsed_users = kept
+        
+    # Sort by closest birthday
+    parsed_users.sort(key=lambda x: x["dist"])
+    
+    out_lines = []
+    idx = 1
+    for u in parsed_users:
+        un = u['username']
+        un_str = f" — @{html.escape(un)}" if un else " — (tanpa username)"
+        bdate_str = html.escape(u['bdate']) if u['bdate'] else "—"
+        out_lines.append(f"{idx}. {html.escape(u['name'])}{un_str}\n   {bdate_str} - {html.escape(u['muse'])}")
+        idx += 1
+
+    await db.add_audit(conn, update.effective_user.id, "detail", f"{kind} count={len(parsed_users)}")
+    await _reply_daftar_chunks(update, title, out_lines)

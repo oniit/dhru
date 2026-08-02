@@ -1,7 +1,7 @@
 import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
-from bot.settings import ROOT, BACKUP_CH_ID, PRESENCE_CH_ID
+from bot.settings import ROOT, BACKUP_CH_ID, PRESENCE_CH_ID, EDITOR_GID
 
 async def daily_staff_attendance_open(context, opened_by=0):
     if not PRESENCE_CH_ID: return
@@ -71,6 +71,46 @@ async def daily_auto_close_tasks(context):
     if closed_ids:
         print(f"Auto-closed {len(closed_ids)} stale tasks.")
 
+
+import json\nimport html
+from bot.timefmt import days_until_next_birthday, get_today_wib
+
+async def daily_birthday_reminder(context):
+    if not EDITOR_GID: return
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    
+    cur = await conn.execute("SELECT telegram_id, username, first_name, last_name, profile_json FROM users")
+    rows = await cur.fetchall()
+    
+    upcoming = []
+    for r in rows:
+        p = json.loads(r["profile_json"] or "{}")
+        bdate = p.get("birth_date")
+        if not bdate: continue
+        
+        dist = days_until_next_birthday(bdate)
+        if dist == 3:
+            name = (p.get("full_name") or f"{r['first_name'] or ''} {r['last_name'] or ''}".strip() or "—")
+            upcoming.append((name, r["username"]))
+            
+    if upcoming:
+        lines = ["🎂 <b>Pengingat Ulang Tahun H-3!</b>\n"]
+        for name, un in upcoming:
+            un_str = f" (@{html.escape(un)})" if un else ""
+            lines.append(f"• {html.escape(name)}{un_str}")
+        lines.append("\nMari siapkan sesuatu untuk mereka!")
+        
+        try:
+            await context.bot.send_message(
+                chat_id=EDITOR_GID,
+                text="\n".join(lines),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            print("Gagal kirim reminder ultah:", e)
+
 def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
@@ -78,7 +118,7 @@ def setup_jobs(application: Application):
     # Gunakan timezone WIB (UTC+7) secara eksplisit agar jadwal tidak bergeser
     wib = datetime.timezone(datetime.timedelta(hours=7))
     
-    # Run daily at midnight WIB
+    # Run daily at midnight WIB\n    jq.run_daily(daily_birthday_reminder, datetime.time(hour=8, minute=0, second=0, tzinfo=wib))\n    
     jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0, tzinfo=wib))
 
 
