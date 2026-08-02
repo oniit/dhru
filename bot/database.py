@@ -14,7 +14,7 @@ try:
 except ImportError:
     libsql_client = None
 
-from bot.settings import ADMIN_IDS, CHOICES, OWNER_ID
+from bot.settings import ADMIN_IDS, CHOICES, OWNER_ID, GENERATION_CODE
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "bot.db"
@@ -117,7 +117,7 @@ async def _apply_generated_profile_fields(
         out.pop("student_id", None)
         return out
 
-    out["student_id"] = f"{faculty_code}{major_code}01{start_order_code}"
+    out["student_id"] = f"{faculty_code}{major_code}{GENERATION_CODE}{start_order_code}"
     return out
 
 
@@ -458,6 +458,31 @@ class Database:
                 ),
             )
         await conn.commit()
+
+    async def sync_user_basic_info(
+        self,
+        conn: aiosqlite.Connection,
+        telegram_id: int,
+        username: str | None,
+        first_name: str | None,
+        last_name: str | None,
+    ) -> None:
+        cur = await conn.execute(
+            "SELECT username, first_name, last_name FROM users WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        row = await cur.fetchone()
+        if not row:
+            return
+            
+        if (row["username"] != username or
+            row["first_name"] != first_name or
+            row["last_name"] != last_name):
+            await conn.execute(
+                "UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = ? WHERE telegram_id = ?",
+                (username, first_name, last_name, time.time(), telegram_id)
+            )
+            await conn.commit()
 
     async def get_user(self, conn: aiosqlite.Connection, telegram_id: int) -> aiosqlite.Row | None:
         cur = await conn.execute(
@@ -1479,6 +1504,7 @@ class Database:
             UPDATE users
             SET profile_json = '{}',
                 onboarding_step = NULL,
+                role = 'public',
                 updated_at = ?
             WHERE telegram_id = ?
             """,
@@ -1575,6 +1601,7 @@ class Database:
             UPDATE users
             SET profile_json = '{{}}',
                 onboarding_step = NULL,
+                role = 'public',
                 updated_at = ?
             WHERE telegram_id IN ({p})
             """,

@@ -92,3 +92,6 @@ def register_all(application: Application, db: Database) -> None:
         ),
         group=2,
     )
+    
+    from telegram.ext import TypeHandler
+    application.add_handler(TypeHandler(Update, messages.global_profile_tracker), group=-1)

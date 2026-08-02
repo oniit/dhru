@@ -418,6 +418,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "<code>/gencode_avail</code> — Cek kode belum diklaim",
                 "<code>/broadcast [role] [text]</code> — Broadcast pesan dari bot",
                 "<code>/owner_reset</code> — Reset semua user",
+                "<code>/orreset_user [id/username]</code> — Reset satu user",
                 "",
             ]
         )
@@ -2403,7 +2404,7 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db = _db(context)
     actor = update.effective_user.id
     row = await user_row(conn, db, actor)
-    if not row or not can_report(row["role"], profile_from_row(row)):
+    if not row or not can_approve_profile(row["role"], profile_from_row(row)):
         await update.message.reply_text("Hanya admin atau owner.")
         return
     msg = update.message
@@ -2886,8 +2887,8 @@ async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or not can_approve_profile(row["role"], profile_from_row(row)):
-        await update.message.reply_text("Anda tidak berhak memicu reset moderasi.")
+    if not row or not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang berhak memicu menu reset ini.")
         return
 
     kb = InlineKeyboardMarkup(
