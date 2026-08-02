@@ -72,7 +72,8 @@ async def daily_auto_close_tasks(context):
         print(f"Auto-closed {len(closed_ids)} stale tasks.")
 
 
-import json\nimport html
+import json
+import html
 from bot.timefmt import days_until_next_birthday, get_today_wib
 
 async def daily_birthday_reminder(context):
@@ -118,7 +119,8 @@ def setup_jobs(application: Application):
     # Gunakan timezone WIB (UTC+7) secara eksplisit agar jadwal tidak bergeser
     wib = datetime.timezone(datetime.timedelta(hours=7))
     
-    # Run daily at midnight WIB\n    jq.run_daily(daily_birthday_reminder, datetime.time(hour=8, minute=0, second=0, tzinfo=wib))\n    
+    # Run daily at midnight WIB
+    jq.run_daily(daily_birthday_reminder, datetime.time(hour=8, minute=0, second=0, tzinfo=wib))
     jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0, tzinfo=wib))
 
 
