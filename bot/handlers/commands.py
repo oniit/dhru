@@ -22,6 +22,7 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STUDENT,
     ROLE_BEM,
+    ROLE_MABA,
     ROLE_PUBLIC,
 )
 from bot.settings import (
@@ -286,8 +287,8 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         count = int(parts[1])
     if len(parts) > 2:
         target_role = parts[2].lower()
-        if target_role not in (ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT):
-            await update.message.reply_text("Role target tidak valid. Gunakan: admin, internal, bem, atau student.")
+        if target_role not in (ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA):
+            await update.message.reply_text("Role target tidak valid. Gunakan: admin, internal, bem, student, atau maba.")
             return
 
     if count > 100: count = 100
@@ -620,6 +621,15 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if role == "internal":
             await update.message.reply_text(
                 "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Silakan buat kontrak kerja Anda dengan mengetik /kontrak."
+            )
+        elif role == "maba":
+            from bot.settings import MABA_GROUP_LINKS
+            mg = int(profile.get("maba_group", 1))
+            link = MABA_GROUP_LINKS[mg - 1]
+            if not link:
+                link = "(Link belum disetel oleh admin)"
+            await update.message.reply_text(
+                f"Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Anda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}"
             )
         else:
             await update.message.reply_text(

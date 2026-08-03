@@ -25,9 +25,10 @@ ROLE_ADMIN = "admin"
 ROLE_INTERNAL = "internal"
 ROLE_STUDENT = "student"
 ROLE_BEM = "bem"
+ROLE_MABA = "maba"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:

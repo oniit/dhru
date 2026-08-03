@@ -11,11 +11,13 @@ fields:
   - key: muse
     label: Muse
     type: text
+    roles: [owner, admin, internal, student, bem, public]
     required: true
 
   - key: birth_date
     label: Tanggal lahir
     type: text
+    roles: [owner, admin, internal, student, bem, public]
     required: true
 
   - key: faculty
@@ -87,6 +89,7 @@ profile_display:
   - major
   - auto_class_enrolled
   - club_enrolled
+  - maba_group
   - total_sks
   - student_id
   - agra_total

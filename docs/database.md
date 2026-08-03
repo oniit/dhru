@@ -9,8 +9,8 @@ Menyimpan data otentikasi utama dan profil JSON _schema-less_.
 - `telegram_id` (INTEGER PRIMARY KEY)
 - `username`, `first_name`, `last_name` (Terkait telegram)
 - `language_code`, `is_premium`, `is_bot`
-- `role` (TEXT): Peran pengguna (`owner`, `admin`, `internal`, `bem`, `student`, `public`).
-- `profile_json` (TEXT): Objek JSON fleksibel menyimpan jawaban formulir (NIM, fakultas, jurusan, TTL, dll).
+- `role` (TEXT): Peran pengguna (`owner`, `admin`, `internal`, `bem`, `student`, `maba`, `public`).
+- `profile_json` (TEXT): Objek JSON fleksibel menyimpan jawaban formulir (NIM, fakultas, jurusan, TTL, dll). Untuk `maba` akan tersimpan nilai `maba_group` (1-4).
 - `agra_total` (INTEGER): Saldo Agra saat ini.
 
 ### 2. `bot_chats`
