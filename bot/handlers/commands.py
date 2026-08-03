@@ -243,6 +243,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if role == ROLE_PUBLIC:
         keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Input Kode Akademik", callback_data="pub:kode")],
             [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
             [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
         ])
@@ -771,13 +772,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 [InlineKeyboardButton("Seputar Media Partner dan sejenisnya.", callback_data="pub:medpart")],
                 [InlineKeyboardButton("Menghubungi HRD.", callback_data="pub:hrd")],
                 [InlineKeyboardButton("Menghubungi Akademik.", callback_data="pub:akademik")],
-                [InlineKeyboardButton("Input kode yang diberikan pihak akademik.", callback_data="pub:kode")],
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
             ])
             await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
             
         elif action == "back":
             keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Input Kode Akademik", callback_data="pub:kode")],
                 [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
                 [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
             ])
