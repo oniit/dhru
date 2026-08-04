@@ -16,6 +16,8 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/leaderboard` — Menampilkan peringkat Agra mahasiswa teratas.
 - `/transfer <jumlah> <@username>` — Mentransfer poin Agra ke pengguna lain.
 - `/pay` — Mengurangi saldo Agra (opsional untuk pembayaran _virtual_).
+- `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
+- `/menfess_read <id>` — Membaca detail pesan menfess dari history.
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.

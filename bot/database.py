@@ -274,6 +274,17 @@ CREATE TABLE IF NOT EXISTS group_seen_users (
     last_seen_at REAL NOT NULL,
     PRIMARY KEY (chat_id, telegram_id)
 );
+
+CREATE TABLE IF NOT EXISTS menfess_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    message_text TEXT NOT NULL,
+    gift_agra INTEGER DEFAULT 0,
+    created_at REAL NOT NULL,
+    FOREIGN KEY (sender_id) REFERENCES users(telegram_id),
+    FOREIGN KEY (receiver_id) REFERENCES users(telegram_id)
+);
 """
 
 class AiosqliteRowMock:
@@ -1795,6 +1806,53 @@ class Database:
         
         await conn.commit()
         return True
+
+    async def add_menfess(
+        self,
+        conn: aiosqlite.Connection,
+        sender_id: int,
+        receiver_id: int,
+        message_text: str,
+        gift_agra: int = 0
+    ) -> int:
+        now = time.time()
+        cur = await conn.execute(
+            """
+            INSERT INTO menfess_history
+            (sender_id, receiver_id, message_text, gift_agra, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (sender_id, receiver_id, message_text, gift_agra, now)
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def get_menfess_inbox(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> list[aiosqlite.Row]:
+        cur = await conn.execute(
+            "SELECT * FROM menfess_history WHERE receiver_id = ? ORDER BY created_at DESC",
+            (telegram_id,)
+        )
+        return await cur.fetchall()
+
+    async def get_menfess_sent(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> list[aiosqlite.Row]:
+        cur = await conn.execute(
+            "SELECT * FROM menfess_history WHERE sender_id = ? ORDER BY created_at DESC",
+            (telegram_id,)
+        )
+        return await cur.fetchall()
+
+    async def get_menfess_by_id(
+        self, conn: aiosqlite.Connection, menfess_id: int
+    ) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM menfess_history WHERE id = ?",
+            (menfess_id,)
+        )
+        return await cur.fetchone()
 
 
 __all__ = [

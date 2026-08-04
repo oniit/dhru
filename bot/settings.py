@@ -87,6 +87,9 @@ TASK_CH_ID = int(_tc) if _tc else None
 _eg = os.environ.get("EDITOR_GID", "").strip()
 EDITOR_GID = int(_eg) if _eg else None
 
+_mc = os.environ.get("MENFESS_CH_ID", "").strip()
+MENFESS_CH_ID = int(_mc) if _mc else None
+
 # Agra Rewards Configuration
 _rewards = _load_yaml("rewards.yaml")
 AGRA_REWARD_CLASS_HADIR = int(_rewards.get("class_hadir", 25))

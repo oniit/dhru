@@ -51,3 +51,12 @@ Manajemen tugas dosen dan tempat berkumpulnya kiriman jawaban (_submission_) mah
 
 ### 8. `triggers`
 Tabel untuk `/trigger`. Menyimpan `keyword` dan daftar balasan (`actions_json`).
+
+### 9. `menfess_history`
+Menyimpan riwayat pengiriman pesan rahasia (menfess) antar pengguna beserta gift Agra.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `sender_id` (INTEGER): Pengirim menfess
+- `receiver_id` (INTEGER): Penerima menfess
+- `message_text` (TEXT): Isi pesan
+- `gift_agra` (INTEGER): Jumlah Agra yang diberikan
+- `created_at` (REAL): Waktu pengiriman
