@@ -83,15 +83,15 @@ def register_all(application: Application, db: Database) -> None:
     )
     application.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-            messages.on_text,
+            ~filters.COMMAND & filters.ChatType.PRIVATE,
+            messages.on_private_message,
         ),
         group=1,
     )
     application.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS,
-            messages.on_group_text,
+            ~filters.COMMAND & filters.ChatType.GROUPS,
+            messages.on_group_message,
         ),
         group=2,
     )

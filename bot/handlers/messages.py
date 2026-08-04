@@ -64,8 +64,8 @@ async def on_private_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif step == STEP_KONTRAK_TTD:
         await on_kontrak_ttd(update, context)
 
-async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.message.text:
+async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
         return
     uid = update.effective_user.id
     conn = _conn(context)
@@ -74,7 +74,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not row:
         return
     step = row["onboarding_step"] or ""
-    text = update.message.text.strip()
+    
+    raw_text = update.message.text or update.message.caption or ""
+    text = raw_text.strip()
+    
     if not step:
         is_trigger = False
         try:
@@ -85,10 +88,44 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             
         if not is_trigger and PETINGGI_GID:
             try:
-                await context.bot.send_message(
-                    chat_id=PETINGGI_GID,
-                    text=f"Pesan dari {update.effective_user.first_name} (@{update.effective_user.username}):\n\n{text}\n\n#ID_{uid}"
-                )
+                import html
+                first_name_esc = html.escape(update.effective_user.first_name or "User")
+                header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
+                
+                if update.message.text:
+                    text_esc = html.escape(update.message.text)
+                    await context.bot.send_message(
+                        chat_id=PETINGGI_GID,
+                        text=f"{header}:\n\n{text_esc}",
+                        parse_mode="HTML"
+                    )
+                elif update.message.sticker or update.message.video_note:
+                    copied_msg = await update.message.copy(chat_id=PETINGGI_GID)
+                    await context.bot.send_message(
+                        chat_id=PETINGGI_GID,
+                        text=header,
+                        parse_mode="HTML",
+                        reply_to_message_id=copied_msg.message_id
+                    )
+                else:
+                    original_caption = update.message.caption or ""
+                    # Telegram max caption is 1024 chars. Our header takes ~130 chars.
+                    if len(original_caption) > 850:
+                        copied_msg = await update.message.copy(chat_id=PETINGGI_GID)
+                        await context.bot.send_message(
+                            chat_id=PETINGGI_GID,
+                            text=header,
+                            parse_mode="HTML",
+                            reply_to_message_id=copied_msg.message_id
+                        )
+                    else:
+                        new_caption = f"{header}\n{html.escape(original_caption)}"
+                        await update.message.copy(
+                            chat_id=PETINGGI_GID,
+                            caption=new_caption,
+                            parse_mode="HTML"
+                        )
+                    
                 if row["role"] == "public":
                     await update.message.reply_text("Pesan Anda telah diteruskan ke tim kami.")
             except Exception as e:
@@ -282,12 +319,13 @@ async def track_group_activity(
         is_active=True
     )
 
-async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.message.text:
+async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
         return
         
     conn = _conn(context)
-    text = update.message.text.strip()
+    raw_text = update.message.text or update.message.caption or ""
+    text = raw_text.strip()
     
     try:
         from .triggers import check_and_execute_trigger
@@ -302,14 +340,41 @@ async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         
     reply = update.message.reply_to_message
     if reply and reply.from_user and reply.from_user.id == context.bot.id:
-        match = re.search(r"#ID_(\d+)", reply.text or "")
-        if match:
-            target_id = int(match.group(1))
-            try:
-                await context.bot.send_message(chat_id=target_id, text=update.message.text)
-                await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
-            except Exception as e:
-                await update.message.reply_text(f"Gagal mengirim balasan: {e}")
+        bot_text = reply.text or reply.caption or ""
+        matches = re.findall(r"#ID_(\d+)", bot_text)
+        if matches:
+            target_id = int(matches[0]) # Use the FIRST match since we put the header at the top
+            
+            # Stickers and Video Notes cannot have captions, so they cannot contain #balas. 
+            # We must forward them directly.
+            if update.message.sticker or update.message.video_note:
+                try:
+                    await update.message.copy(chat_id=target_id)
+                    await update.message.reply_text("✅ Media (Stiker/Video Note) berhasil dikirim ke user.")
+                except Exception as e:
+                    await update.message.reply_text(f"Gagal mengirim media: {e}")
+                return
+                
+            reply_match = re.match(r"(?i)^#balas(?:\s+|$)(.*)", text, re.DOTALL)
+            if reply_match:
+                reply_text = reply_match.group(1).strip()
+                if not reply_text and update.message.text:
+                    await update.message.reply_text("⚠️ Isi balasan tidak boleh kosong atau sertakan media. Gunakan format: #balas <pesan>")
+                    return
+                    
+                try:
+                    if update.message.text:
+                        # Use parse_mode=None to prevent HTML parsing crashes if admin types < or >
+                        await context.bot.send_message(chat_id=target_id, text=reply_text, parse_mode=None)
+                    else:
+                        await update.message.copy(
+                            chat_id=target_id,
+                            caption=reply_text,
+                            parse_mode=None
+                        )
+                    await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
+                except Exception as e:
+                    await update.message.reply_text(f"Gagal mengirim balasan: {e}")
 
 from telegram import ChatMember
 async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
