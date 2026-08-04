@@ -33,6 +33,13 @@ async def main():
         # Import schema and create tables if they don't exist
         from bot.database import SCHEMA
         print("Mengeksekusi skema database pada Turso...")
+        
+        try:
+            await client.execute("PRAGMA foreign_keys = OFF;")
+            print("Foreign keys dinonaktifkan sementara untuk migrasi.")
+        except Exception:
+            pass
+            
         # Execute schema might require splitting by ';'
         statements = [s.strip() for s in SCHEMA.split(';') if s.strip()]
         for stmt in statements:
@@ -78,10 +85,12 @@ async def main():
                     values = [row[col] for col in columns]
                     stmts.append(libsql_client.Statement(insert_sql, values))
                 try:
-                    await client.execute_batch(stmts)
-                    count += len(chunk)
+                    if hasattr(client, 'batch'):
+                        await client.batch(stmts)
+                        count += len(chunk)
+                    else:
+                        raise AttributeError("No batch method")
                 except Exception as e:
-                    print(f"  Error insert batch ke {table}: {e}")
                     # Fallback ke sequential dengan delay
                     for row in chunk:
                         values = [row[col] for col in columns]
@@ -89,7 +98,7 @@ async def main():
                             await client.execute(insert_sql, values)
                             count += 1
                         except Exception as inner_e:
-                            print(f"    Gagal baris spesifik: {inner_e}")
+                            print(f"    Gagal baris spesifik: {repr(inner_e)} | Data: {values}")
                         await asyncio.sleep(0.05)
             
             print(f"  Berhasil memigrasi {count}/{len(rows)} baris ke tabel {table}.")
