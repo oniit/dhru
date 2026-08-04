@@ -341,10 +341,40 @@ class AiosqliteConnectionMock:
         rs = await self.client.execute(sql, list(parameters) if parameters else [])
         return AiosqliteCursorMock(rs)
 
+    async def executemany(self, sql, parameters_seq):
+        if hasattr(self.client, "batch"):
+            from libsql_client import Statement
+            stmts = [Statement(sql, list(p)) for p in parameters_seq]
+            await self.client.batch(stmts)
+        else:
+            for p in parameters_seq:
+                await self.execute(sql, p)
+
     async def executescript(self, sql_script):
-        statements = [s.strip() for s in sql_script.split(';') if s.strip()]
-        for stmt in statements:
-            await self.client.execute(stmt)
+        # Hindari memecah titik koma di dalam string literal.
+        # SQLite membolehkan mengeksekusi banyak statement dalam satu execute di bbrp driver.
+        try:
+            # Gunakan sqlite3 API internal jika memungkinkan untuk memisahkan statement secara aman
+            import sqlite3
+            statements = []
+            stmt = ""
+            for line in sql_script.splitlines():
+                stmt += line + "\n"
+                if sqlite3.complete_statement(stmt):
+                    statements.append(stmt.strip())
+                    stmt = ""
+            if stmt.strip():
+                statements.append(stmt.strip())
+                
+            if hasattr(self.client, "batch"):
+                await self.client.batch(statements)
+            else:
+                for s in statements:
+                    if s:
+                        await self.client.execute(s)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("executescript error: %s", e)
 
     async def commit(self):
         pass
@@ -729,6 +759,32 @@ class Database:
         )
         await conn.commit()
 
+    async def deduct_agra_if_sufficient(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        target_id: int,
+        actor_id: int,
+        amount: int,
+        description: str,
+        chat_id: int | None,
+        message_id: int | None,
+    ) -> bool:
+        """Atomic deduction. Returns True if balance >= amount."""
+        cur = await conn.execute(
+            """
+            INSERT INTO agra_ledger (
+                target_telegram_id, actor_telegram_id, amount, description,
+                chat_id, message_id, created_at
+            )
+            SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE (SELECT COALESCE(SUM(amount), 0) FROM agra_ledger WHERE target_telegram_id = ?) >= ?
+            """,
+            (target_id, actor_id, -amount, description, chat_id, message_id, time.time(), target_id, amount),
+        )
+        await conn.commit()
+        return cur.rowcount > 0
+
     async def agra_report(
         self, conn: aiosqlite.Connection, limit: int = 50
     ) -> list[aiosqlite.Row]:
@@ -859,31 +915,49 @@ class Database:
     async def record_attendance(
         self, conn: aiosqlite.Connection, session_id: int, telegram_id: int, status: str = "hadir"
     ) -> tuple[bool, str]:
+        # Lock dihindari, kita gunakan atomic operations
         cur = await conn.execute(
             "SELECT status FROM attendance_records WHERE session_id = ? AND telegram_id = ?",
             (session_id, telegram_id)
         )
         row = await cur.fetchone()
+        
         if not row:
-            await conn.execute(
-                """
-                INSERT INTO attendance_records (session_id, telegram_id, recorded_at, status)
-                VALUES (?, ?, ?, ?)
-                """,
-                (session_id, telegram_id, time.time(), status),
-            )
-            await conn.commit()
-            return True, ""
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO attendance_records (session_id, telegram_id, recorded_at, status)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (session_id, telegram_id, time.time(), status),
+                )
+                await conn.commit()
+                return True, ""
+            except Exception:
+                # Jika terjadi race condition dan insert gagal krn constraint UNIQUE, coba update
+                cur = await conn.execute(
+                    "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ? AND status != ?",
+                    (status, time.time(), session_id, telegram_id, status)
+                )
+                await conn.commit()
+                if cur.rowcount > 0:
+                    # Kita asumsikan old_status adalah lawannya
+                    old_status = "izin" if status == "hadir" else "hadir"
+                    return True, old_status
+                return False, status
         else:
             old_status = row["status"]
             if old_status == status:
                 return False, old_status
-            await conn.execute(
-                "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ?",
-                (status, time.time(), session_id, telegram_id)
+            cur = await conn.execute(
+                "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ? AND status = ?",
+                (status, time.time(), session_id, telegram_id, old_status)
             )
             await conn.commit()
-            return True, old_status
+            if cur.rowcount > 0:
+                return True, old_status
+            # Jika rowcount 0, berarti status sudah diubah oleh request konkuren
+            return False, status
 
     async def attendance_recap_session(
         self, conn: aiosqlite.Connection, session_id: int
@@ -1222,24 +1296,18 @@ class Database:
         reviewed_by: int,
         reason: str | None = None,
     ) -> bool:
-        cur = await conn.execute(
-            "SELECT * FROM task_submissions WHERE id = ?", (submission_id,)
-        )
-        row = await cur.fetchone()
-        if not row or row["status"] == "accepted":
-            return False
         now = time.time()
         status = "accepted" if accept else "rejected"
-        await conn.execute(
+        cur = await conn.execute(
             """
             UPDATE task_submissions
             SET status = ?, reviewed_by = ?, reviewed_at = ?, reject_reason = ?
-            WHERE id = ?
+            WHERE id = ? AND status = 'submitted'
             """,
             (status, reviewed_by, now, reason if not accept else None, submission_id),
         )
         await conn.commit()
-        return True
+        return cur.rowcount > 0
 
     async def set_submission_channel_message(
         self, conn: aiosqlite.Connection, submission_id: int, message_id: int

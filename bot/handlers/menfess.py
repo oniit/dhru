@@ -313,6 +313,26 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
             
     gift_text = f" [🎁 {gift} agra]" if gift > 0 else ""
     
+    # ATOMIC DEDUCTION (Mencegah Race Condition TOCTOU)
+    desc = f"Menfess payment (1) + gift ({gift})"
+    deducted = await db.deduct_agra_if_sufficient(
+        conn,
+        target_id=sender_id,
+        actor_id=sender_id,
+        amount=total_deduct,
+        description=desc,
+        chat_id=update.effective_chat.id if update.effective_chat else None,
+        message_id=update.effective_message.message_id if update.effective_message else None
+    )
+    
+    if not deducted:
+        msg = f"❌ Saldo Agra Anda tidak mencukupi (atau sedang diproses). Butuh {total_deduct} Agra."
+        if is_message:
+            await update.message.reply_text(msg)
+        else:
+            await update.callback_query.message.edit_text(msg)
+        return ConversationHandler.END
+    
     # Send to channel FIRST
     channel_id = MENFESS_CH_ID
     channel_msg = f"💌 {target_name}, {message_text}{gift_text}"
@@ -332,23 +352,22 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
             post_link = f"https://t.me/c/{cid}/{sent_msg.message_id}"
     except Exception as e:
         log.error(f"Failed to send menfess to channel: {e}")
-        fail_msg = "❌ Gagal mengirim menfess ke channel. Saldo Anda tidak dipotong. Silakan coba lagi nanti."
+        # Refund (atomic rollback manual)
+        await db.add_agra(
+            conn,
+            target_id=sender_id,
+            actor_id=sender_id,
+            amount=total_deduct,
+            description="Refund menfess gagal kirim",
+            chat_id=update.effective_chat.id if update.effective_chat else None,
+            message_id=update.effective_message.message_id if update.effective_message else None
+        )
+        fail_msg = "❌ Gagal mengirim menfess ke channel. Saldo Anda telah dikembalikan. Silakan coba lagi nanti."
         if is_message:
             await update.message.reply_text(fail_msg)
         else:
             await update.callback_query.message.edit_text(fail_msg)
         return ConversationHandler.END
-
-    # Deduct from sender
-    await db.add_agra(
-        conn,
-        target_id=sender_id,
-        actor_id=sender_id,
-        amount=-total_deduct,
-        description=f"Menfess payment (1) + gift ({gift})",
-        chat_id=update.effective_chat.id if update.effective_chat else None,
-        message_id=update.effective_message.message_id if update.effective_message else None
-    )
     
     # Add cashback if eligible
     if cashback_amount > 0:
@@ -439,9 +458,13 @@ async def cmd_menfess_read(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Anda tidak berhak membaca menfess ini.")
         return
         
+    display_sender = str(row['sender_id'])
+    if user_id == row['receiver_id'] and user_id != row['sender_id']:
+        display_sender = "Anonim (Disamarkan)"
+
     text = (
         f"<b>💌 Menfess #{row['id']}</b>\n"
-        f"Dari: <code>{row['sender_id']}</code>\n"
+        f"Dari: <code>{display_sender}</code>\n"
         f"Ke: <code>{row['receiver_id']}</code>\n"
         f"Waktu: {row['created_at']}\n"
         f"Gift Agra: {row['gift_agra']}\n\n"

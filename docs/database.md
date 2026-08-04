@@ -35,13 +35,14 @@ Menampung permintaan dari user biasa yang mengubah _field_ sensitif (dikunci). A
 - `proposed_json` (TEXT)
 - `status` (TEXT): `pending`, `accepted`, `rejected`.
 
-### 5. `agra_history`
-Riwayat keluar-masuk (mutasi) poin Agra.
+### 5. `agra_ledger` (Riwayat Agra)
+Menyimpan riwayat keluar-masuk (mutasi) poin Agra. Karena sifatnya ledger, saldo total dihitung secara dinamis dari agregasi (SUM) nilai `amount`.
 - `id` (INTEGER PRIMARY KEY)
-- `target_id` (INTEGER): Penerima/Pemilik
-- `actor_id` (INTEGER): Siapa yang memberi (Bot/Dosen/Orang lain)
+- `target_telegram_id` (INTEGER): Penerima/Pemilik
+- `actor_telegram_id` (INTEGER): Siapa yang memberi (Bot/Dosen/Orang lain)
 - `amount` (INTEGER): Minus berarti pemotongan.
 - `description` (TEXT)
+- Transaksi pemotongan saldo bersifat atomik (*atomic subqueries*) untuk mencegah kecurangan (*race conditions*) pada eksekusi konkuren, khususnya saat menggunakan integrasi mock Turso.
 
 ### 6. `attendance_sessions` & `attendance_records`
 Manajemen sesi absen yang dibuka dosen, serta entri absen mahasiswanya.

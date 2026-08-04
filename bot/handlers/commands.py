@@ -2285,13 +2285,24 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     total_cost = parsed.amount * len(targets)
-    current_agra = await db.agra_total(conn, actor)
-    if current_agra < total_cost:
-        await update.message.reply_text(f"Agra tidak cukup. Saldo kamu: {current_agra}, butuh: {total_cost}.")
-        return
-
     chat_id = update.message.chat_id
     mid = update.message.message_id
+    
+    # ATOMIC DEDUCTION (Fix TOCTOU Race Condition)
+    deducted = await db.deduct_agra_if_sufficient(
+        conn,
+        target_id=actor,
+        actor_id=actor,
+        amount=total_cost,
+        description=f"Transfer masal ke {len(targets)} user",
+        chat_id=chat_id,
+        message_id=mid,
+    )
+    if not deducted:
+        current_agra = await db.agra_total(conn, actor)
+        await update.message.reply_text(f"Agra tidak cukup (atau transaksi bentrok). Saldo kamu: {current_agra}, butuh: {total_cost}.")
+        return
+
     lines = []
     success_count = 0
     
@@ -2302,6 +2313,11 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         urow = await user_row(conn, db, tid)
         if not urow:
             lines.append(f"• User ID <code>{tid}</code> belum /start — dilewati.")
+            # Refund partial if user not found (since we deducted in bulk)
+            await db.add_agra(
+                conn, target_id=actor, actor_id=actor, amount=parsed.amount,
+                description=f"Refund transfer gagal ke {tid}", chat_id=chat_id, message_id=mid
+            )
             continue
             
         prof = profile_from_row(urow)
@@ -2309,16 +2325,6 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
         desc = html.escape(str(parsed.description or "Transfer Agra"))
         
-        # Deduct from actor
-        await db.add_agra(
-            conn,
-            target_id=actor,
-            actor_id=actor,
-            amount=-parsed.amount,
-            description=f"Transfer ke {target_full_name}: {desc}",
-            chat_id=chat_id,
-            message_id=mid,
-        )
         # Add to target
         await db.add_agra(
             conn,
