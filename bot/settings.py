@@ -72,8 +72,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 GENERATION_CODE = os.environ.get("GENERATION_CODE", "01").strip()
 
-_fg = os.environ.get("FORWARD_GID", "").strip()
-FORWARD_GID = int(_fg) if _fg else None
+_fg = os.environ.get("PETINGGI_GID", "").strip()
+PETINGGI_GID = int(_fg) if _fg else None
 
 _bc = os.environ.get("BACKUP_CH_ID", "").strip()
 BACKUP_CH_ID = int(_bc) if _bc else None

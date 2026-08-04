@@ -10,6 +10,10 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+import warnings
+from telegram.warnings import PTBUserWarning
+warnings.filterwarnings("ignore", category=PTBUserWarning, message="If 'per_message=False'")
+
 from bot.database import Database
 from bot.settings import MENFESS_CH_ID
 
@@ -227,7 +231,13 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     target_row = await db.get_user(conn, target_id)
     target_name = "Pengguna"
     if target_row:
-        target_name = (f"{target_row['first_name'] or ''} {target_row['last_name'] or ''}").strip()
+        from bot.handlers.common import profile_from_row
+        profile = profile_from_row(target_row)
+        target_name = profile.get("full_name", "").strip()
+        
+        if not target_name:
+            target_name = (f"{target_row['first_name'] or ''} {target_row['last_name'] or ''}").strip()
+            
         if not target_name:
             target_name = target_row['username'] or str(target_id)
             
@@ -235,7 +245,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     
     # Send to channel FIRST
     channel_id = MENFESS_CH_ID
-    channel_msg = f"{target_name} 💌 {message_text}{gift_text}"
+    channel_msg = f"{target_name}   💌   {message_text}{gift_text}"
         
     sent_msg = None
     post_link = ""
@@ -262,20 +272,24 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     # Deduct from sender
     await db.add_agra(
         conn,
-        target_telegram_id=sender_id,
-        actor_telegram_id=sender_id,
+        target_id=sender_id,
+        actor_id=sender_id,
         amount=-total_deduct,
-        description=f"Menfess payment (1) + gift ({gift})"
+        description=f"Menfess payment (1) + gift ({gift})",
+        chat_id=update.effective_chat.id if update.effective_chat else None,
+        message_id=update.effective_message.message_id if update.effective_message else None
     )
     
     # Add to receiver (if gift > 0)
     if gift > 0:
         await db.add_agra(
             conn,
-            target_telegram_id=target_id,
-            actor_telegram_id=sender_id,
+            target_id=target_id,
+            actor_id=sender_id,
             amount=gift,
-            description="Menfess gift"
+            description="Menfess gift",
+            chat_id=update.effective_chat.id if update.effective_chat else None,
+            message_id=update.effective_message.message_id if update.effective_message else None
         )
         
     # Record history
@@ -288,7 +302,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     )
     
     # Send to receiver's private chat
-    private_msg = f"💌 {message_text}{gift_text}\n"
+    private_msg = f"💌   {message_text}{gift_text}\n"
         
     if post_link:
         private_msg += f"\nLihat di channel @DhruvaFess: {post_link}"

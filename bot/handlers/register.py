@@ -57,7 +57,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("gencode_avail", commands.cmd_gencode_avail))
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
     application.add_handler(CommandHandler("menfess_read", menfess.cmd_menfess_read))
-    application.add_handler(menfess.cmd_menfess_router)
+    application.add_handler(menfess.cmd_menfess_router, group=1)
 
     from telegram.ext import ChatMemberHandler
     application.add_handler(ChatMemberHandler(messages.on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))

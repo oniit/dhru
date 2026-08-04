@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 import time
 import re
 
-from bot.settings import PROFILE_FIELDS, FORWARD_GID
+from bot.settings import PROFILE_FIELDS, PETINGGI_GID
 
 from .common import (
     can_report,
@@ -83,13 +83,17 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except ImportError:
             pass
             
-        if not is_trigger and FORWARD_GID:
-            await context.bot.send_message(
-                chat_id=FORWARD_GID,
-                text=f"Pesan dari {update.effective_user.first_name} (@{update.effective_user.username}):\n\n{text}\n\n#ID_{uid}"
-            )
-            if row["role"] == "public":
-                await update.message.reply_text("Pesan Anda telah diteruskan ke tim kami.")
+        if not is_trigger and PETINGGI_GID:
+            try:
+                await context.bot.send_message(
+                    chat_id=PETINGGI_GID,
+                    text=f"Pesan dari {update.effective_user.first_name} (@{update.effective_user.username}):\n\n{text}\n\n#ID_{uid}"
+                )
+                if row["role"] == "public":
+                    await update.message.reply_text("Pesan Anda telah diteruskan ke tim kami.")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Gagal meneruskan pesan ke PETINGGI_GID ({PETINGGI_GID}): {e}")
         return
         
     if step == "INPUT_CODE":
@@ -293,7 +297,7 @@ async def on_group_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except ImportError:
         pass
         
-    if not FORWARD_GID or update.effective_chat.id != FORWARD_GID:
+    if not PETINGGI_GID or update.effective_chat.id != PETINGGI_GID:
         return
         
     reply = update.message.reply_to_message
