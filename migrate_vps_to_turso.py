@@ -38,8 +38,21 @@ async def main():
         for stmt in statements:
             try:
                 await client.execute(stmt)
-            except Exception as e:
-                print(f"Peringatan saat membuat skema: {e}")
+            except Exception:
+                pass
+                
+        print("Menambahkan kolom-kolom baru (ALTER TABLE) jika belum ada...")
+        alter_stmts = [
+            "ALTER TABLE attendance_sessions ADD COLUMN announce_message_id INTEGER",
+            "ALTER TABLE profile_change_requests ADD COLUMN moderator_prompt_text TEXT",
+            "ALTER TABLE attendance_records ADD COLUMN status TEXT NOT NULL DEFAULT 'hadir'",
+            "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"
+        ]
+        for stmt in alter_stmts:
+            try:
+                await client.execute(stmt)
+            except Exception:
+                pass
 
         for table in tables:
             print(f"Migrasi tabel {table}...")
@@ -55,16 +68,31 @@ async def main():
             
             insert_sql = f"INSERT OR REPLACE INTO {table} ({cols_str}) VALUES ({placeholders})"
             
+            # Batch execution to prevent rate limiting
+            chunk_size = 50
             count = 0
-            for row in rows:
-                values = [row[col] for col in columns]
+            for i in range(0, len(rows), chunk_size):
+                chunk = rows[i:i + chunk_size]
+                stmts = []
+                for row in chunk:
+                    values = [row[col] for col in columns]
+                    stmts.append(libsql_client.Statement(insert_sql, values))
                 try:
-                    await client.execute(insert_sql, values)
-                    count += 1
+                    await client.execute_batch(stmts)
+                    count += len(chunk)
                 except Exception as e:
-                    print(f"  Error insert ke {table}: {e}")
+                    print(f"  Error insert batch ke {table}: {e}")
+                    # Fallback ke sequential dengan delay
+                    for row in chunk:
+                        values = [row[col] for col in columns]
+                        try:
+                            await client.execute(insert_sql, values)
+                            count += 1
+                        except Exception as inner_e:
+                            print(f"    Gagal baris spesifik: {inner_e}")
+                        await asyncio.sleep(0.05)
             
-            print(f"  Berhasil memigrasi {count} baris ke tabel {table}.")
+            print(f"  Berhasil memigrasi {count}/{len(rows)} baris ke tabel {table}.")
             
         print("✅ Migrasi selesai!")
     except Exception as e:
