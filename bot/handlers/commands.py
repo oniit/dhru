@@ -592,6 +592,7 @@ async def cmd_profile_dtl(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     text = (
         f"<b>No. ID</b>: <code>{reg_id}</code>\n"
+        f"<b>Role</b>: {role_display(row['role'])}\n"
         f"<b>Nama Lengkap</b>: {full_name}\n"
         f"<b>Muse</b>: {muse}\n"
         f"<b>Tanggal Lahir</b>: {birth_date}"
@@ -772,6 +773,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not q or not q.data or not q.from_user:
         return
     data = q.data
+    conn = _conn(context)
+    db = _db(context)
+    uid = q.from_user.id
 
     if data == "cancel_action":
         await q.answer("Aksi dibatalkan.")
@@ -2836,7 +2840,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not parsed:
         await update.message.reply_text(
             "Pakai:\n"
-            "<code>/setrole <admin|internal|student|public> @user1 @user2</code>\n"
+            "<code>/setrole <admin|internal|student|maba|public> @user1 @user2</code>\n"
             "atau balas pesan seseorang lalu <code>/setrole <role></code>\n\n"
             "Owner tetap hanya satu (di .env); tidak bisa set owner ke orang lain.",
         )
@@ -2848,9 +2852,11 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ROLE_INTERNAL,
         ROLE_BEM,
         ROLE_STUDENT,
+        ROLE_MABA,
+        ROLE_PUBLIC,
     ):
         await update.message.reply_text(
-            "Role tidak dikenal. Gunakan admin, internal, bem, atau student."
+            "Role tidak dikenal. Gunakan admin, internal, bem, student, maba, atau public."
         )
         return
     conn = _conn(context)

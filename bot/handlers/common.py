@@ -281,7 +281,9 @@ def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
         else:
             if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM):
                 continue
-            if key == "position" and role in (ROLE_STUDENT, ROLE_BEM):
+            if key == "position" and role not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+                continue
+            if key == "maba_group" and role != ROLE_MABA:
                 continue
             out.append(key)
     return out
