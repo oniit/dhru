@@ -12,6 +12,7 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STUDENT,
     ROLE_BEM,
+    ROLE_MABA,
 )
 from bot.settings import (
     CHOICES,
@@ -37,6 +38,7 @@ def role_display(role: str) -> str:
         ROLE_INTERNAL: "Internal",
         ROLE_BEM: "BEM",
         ROLE_STUDENT: "Mahasiswa",
+        ROLE_MABA: "Mahasiswa Baru",
     }.get(role, role)
 
 
@@ -376,6 +378,9 @@ def format_profile_card(
             return f"<code>{raw}</code>" if raw else "—"
         if key == "role":
             return role_display(row["role"])
+        if key == "maba_group":
+            mg = profile.get("maba_group")
+            return f"Kelompok {mg}" if mg else "—"
         if key == "agra_total":
             return f"{agra:,}".replace(",", ".")
         if key == "auto_class_enrolled":

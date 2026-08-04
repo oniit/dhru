@@ -170,6 +170,16 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
             if target_role == "internal":
                 await update.message.reply_text("🔑 Kode akses internal valid! Peran Anda kini diubah menjadi Staf Internal.\nSilakan lengkapi profil Anda dengan mengetik /lengkapi.")
+            elif target_role == "maba":
+                cur_maba = await conn.execute(
+                    "SELECT COUNT(*) as c FROM access_codes WHERE target_role = 'maba' AND used_by IS NOT NULL AND (used_at < (SELECT used_at FROM access_codes WHERE code = ?) OR (used_at = (SELECT used_at FROM access_codes WHERE code = ?) AND code <= ?))",
+                    (code, code, code)
+                )
+                maba_order_row = await cur_maba.fetchone()
+                m_order = int(maba_order_row["c"]) if maba_order_row else 1
+                maba_group = ((m_order - 1) % 4) + 1
+                await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
+                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
             else:
                 await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
@@ -260,9 +270,16 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         new_profile = profile_from_row(new_row)
         if _is_lengkapi_done(new_profile) and not _is_lengkapi_done(profile):
             if new_row["role"] == "internal":
-                await update.message.reply_text(f"✅ {lab} disimpan.\n\n✨ Profil Anda telah lengkap! Sekarang, silakan buat kontrak kerja Anda dengan mengetik /kontrak.")
+                await update.message.reply_text("✨ Terima kasih. Data awal Anda sudah lengkap. Anda kini dapat mulai beraktivitas, silakan ketik /kontrak untuk membuat ID Card Pegawai Anda.")
+            elif new_row["role"] == "maba":
+                from bot.settings import MABA_GROUP_LINKS
+                mg = int(new_profile.get("maba_group", 1))
+                link = MABA_GROUP_LINKS[mg - 1]
+                if not link:
+                    link = "(Link belum disetel oleh admin)"
+                await update.message.reply_text(f"✨ Terima kasih. Data awal Anda sudah lengkap.\n\nAnda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}")
             else:
-                await update.message.reply_text(f"✅ {lab} disimpan.\n\n✨ Profil Anda telah lengkap!")
+                await update.message.reply_text("✨ Terima kasih. Data awal Anda sudah lengkap. Anda kini dapat menggunakan seluruh fitur sesuai role Anda.")
         else:
             await update.message.reply_text(f"✅ {lab} disimpan.")
         return
