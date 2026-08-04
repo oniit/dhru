@@ -60,3 +60,11 @@ Menyimpan riwayat pengiriman pesan rahasia (menfess) antar pengguna beserta gift
 - `message_text` (TEXT): Isi pesan
 - `gift_agra` (INTEGER): Jumlah Agra yang diberikan
 - `created_at` (REAL): Waktu pengiriman
+
+## Migrasi ke Turso (Database Edge/Remote)
+Secara default, bot menggunakan SQLite lokal (`data/bot.db`). Namun bot mendukung database Turso melalui *environment variables*: `TURSO_DB_URL` dan `TURSO_AUTH_TOKEN`.
+Jika Anda memiliki data di SQLite lokal dan ingin memindahkannya ke Turso, Anda dapat menggunakan skrip migrasi yang telah disediakan:
+```bash
+python migrate_vps_to_turso.py
+```
+Skrip ini akan mengambil semua tabel dari `data/bot.db` dan melakukan *insert/replace* secara otomatis ke database Turso Anda yang diatur di `.env`.
