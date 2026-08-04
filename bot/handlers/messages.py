@@ -182,7 +182,6 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 
                 row_u = await user_row(conn, db, uid)
                 prof_u = profile_from_row(row_u) if row_u else {}
-                from bot.handlers.commands import _is_lengkapi_done
                 
                 if _is_lengkapi_done(prof_u):
                     from bot.settings import MABA_GROUP_LINKS

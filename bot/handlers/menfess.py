@@ -16,6 +16,7 @@ warnings.filterwarnings("ignore", category=PTBUserWarning, message="If 'per_mess
 
 from bot.database import Database
 from bot.settings import MENFESS_CH_ID
+from bot.timefmt import format_local_time
 
 log = logging.getLogger(__name__)
 
@@ -84,7 +85,8 @@ async def on_submenu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         text = "<b>📥 History Menfess Masuk</b>\n\n"
         for i, row in enumerate(history[:20], 1):
-            text += f"{i}. ID: <code>{row['id']}</code> (Gift: {row['gift_agra']} agra)\n"
+            time_str = format_local_time(row['created_at'])
+            text += f"{i}. <code>{row['id']}</code> • {time_str} (Gift: {row['gift_agra']} agra)\n"
         text += "\nKetik <code>/menfess_read &lt;ID&gt;</code> untuk membaca isi pesan."
         await query.message.edit_text(text, parse_mode="HTML")
         return ConversationHandler.END
@@ -98,7 +100,8 @@ async def on_submenu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = "<b>📤 History Menfess Keluar</b>\n\n"
         for i, row in enumerate(history[:20], 1):
             recv = f"@{row['receiver_username']}" if row['receiver_username'] else row['receiver_id']
-            text += f"{i}. ID: <code>{row['id']}</code> (Ke: {recv})\n"
+            time_str = format_local_time(row['created_at'])
+            text += f"{i}. <code>{row['id']}</code> • {time_str} (Ke: {recv})\n"
         text += "\nKetik <code>/menfess_read &lt;ID&gt;</code> untuk membaca isi pesan."
         await query.message.edit_text(text, parse_mode="HTML")
         return ConversationHandler.END
@@ -466,7 +469,7 @@ async def cmd_menfess_read(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"<b>💌 Menfess #{row['id']}</b>\n"
         f"Dari: <code>{display_sender}</code>\n"
         f"Ke: <code>{row['receiver_id']}</code>\n"
-        f"Waktu: {row['created_at']}\n"
+        f"Waktu: {format_local_time(row['created_at'])}\n"
         f"Gift Agra: {row['gift_agra']}\n\n"
         f"Pesan:\n{row['message_text']}"
     )
