@@ -243,11 +243,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     role = row["role"] if row else ROLE_PUBLIC
     
     if role == ROLE_PUBLIC:
-        keyboard = InlineKeyboardMarkup([
+        buttons = []
+        if not _is_lengkapi_done(profile):
+            buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
+            
+        buttons.extend([
             [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
             [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
             [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
         ])
+        keyboard = InlineKeyboardMarkup(buttons)
         await update.message.reply_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
         return
 
@@ -787,11 +792,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
             
         elif action == "back":
-            keyboard = InlineKeyboardMarkup([
+            row_u = await user_row(conn, db, q.from_user.id)
+            profile_u = profile_from_row(row_u) if row_u else {}
+            buttons = []
+            if not _is_lengkapi_done(profile_u):
+                buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
+                
+            buttons.extend([
                 [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
                 [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
                 [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
             ])
+            keyboard = InlineKeyboardMarkup(buttons)
             await q.edit_message_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
 
         elif action in ("medpart", "hrd", "akademik"):

@@ -11,13 +11,13 @@ fields:
   - key: muse
     label: Muse
     type: text
-    roles: [owner, admin, internal, student, bem, public]
+    roles: [owner, admin, internal, student, bem]
     required: true
 
   - key: birth_date
     label: Tanggal lahir
     type: text
-    roles: [owner, admin, internal, student, bem, public]
+    roles: [owner, admin, internal, student, bem]
     required: true
 
   - key: faculty

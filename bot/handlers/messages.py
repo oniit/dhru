@@ -179,7 +179,19 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 m_order = int(maba_order_row["c"]) if maba_order_row else 1
                 maba_group = ((m_order - 1) % 4) + 1
                 await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
-                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
+                
+                row_u = await user_row(conn, db, uid)
+                prof_u = profile_from_row(row_u) if row_u else {}
+                from bot.handlers.commands import _is_lengkapi_done
+                
+                if _is_lengkapi_done(prof_u):
+                    from bot.settings import MABA_GROUP_LINKS
+                    link = MABA_GROUP_LINKS[maba_group - 1]
+                    if not link:
+                        link = "(Link belum disetel oleh admin)"
+                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
+                else:
+                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
             else:
                 await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
