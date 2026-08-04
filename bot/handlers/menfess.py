@@ -97,7 +97,8 @@ async def on_submenu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         text = "<b>📤 History Menfess Keluar</b>\n\n"
         for i, row in enumerate(history[:20], 1):
-            text += f"{i}. ID: <code>{row['id']}</code> (Ke: {row['receiver_id']})\n"
+            recv = f"@{row['receiver_username']}" if row['receiver_username'] else row['receiver_id']
+            text += f"{i}. ID: <code>{row['id']}</code> (Ke: {recv})\n"
         text += "\nKetik <code>/menfess_read &lt;ID&gt;</code> untuk membaca isi pesan."
         await query.message.edit_text(text, parse_mode="HTML")
         return ConversationHandler.END
@@ -131,6 +132,27 @@ async def target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return TARGET
         
+    sender_row = await db.get_user(conn, update.effective_user.id)
+    is_internal = sender_row and sender_row["role"] == "internal"
+    
+    if is_internal:
+        import time
+        now_ts = time.time()
+        tz_offset = 7 * 3600
+        start_of_day_utc = ((now_ts + tz_offset) // 86400) * 86400 - tz_offset
+        
+        sent_today = await db.get_menfess_sent_today_count(conn, update.effective_user.id, start_of_day_utc)
+        
+        # Batasan 7 penerima unik HANYA berlaku untuk menfess pertama (yang dapat cashback)
+        if sent_today == 0:
+            last_7_receivers = await db.get_last_n_unique_menfess_receivers(conn, update.effective_user.id, 7)
+            if target_row["telegram_id"] in last_7_receivers:
+                await update.message.reply_text(
+                    "⚠️ Sebagai Internal, Anda tidak bisa menggunakan bonus Menfess Pertama hari ini untuk mengirim ke 7 penerima terakhir Anda.\n"
+                    "Silakan masukkan pengguna lain agar penerima lebih bervariasi."
+                )
+                return TARGET
+        
     context.user_data["menfess_target_id"] = target_row["telegram_id"]
     await update.message.reply_text(
         "✅ Target ditemukan.\n\n"
@@ -146,6 +168,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ConversationHandler.END
         
     context.user_data["menfess_message"] = text
+    context.user_data["menfess_gift"] = 0
     
     keyboard = [
         [InlineKeyboardButton("✅ Ya, Kirim", callback_data="confirm:yes")],
@@ -178,7 +201,8 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return GIFT_AMOUNT
         
     if data == "confirm:yes":
-        context.user_data["menfess_gift"] = 0
+        if "menfess_gift" not in context.user_data:
+            context.user_data["menfess_gift"] = 0
         return await execute_menfess(update, context)
 
 async def gift_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -206,7 +230,22 @@ async def gift_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return GIFT_AMOUNT
         
     context.user_data["menfess_gift"] = gift
-    return await execute_menfess(update, context, is_message=True)
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ Ya, Kirim", callback_data="confirm:yes")],
+        [InlineKeyboardButton(f"🎁 Ubah Nominal ({gift} Agra)", callback_data="confirm:gift")],
+        [InlineKeyboardButton("❌ Batal", callback_data="confirm:cancel")]
+    ]
+    await update.message.reply_text(
+        f"Pesan menfess sudah siap.\n"
+        f"Biaya pengiriman: 1 Agra\n"
+        f"Hadiah: {gift} Agra\n"
+        f"<b>Total: {1 + gift} Agra</b>.\n\n"
+        f"Apakah Anda yakin ingin mengirimkannya?",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return CONFIRM
 
 async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is_message: bool = False) -> int:
     sender_id = update.effective_user.id
@@ -241,11 +280,42 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         if not target_name:
             target_name = target_row['username'] or str(target_id)
             
-    gift_text = f" [Hadiah: {gift} agra]" if gift > 0 else ""
+    # Calculate cashback for internal role
+    cashback_amount = 0
+    sender_row = await db.get_user(conn, sender_id)
+    is_internal = sender_row and sender_row["role"] == "internal"
+    
+    if is_internal:
+        import time
+        now_ts = time.time()
+        tz_offset = 7 * 3600
+        local_time = now_ts + tz_offset
+        days = local_time // 86400
+        start_of_day_local = days * 86400
+        start_of_day_utc = start_of_day_local - tz_offset
+        
+        sent_today = await db.get_menfess_sent_today_count(conn, sender_id, start_of_day_utc)
+        if sent_today == 0:
+            # QA FIX: Re-verify 7-receiver limit to prevent midnight rollover bypass!
+            last_7_receivers = await db.get_last_n_unique_menfess_receivers(conn, sender_id, 7)
+            if target_id in last_7_receivers:
+                fail_msg = (
+                    "❌ Sistem mendeteksi perubahan hari (melewati tengah malam).\n"
+                    "Ini menjadi menfess pertama Anda hari ini (berlaku cashback), namun target Anda termasuk dalam 7 penerima terakhir. Silakan ulangi pengiriman dengan target yang berbeda."
+                )
+                if is_message:
+                    await update.message.reply_text(fail_msg)
+                else:
+                    await update.callback_query.message.edit_text(fail_msg)
+                return ConversationHandler.END
+                
+            cashback_amount = 2
+            
+    gift_text = f" [🎁 {gift} agra]" if gift > 0 else ""
     
     # Send to channel FIRST
     channel_id = MENFESS_CH_ID
-    channel_msg = f"{target_name}   💌   {message_text}{gift_text}"
+    channel_msg = f"💌 {target_name}, {message_text}{gift_text}"
         
     sent_msg = None
     post_link = ""
@@ -280,6 +350,18 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         message_id=update.effective_message.message_id if update.effective_message else None
     )
     
+    # Add cashback if eligible
+    if cashback_amount > 0:
+        await db.add_agra(
+            conn,
+            target_id=sender_id,
+            actor_id=sender_id,
+            amount=cashback_amount,
+            description="Bonus menfess pertama hari ini (Internal)",
+            chat_id=update.effective_chat.id if update.effective_chat else None,
+            message_id=update.effective_message.message_id if update.effective_message else None
+        )
+    
     # Add to receiver (if gift > 0)
     if gift > 0:
         await db.add_agra(
@@ -302,7 +384,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     )
     
     # Send to receiver's private chat
-    private_msg = f"💌   {message_text}{gift_text}\n"
+    private_msg = f"💌 {message_text}{gift_text}\n"
         
     if post_link:
         private_msg += f"\nLihat di channel @DhruvaFess: {post_link}"
@@ -320,6 +402,9 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         log.error(f"Failed to send menfess to private chat {target_id}: {e}")
         
     success_msg = f"✅ Menfess berhasil dikirim! Saldo Anda terpotong {total_deduct} Agra."
+    if cashback_amount > 0:
+        success_msg += f"\n🎁 Selamat! Sebagai Internal, Anda mendapatkan cashback {cashback_amount} Agra untuk menfess pertama hari ini!"
+        
     if post_link:
         success_msg += f"\nLink post: {post_link}"
         

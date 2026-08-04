@@ -285,6 +285,9 @@ CREATE TABLE IF NOT EXISTS menfess_history (
     FOREIGN KEY (sender_id) REFERENCES users(telegram_id),
     FOREIGN KEY (receiver_id) REFERENCES users(telegram_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_menfess_sender ON menfess_history(sender_id);
+CREATE INDEX IF NOT EXISTS idx_menfess_receiver ON menfess_history(receiver_id);
 """
 
 class AiosqliteRowMock:
@@ -1840,7 +1843,13 @@ class Database:
         self, conn: aiosqlite.Connection, telegram_id: int
     ) -> list[aiosqlite.Row]:
         cur = await conn.execute(
-            "SELECT * FROM menfess_history WHERE sender_id = ? ORDER BY created_at DESC",
+            """
+            SELECT h.*, u.username as receiver_username 
+            FROM menfess_history h
+            LEFT JOIN users u ON h.receiver_id = u.telegram_id
+            WHERE h.sender_id = ? 
+            ORDER BY h.created_at DESC
+            """,
             (telegram_id,)
         )
         return await cur.fetchall()
@@ -1853,6 +1862,28 @@ class Database:
             (menfess_id,)
         )
         return await cur.fetchone()
+
+    async def get_menfess_sent_today_count(self, conn: aiosqlite.Connection, telegram_id: int, start_of_day_ts: float) -> int:
+        cur = await conn.execute(
+            "SELECT COUNT(*) as c FROM menfess_history WHERE sender_id = ? AND created_at >= ?",
+            (telegram_id, start_of_day_ts)
+        )
+        row = await cur.fetchone()
+        return row["c"] if row else 0
+
+    async def get_last_n_unique_menfess_receivers(self, conn: aiosqlite.Connection, sender_id: int, n: int) -> list[int]:
+        cur = await conn.execute(
+            """
+            SELECT receiver_id FROM menfess_history 
+            WHERE sender_id = ? 
+            GROUP BY receiver_id 
+            ORDER BY MAX(created_at) DESC 
+            LIMIT ?
+            """,
+            (sender_id, n)
+        )
+        rows = await cur.fetchall()
+        return [r["receiver_id"] for r in rows]
 
 
 __all__ = [
