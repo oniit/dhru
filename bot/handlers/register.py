@@ -75,14 +75,6 @@ def register_all(application: Application, db: Database) -> None:
     )
     application.add_handler(
         MessageHandler(
-            filters.PHOTO & filters.ChatType.PRIVATE,
-            messages.on_private_photo,
-            block=False,
-        ),
-        group=1,
-    )
-    application.add_handler(
-        MessageHandler(
             ~filters.COMMAND & filters.ChatType.PRIVATE,
             messages.on_private_message,
         ),

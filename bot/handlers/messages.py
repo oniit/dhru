@@ -75,6 +75,12 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     step = row["onboarding_step"] or ""
     
+    if update.message.photo and step:
+        from .kontrak import STEP_KONTRAK_TTD
+        if step in (STEP_KTM_PHOTO, STEP_KARPEG_PHOTO, STEP_KONTRAK_TTD):
+            await on_private_photo(update, context)
+            return
+            
     raw_text = update.message.text or update.message.caption or ""
     text = raw_text.strip()
     
