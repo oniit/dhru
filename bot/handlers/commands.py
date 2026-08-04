@@ -244,11 +244,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if role == ROLE_PUBLIC:
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Input Kode Akademik", callback_data="pub:kode")],
+            [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
             [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
             [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
         ])
-        await update.message.reply_text("Selamat datang! Silakan pilih menu di bawah ini:", reply_markup=keyboard)
+        await update.message.reply_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
         return
 
     miss = missing_required_fields(profile, role)
@@ -788,11 +788,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
         elif action == "back":
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Input Kode Akademik", callback_data="pub:kode")],
+                [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
                 [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
                 [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
             ])
-            await q.edit_message_text("Selamat datang! Silakan pilih menu di bawah ini:", reply_markup=keyboard)
+            await q.edit_message_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
 
         elif action in ("medpart", "hrd", "akademik"):
             username = "@dhruvaekagrabot" if action == "medpart" else ("@HRDhruvabot" if action == "hrd" else "@acadhruvabot")
