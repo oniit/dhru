@@ -338,7 +338,10 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     
     # Send to channel FIRST
     channel_id = MENFESS_CH_ID
-    channel_msg = f"💌 {target_name}, {message_text}{gift_text}"
+    import html
+    safe_target_name = html.escape(target_name)
+    safe_message = html.escape(message_text)
+    channel_msg = f"💌 {safe_target_name}, {safe_message}{gift_text}"
         
     sent_msg = None
     post_link = ""
@@ -406,7 +409,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     )
     
     # Send to receiver's private chat
-    private_msg = f"💌 {message_text}{gift_text}\n"
+    private_msg = f"💌 {safe_message}{gift_text}\n"
         
     if post_link:
         private_msg += f"\nLihat di channel @DhruvaFess: {post_link}"
@@ -471,7 +474,7 @@ async def cmd_menfess_read(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"Ke: <code>{row['receiver_id']}</code>\n"
         f"Waktu: {format_local_time(row['created_at'])}\n"
         f"Gift Agra: {row['gift_agra']}\n\n"
-        f"Pesan:\n{row['message_text']}"
+        f"Pesan:\n{html.escape(row['message_text'])}"
     )
     
     await update.message.reply_text(text, parse_mode="HTML")

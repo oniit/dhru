@@ -99,7 +99,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 first_name_esc = html.escape(u.first_name or "User")
                 
                 if u.username:
-                    header = f"#ID_{uid} <a href='tg://resolve?domain={u.username}'>{first_name_esc}</a>"
+                    header = f"#ID_{uid} <a href='https://t.me/{u.username}'>{first_name_esc}</a>"
                 else:
                     header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
                 
@@ -108,7 +108,8 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await context.bot.send_message(
                         chat_id=PETINGGI_GID,
                         text=f"{header}:\n\n{text_esc}",
-                        parse_mode="HTML"
+                        parse_mode="HTML",
+                        disable_web_page_preview=True
                     )
                 elif update.message.sticker or update.message.video_note:
                     copied_msg = await update.message.copy(chat_id=PETINGGI_GID)
