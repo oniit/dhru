@@ -18,15 +18,20 @@ async def daily_staff_attendance_open(context, opened_by=0):
     )
     
     # Kirim pesan perdana ke channel
-    try:
-        msg = await context.bot.send_message(
-            chat_id=PRESENCE_CH_ID,
-            text="Membuka sesi presensi otomatis...",
-        )
-        await db.set_attendance_announce_message(conn, sid, msg.message_id)
-    except Exception as e:
-        print("Gagal mengirim pesan presensi ke channel:", e)
-        return
+    import asyncio
+    msg = None
+    for attempt in range(3):
+        try:
+            msg = await context.bot.send_message(
+                chat_id=PRESENCE_CH_ID,
+                text="Membuka sesi presensi otomatis...",
+            )
+            await db.set_attendance_announce_message(conn, sid, msg.message_id)
+            break
+        except Exception as e:
+            print(f"Gagal mengirim pesan presensi ke channel (percobaan {attempt+1}):", e)
+            if attempt < 2:
+                await asyncio.sleep(5)
         
     # Import locally to avoid circular imports if any
     from bot.handlers.attendance import refresh_auto_presensi_announcement
