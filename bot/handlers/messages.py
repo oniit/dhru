@@ -99,7 +99,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 first_name_esc = html.escape(u.first_name or "User")
                 
                 if u.username:
-                    header = f"#ID_{uid} <a href='https://t.me/{u.username}'>@{u.username}</a> ({first_name_esc})"
+                    header = f"#ID_{uid} <a href='tg://resolve?domain={u.username}'>{first_name_esc}</a>"
                 else:
                     header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
                 
