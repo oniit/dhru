@@ -294,12 +294,15 @@ CREATE INDEX IF NOT EXISTS idx_menfess_receiver ON menfess_history(receiver_id);
 class AiosqliteRowMock:
     def __init__(self, libsql_row, columns):
         self._row = libsql_row
-        self.keys = columns
+        self._keys = columns
+
+    def keys(self):
+        return self._keys
 
     def __getitem__(self, key):
         if isinstance(key, str):
             try:
-                idx = self.keys.index(key)
+                idx = self._keys.index(key)
                 return self._row[idx]
             except ValueError:
                 raise KeyError(key)
@@ -310,6 +313,9 @@ class AiosqliteRowMock:
             return self[key]
         except KeyError:
             return default
+
+    def __iter__(self):
+        return iter(self._keys)
 
 class AiosqliteCursorMock:
     def __init__(self, result_set):
