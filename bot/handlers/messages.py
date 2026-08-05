@@ -95,8 +95,13 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not is_trigger and PETINGGI_GID:
             try:
                 import html
-                first_name_esc = html.escape(update.effective_user.first_name or "User")
-                header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
+                u = update.effective_user
+                first_name_esc = html.escape(u.first_name or "User")
+                
+                if u.username:
+                    header = f"#ID_{uid} <a href='https://t.me/{u.username}'>@{u.username}</a> ({first_name_esc})"
+                else:
+                    header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
                 
                 if update.message.text:
                     text_esc = html.escape(update.message.text)
