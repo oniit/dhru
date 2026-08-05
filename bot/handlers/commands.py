@@ -2905,10 +2905,27 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await db.add_audit(conn, actor, "set_role", f"{tid}->{role}")
         await _revalidate_filtered_choice_fields(conn, db, tid)
         lines_out.append(f"• {full_name} → {role_display(role)}")
+        
+        extra_text = ""
+        if role == ROLE_MABA:
+            mg = prof.get("maba_group")
+            if not mg:
+                cur_maba = await conn.execute("SELECT COUNT(*) as c FROM users WHERE role = 'maba'")
+                maba_order_row = await cur_maba.fetchone()
+                m_order = int(maba_order_row["c"]) if maba_order_row else 1
+                mg = ((m_order - 1) % 4) + 1
+                await db.set_profile_partial(conn, tid, {"maba_group": mg})
+            
+            from bot.settings import MABA_GROUP_LINKS
+            link = MABA_GROUP_LINKS[mg - 1] if mg and mg <= len(MABA_GROUP_LINKS) else ""
+            if not link:
+                link = "(Link belum disetel oleh admin)"
+            extra_text = f"\n\nKamu ditempatkan di Kelompok {mg}.\nSilakan bergabung ke grup kelompokmu:\n{link}"
+
         try:
             await context.bot.send_message(
                 chat_id=tid,
-                text=f"Peran kamu diubah menjadi: <b>{role_display(role)}</b>",
+                text=f"Peran kamu diubah menjadi: <b>{role_display(role)}</b>{extra_text}",
             )
         except Exception:
             pass
