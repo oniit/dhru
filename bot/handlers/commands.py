@@ -2202,9 +2202,20 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     extra_ids = await db.find_ids_by_usernames(conn, parsed.mention_usernames)
     targets = set(parsed.target_ids) | set(extra_ids)
+    
+    if parsed.target_role:
+        from bot.database import ROLES_ORDER
+        if parsed.target_role in ROLES_ORDER:
+            cur = await conn.execute("SELECT telegram_id FROM users WHERE role = ?", (parsed.target_role,))
+            role_users = await cur.fetchall()
+            targets |= {r["telegram_id"] for r in role_users}
+        else:
+            await update.message.reply_text(f"Role '{parsed.target_role}' tidak valid. Role yang tersedia: {', '.join(ROLES_ORDER)}")
+            return
+
     if not targets:
         await update.message.reply_text(
-            "Sebutkan user dengan @mention, text mention, atau reply pesannya."
+            "Sebutkan user dengan @mention, text mention, role yang valid (e.g. internal, student), atau reply pesannya."
         )
         return
 

@@ -15,14 +15,16 @@ class ParsedAdd:
     target_ids: set[int]
     mention_usernames: list[str]  # without @, for DB lookup
     description: str
+    target_role: str | None = None
 
 
 def parse_add_command(message: Message) -> ParsedAdd | None:
     text = message.text or ""
-    m = re.match(r"^/(?:add|transfer)(?:@\S+)?\s+(-?\d+)\s*", text)
+    m = re.match(r"^/(?:add|transfer)(?:@\S+)?\s+(?:([a-zA-Z_]+)\s+)?(-?\d+)\s*", text)
     if not m:
         return None
-    amount = int(m.group(1))
+    target_role = m.group(1).lower() if m.group(1) else None
+    amount = int(m.group(2))
     end_cmd = m.end()
     tail = text[end_cmd:].strip()
 
@@ -61,4 +63,5 @@ def parse_add_command(message: Message) -> ParsedAdd | None:
         target_ids=target_ids,
         mention_usernames=mention_usernames,
         description=description,
+        target_role=target_role,
     )

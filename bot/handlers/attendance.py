@@ -594,7 +594,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if not arg.isdigit():
         await update.message.reply_text(
-            "Pakai: <code>/rekap_hadir <id_sesi></code> atau <code>/rekap_hadir all</code> atau <code>/rekap_hadir total</code>",
+            "Pakai: <code>/rekap_hadir &lt;id_sesi&gt;</code> atau <code>/rekap_hadir all</code> atau <code>/rekap_hadir total</code>",
         )
         return
 

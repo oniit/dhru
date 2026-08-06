@@ -21,6 +21,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
+- `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
 - `/admin_data <username>` — Membuka menu pengeditan paksa terhadap profil pengguna (Bypass persetujuan).
 - `/owner_reset` — (Hanya Owner) Menu sapu jagat untuk me-reset data presensi, log, atau _database_ secara massal.
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_.
