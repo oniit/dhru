@@ -124,8 +124,10 @@ def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
     
-    # Gunakan timezone WIB (UTC+7) secara eksplisit agar jadwal tidak bergeser
-    wib = datetime.timezone(datetime.timedelta(hours=7))
+    from zoneinfo import ZoneInfo
+    
+    # Gunakan timezone Asia/Jakarta secara eksplisit agar didukung penuh oleh APScheduler
+    wib = ZoneInfo("Asia/Jakarta")
     
     # Run daily at midnight WIB
     jq.run_daily(daily_birthday_reminder, datetime.time(hour=8, minute=0, second=0, tzinfo=wib))
