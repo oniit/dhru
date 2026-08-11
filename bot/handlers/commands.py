@@ -854,24 +854,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             # We need to check channels here. But we need their chat info.
             # We can check channel status here.
             from bot.settings import MABA_CH_IDS, MABA_GROUP_LINK
+            from bot.handlers.common import build_maba_verification_text
             
-            all_followed = True
-            for ch_id in MABA_CH_IDS:
-                try:
-                    member = await context.bot.get_chat_member(chat_id=ch_id, user_id=uid)
-                    if member.status in ("left", "kicked"):
-                        all_followed = False
-                        break
-                except Exception:
-                    # Bot might not be admin, or chat not found. Treat as failed.
-                    all_followed = False
-                    break
+            text_verify, all_followed = await build_maba_verification_text(context, uid)
                     
             if not all_followed:
                 await q.edit_message_text(
-                    "❌ Anda belum follow semua channel yang diwajibkan, atau bot tidak dapat memverifikasi. "
-                    "Silakan pastikan Anda sudah join, lalu coba lagi.",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]])
+                    text_verify,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]]),
+                    parse_mode="Markdown"
                 )
                 return
                 

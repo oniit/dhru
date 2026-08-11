@@ -534,3 +534,43 @@ def is_lecturer_or_above(role: str) -> bool:
     # Deprecated function, but keeping it empty logic or returning false
     # if it's imported dynamically somewhere else. Let's just return if it's owner/admin.
     return role in (ROLE_OWNER, ROLE_ADMIN)
+
+async def build_maba_verification_text(context, user_id: int | None = None) -> tuple[str, bool]:
+    from bot.settings import MABA_CH_IDS
+    if not MABA_CH_IDS:
+        return "", True
+        
+    text_verify = "Data berhasil disimpan.\n\n" \
+                  "Tahap terakhir: Anda **diwajibkan** untuk bergabung/follow channel berikut:\n"
+                  
+    all_followed = True
+    for i, ch_id in enumerate(MABA_CH_IDS, 1):
+        try:
+            chat = await context.bot.get_chat(ch_id)
+            if chat.username:
+                link = f"@{chat.username}"
+            elif chat.invite_link:
+                link = chat.invite_link
+            else:
+                invite = await context.bot.create_chat_invite_link(ch_id)
+                link = invite.invite_link
+        except Exception:
+            link = "(Tidak dapat mengambil link otomatis. Pastikan bot adalah Admin di channel tersebut.)"
+            
+        status_icon = "❌"
+        if user_id:
+            try:
+                member = await context.bot.get_chat_member(chat_id=ch_id, user_id=user_id)
+                if member.status not in ("left", "kicked"):
+                    status_icon = "✅"
+                else:
+                    all_followed = False
+            except Exception:
+                all_followed = False
+        else:
+            all_followed = False
+            
+        text_verify += f"{i}. {link} {status_icon}\n"
+        
+    text_verify += "\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini."
+    return text_verify, all_followed

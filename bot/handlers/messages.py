@@ -158,27 +158,10 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         from telegram import InlineKeyboardMarkup, InlineKeyboardButton
         from bot.settings import MABA_CH_IDS
+        from bot.handlers.common import build_maba_verification_text
         
         if MABA_CH_IDS:
-            text_verify = "Data berhasil disimpan.\n\n" \
-                          "Tahap terakhir: Anda **diwajibkan** untuk bergabung/follow channel berikut:\n"
-            for i, ch_id in enumerate(MABA_CH_IDS, 1):
-                try:
-                    chat = await context.bot.get_chat(ch_id)
-                    if chat.username:
-                        link = f"@{chat.username}"
-                    elif chat.invite_link:
-                        link = chat.invite_link
-                    else:
-                        # Attempt to generate one if none exists
-                        invite = await context.bot.create_chat_invite_link(ch_id)
-                        link = invite.invite_link
-                except Exception:
-                    link = "(Tidak dapat mengambil link otomatis. Pastikan bot adalah Admin di channel tersebut.)"
-                
-                text_verify += f"{i}. {link}\n"
-            text_verify += "\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini."
-            
+            text_verify, _ = await build_maba_verification_text(context, uid)
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]])
             await update.message.reply_text(text_verify, reply_markup=kb, parse_mode="Markdown")
         else:
