@@ -20,3 +20,7 @@ Menambahkan alur pendaftaran khusus untuk Mahasiswa Baru (Maba) atau Calon Mahas
    - Jika tombol verifikasi diklik (`maba:verify`), bot akan memanggil `get_chat_member` untuk tiap channel di `MABA_CH_IDS`. Jika semua valid, role diubah menjadi `maba` dan link grup diberikan.
 5. **Profile Detail (`commands.py - cmd_profile_dtl`)**:
    - Menambahkan field "Alasan Bergabung" pada tampilan `/profile_dtl` (opsional jika user memilikinya di databasenya).
+
+## Fitur Invite Unik & Request to Join
+- **Grup Kelompok (MABA_GROUP_GIDS)**: Menggunakan \create_chat_invite_link\ untuk meng-generate tautan undangan unik 1-kali-pakai berdasarkan ID grup yang di-*set* di \.env\.
+- **Grup OSPEK General (Request to Join)**: Menambahkan \ChatJoinRequestHandler\ yang akan memeriksa apakah partisipan yang *request to join* memiliki peran \maba\. Jika iya, bot otomatis memanggil \pprove_chat_join_request\.

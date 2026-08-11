@@ -230,10 +230,21 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 prof_u = profile_from_row(row_u) if row_u else {}
                 
                 if _is_lengkapi_done(prof_u):
-                    from bot.settings import MABA_GROUP_LINKS
-                    link = MABA_GROUP_LINKS[maba_group - 1]
-                    if not link:
-                        link = "(Link belum disetel oleh admin)"
+                    from bot.settings import MABA_GROUP_GIDS
+                    link = "(Grup kelompok belum disetel oleh admin)"
+                    try:
+                        if len(MABA_GROUP_GIDS) >= maba_group:
+                            gid = MABA_GROUP_GIDS[maba_group - 1]
+                            invite = await context.bot.create_chat_invite_link(
+                                chat_id=gid, 
+                                member_limit=1, 
+                                name=f"Maba {uid}"
+                            )
+                            link = invite.invite_link
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid}: {e}")
+                        link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
                     await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
                 else:
                     await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
@@ -507,3 +518,16 @@ async def global_profile_tracker(update: Update, context: ContextTypes.DEFAULT_T
         first_name=u.first_name,
         last_name=u.last_name
     )
+
+async def on_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.chat_join_request:
+        return
+    uid = update.chat_join_request.from_user.id
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, uid)
+    if row and row['role'] == 'maba':
+        await update.chat_join_request.approve()
+    else:
+        pass  # ignore or you could .decline()
+

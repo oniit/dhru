@@ -103,12 +103,9 @@ AGRA_REWARD_STAFF_AUTO = int(_rewards.get("staff_auto", 2))
 AGRA_REWARD_LENGKAPI = int(_rewards.get("lengkapi", 15))
 AGRA_REWARD_TUGAS = int(_rewards.get("tugas", 35))
 
-MABA_GROUP_LINKS = [
-    os.environ.get("MABA_GROUP_1", "").strip(),
-    os.environ.get("MABA_GROUP_2", "").strip(),
-    os.environ.get("MABA_GROUP_3", "").strip(),
-    os.environ.get("MABA_GROUP_4", "").strip(),
-]
+_maba_gids = os.environ.get("MABA_GROUP_GIDS", "").strip()
+MABA_GROUP_GIDS = [int(x.strip()) for x in _maba_gids.split(",") if x.strip()] if _maba_gids else []
+
 
 
 def _parse_id_list(s: str | None) -> set[int]:
