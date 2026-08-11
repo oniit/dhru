@@ -248,6 +248,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
             
         buttons.extend([
+            [InlineKeyboardButton("Daftar Maba", callback_data="maba:start")],
             [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
             [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
             [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
@@ -598,6 +599,10 @@ async def cmd_profile_dtl(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"<b>Tanggal Lahir</b>: {birth_date}"
     )
     
+    join_reason = profile.get("join_reason")
+    if join_reason:
+        text += f"\n<b>Alasan Bergabung</b>: {join_reason}"
+
     await update.message.reply_text(
         text,
         disable_web_page_preview=True
@@ -803,6 +808,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
                 
             buttons.extend([
+                [InlineKeyboardButton("Daftar Maba", callback_data="maba:start")],
                 [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
                 [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
                 [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
@@ -820,6 +826,56 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             db = _db(context)
             await db.set_onboarding_step(conn, q.from_user.id, "INPUT_CODE")
             await q.edit_message_text("Silakan ketikkan kode akses yang Anda terima dari pihak akademik (huruf besar):")
+        return
+
+    if data.startswith("maba:"):
+        await q.answer()
+        action = data.split(":")[1]
+        conn = _conn(context)
+        db = _db(context)
+        
+        if action == "start":
+            await db.set_onboarding_step(conn, uid, "MABA_NAME")
+            await q.edit_message_text("Pendaftaran Maba/Camaba.\nSilakan ketikkan **Nama Lengkap** Anda:", parse_mode="Markdown")
+        elif action == "verify":
+            # This is called when they click "Verifikasi Kembali" after following channels
+            # We need to check channels here. But we need their chat info.
+            # We can check channel status here.
+            from bot.settings import MABA_CH_IDS, MABA_GROUP_LINK
+            
+            all_followed = True
+            for ch_id in MABA_CH_IDS:
+                try:
+                    member = await context.bot.get_chat_member(chat_id=ch_id, user_id=uid)
+                    if member.status in ("left", "kicked"):
+                        all_followed = False
+                        break
+                except Exception:
+                    # Bot might not be admin, or chat not found. Treat as failed.
+                    all_followed = False
+                    break
+                    
+            if not all_followed:
+                await q.edit_message_text(
+                    "❌ Anda belum follow semua channel yang diwajibkan, atau bot tidak dapat memverifikasi. "
+                    "Silakan pastikan Anda sudah join, lalu coba lagi.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]])
+                )
+                return
+                
+            # If all followed, set role to maba and give link
+            from bot.database import ROLE_MABA
+            await db.update_user_role(conn, uid, ROLE_MABA)
+            await db.set_onboarding_step(conn, uid, None)
+            
+            success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
+            if MABA_GROUP_LINK:
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nDi dalam grup, Anda akan mendapatkan informasi seputar kode akademik."
+            else:
+                success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
+                
+            await q.edit_message_text(success_text, disable_web_page_preview=True)
+            
         return
 
     if data.startswith("orreset:"):

@@ -90,6 +90,11 @@ EDITOR_GID = int(_eg) if _eg else None
 _mc = os.environ.get("MENFESS_CH_ID", "").strip()
 MENFESS_CH_ID = int(_mc) if _mc else None
 
+_maba_chs = os.environ.get("MABA_CH_IDS", "").strip()
+MABA_CH_IDS = [int(x.strip()) for x in _maba_chs.split(",") if x.strip()] if _maba_chs else []
+
+MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
+
 # Agra Rewards Configuration
 _rewards = _load_yaml("rewards.yaml")
 AGRA_REWARD_CLASS_HADIR = int(_rewards.get("class_hadir", 25))

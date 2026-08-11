@@ -76,6 +76,13 @@ fields:
     roles: [student, bem, internal, owner, admin]
     required: false
 
+  - key: join_reason
+    label: Alasan Bergabung
+    type: text
+    roles: [maba]
+    required: false
+
+
 profile_display:
   - telegram_name
   - username

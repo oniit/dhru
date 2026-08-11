@@ -145,6 +145,46 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 logging.getLogger(__name__).warning(f"Gagal meneruskan pesan ke PETINGGI_GID ({PETINGGI_GID}): {e}")
         return
         
+    if step == "MABA_NAME":
+        name = text.title()
+        await db.set_profile_partial(conn, uid, {"full_name": name})
+        await db.set_onboarding_step(conn, uid, "MABA_REASON")
+        await update.message.reply_text("Terima kasih. Selanjutnya, ketikkan **Alasan Bergabung** Anda:", parse_mode="Markdown")
+        return
+        
+    if step == "MABA_REASON":
+        reason = text
+        await db.set_profile_partial(conn, uid, {"join_reason": reason})
+        
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        from bot.settings import MABA_CH_IDS
+        
+        if MABA_CH_IDS:
+            text_verify = "Data berhasil disimpan.\n\n" \
+                          "Tahap terakhir: Anda **diwajibkan** untuk bergabung/follow channel berikut:\n"
+            for i, ch_id in enumerate(MABA_CH_IDS, 1):
+                text_verify += f"{i}. (Silakan hubungi admin untuk tautan channel ini / gunakan tautan publik channel)\n"
+            text_verify += "\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini."
+            
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]])
+            await update.message.reply_text(text_verify, reply_markup=kb, parse_mode="Markdown")
+        else:
+            # Skip checking if no channels defined
+            from bot.database import ROLE_MABA
+            from bot.settings import MABA_GROUP_LINK
+            await db.update_user_role(conn, uid, ROLE_MABA)
+            
+            success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
+            if MABA_GROUP_LINK:
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nDi dalam grup, Anda akan mendapatkan informasi seputar kode akademik."
+            else:
+                success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
+            
+            await update.message.reply_text(success_text, disable_web_page_preview=True)
+            
+        await db.set_onboarding_step(conn, uid, None)
+        return
+
     if step == "INPUT_CODE":
         code = text.strip()
         cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
