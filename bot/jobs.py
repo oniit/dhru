@@ -126,7 +126,6 @@ def setup_jobs(application: Application):
     
     from zoneinfo import ZoneInfo
     
-    # Gunakan timezone Asia/Jakarta secara eksplisit agar didukung penuh oleh APScheduler
     wib = ZoneInfo("Asia/Jakarta")
     
     # Run daily at midnight WIB
