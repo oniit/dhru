@@ -22,5 +22,10 @@ Menambahkan alur pendaftaran khusus untuk Mahasiswa Baru (Maba) atau Calon Mahas
    - Menambahkan field "Alasan Bergabung" pada tampilan `/profile_dtl` (opsional jika user memilikinya di databasenya).
 
 ## Fitur Invite Unik & Request to Join
-- **Grup Kelompok (MABA_GROUP_GIDS)**: Menggunakan \create_chat_invite_link\ untuk meng-generate tautan undangan unik 1-kali-pakai berdasarkan ID grup yang di-*set* di \.env\.
-- **Grup OSPEK General (Request to Join)**: Menambahkan \ChatJoinRequestHandler\ yang akan memeriksa apakah partisipan yang *request to join* memiliki peran \maba\. Jika iya, bot otomatis memanggil \pprove_chat_join_request\.
+- **Grup Kelompok (MABA_GROUP_GIDS)**: Menggunakan `create_chat_invite_link` untuk meng-generate tautan undangan unik 1-kali-pakai berdasarkan ID grup yang di-*set* di `.env`.
+- **Grup OSPEK General (Request to Join)**: Menambahkan `ChatJoinRequestHandler` yang akan memeriksa apakah partisipan yang *request to join* memiliki peran `maba`. Jika iya, bot otomatis memanggil `approve_chat_join_request`.
+
+## Bugfix Susulan
+- **Fix Pesan Verifikasi Maba**: Teks instruksi follow channel kini menggunakan `get_chat` API untuk menarik `@username` atau `invite_link` asli secara otomatis, bukan teks *placeholder* lagi.
+- **Indikator Status Join Dinamis**: Menambahkan ikon ✅ (sudah join) dan ❌ (belum join) di samping tiap channel pada pesan verifikasi. Status ini akan otomatis diperbarui setiap kali pengguna mengklik tombol "Verifikasi Kembali".
+- **Fix Penjadwalan JobQueue APScheduler**: Memperbaiki absen harian staf (`staff_auto`) yang tidak otomatis *trigger* dengan mengganti `datetime.timezone` menjadi `zoneinfo.ZoneInfo("Asia/Jakarta")` (memastikan zona waktu dibaca dengan valid oleh *APScheduler*).

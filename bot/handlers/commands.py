@@ -634,26 +634,33 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Silakan buat kontrak kerja Anda dengan mengetik /kontrak."
             )
         elif role == "maba":
-            from bot.settings import MABA_GROUP_GIDS
-            mg = int(profile.get("maba_group", 1))
-            link = "(Grup kelompok belum disetel oleh admin)"
-            try:
-                if len(MABA_GROUP_GIDS) >= mg:
-                    gid = MABA_GROUP_GIDS[mg - 1]
-                    invite = await context.bot.create_chat_invite_link(
-                        chat_id=gid, 
-                        member_limit=1, 
-                        name=f"Maba {uid}"
-                    )
-                    link = invite.invite_link
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid} di lengkapi: {e}")
-                link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
-                
-            await update.message.reply_text(
-                f"Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Anda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}"
-            )
+            if "maba_group" not in profile:
+                await update.message.reply_text(
+                    "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n"
+                    "Anda belum dimasukkan ke Kelompok Maba karena belum menukarkan Kode Akses (Gencode). "
+                    "Silakan pantau Grup OSPEK untuk mendapatkan instruksi lebih lanjut."
+                )
+            else:
+                from bot.settings import MABA_GROUP_GIDS
+                mg = int(profile.get("maba_group", 1))
+                link = "(Grup kelompok belum disetel oleh admin)"
+                try:
+                    if len(MABA_GROUP_GIDS) >= mg:
+                        gid = MABA_GROUP_GIDS[mg - 1]
+                        invite = await context.bot.create_chat_invite_link(
+                            chat_id=gid, 
+                            member_limit=1, 
+                            name=f"Maba {uid}"
+                        )
+                        link = invite.invite_link
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid} di lengkapi: {e}")
+                    link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
+                    
+                await update.message.reply_text(
+                    f"Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Anda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}"
+                )
         else:
             await update.message.reply_text(
                 "Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan."
