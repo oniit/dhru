@@ -50,6 +50,7 @@ async def daily_staff_attendance_open(context, opened_by=0):
             )
         except Exception:
             pass
+        await asyncio.sleep(0.05)
             
     return sid
 

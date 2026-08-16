@@ -1253,15 +1253,20 @@ class Database:
             )
             await conn.commit()
             return int(existing["id"])
-        cur = await conn.execute(
-            """
-            INSERT INTO task_submissions (task_id, student_id, content, status, submitted_at)
-            VALUES (?, ?, ?, 'submitted', ?)
-            """,
-            (task_id, student_id, content, now),
-        )
-        await conn.commit()
-        return cur.lastrowid
+        try:
+            cur = await conn.execute(
+                """
+                INSERT INTO task_submissions (task_id, student_id, content, status, submitted_at)
+                VALUES (?, ?, ?, 'submitted', ?)
+                """,
+                (task_id, student_id, content, now),
+            )
+            await conn.commit()
+            return cur.lastrowid
+        except Exception:
+            # Race condition: row inserted by another request between SELECT and INSERT
+            # Retry to let the UPDATE logic handle it
+            return await self.submit_task(conn, task_id=task_id, student_id=student_id, content=content)
 
     async def get_submission(
         self, conn: aiosqlite.Connection, submission_id: int
