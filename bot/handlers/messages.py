@@ -422,6 +422,14 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except ImportError:
         pass
         
+    try:
+        from .games import process_game_message
+        is_game_handled = await process_game_message(conn, _db(context), update, context)
+        if is_game_handled:
+            return
+    except ImportError:
+        pass
+        
     if not PETINGGI_GID or update.effective_chat.id != PETINGGI_GID:
         return
         

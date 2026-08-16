@@ -276,6 +276,25 @@ CREATE TABLE IF NOT EXISTS group_seen_users (
     PRIMARY KEY (chat_id, telegram_id)
 );
 
+CREATE TABLE IF NOT EXISTS game_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_name TEXT NOT NULL,
+    setting_name TEXT NOT NULL,
+    data_json TEXT NOT NULL,
+    UNIQUE(game_name, setting_name)
+);
+
+CREATE TABLE IF NOT EXISTS game_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    game_name TEXT NOT NULL,
+    setting_name TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    state_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS menfess_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
@@ -1964,6 +1983,73 @@ class Database:
         )
         rows = await cur.fetchall()
         return [r["receiver_id"] for r in rows]
+    # --- Games ---
+    async def upsert_game_setting(self, conn: aiosqlite.Connection, game_name: str, setting_name: str, data: dict) -> None:
+        data_json = json.dumps(data)
+        await conn.execute(
+            """
+            INSERT INTO game_settings (game_name, setting_name, data_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(game_name, setting_name) DO UPDATE SET data_json = ?
+            """,
+            (game_name, setting_name, data_json, data_json)
+        )
+        await conn.commit()
+
+    async def get_game_setting(self, conn: aiosqlite.Connection, game_name: str, setting_name: str) -> dict | None:
+        cur = await conn.execute(
+            "SELECT data_json FROM game_settings WHERE game_name = ? AND setting_name = ?",
+            (game_name, setting_name)
+        )
+        row = await cur.fetchone()
+        return json.loads(row["data_json"]) if row else None
+
+    async def start_game_session(self, conn: aiosqlite.Connection, chat_id: int, game_name: str, setting_name: str, initial_state: dict) -> int:
+        state_json = json.dumps(initial_state)
+        now = time.time()
+        # Nonaktifkan sesi sebelumnya di chat ini
+        await conn.execute(
+            "UPDATE game_sessions SET is_active = 0 WHERE chat_id = ? AND is_active = 1",
+            (chat_id,)
+        )
+        cur = await conn.execute(
+            """
+            INSERT INTO game_sessions (chat_id, game_name, setting_name, is_active, state_json, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            """,
+            (chat_id, game_name, setting_name, state_json, now, now)
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def get_active_game_session(self, conn: aiosqlite.Connection, chat_id: int) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM game_sessions WHERE chat_id = ? AND is_active = 1",
+            (chat_id,)
+        )
+        return await cur.fetchone()
+
+    async def update_game_session_state(self, conn: aiosqlite.Connection, session_id: int, new_state: dict) -> None:
+        state_json = json.dumps(new_state)
+        await conn.execute(
+            "UPDATE game_sessions SET state_json = ?, updated_at = ? WHERE id = ?",
+            (state_json, time.time(), session_id)
+        )
+        await conn.commit()
+
+    async def end_game_session(self, conn: aiosqlite.Connection, session_id: int, final_state: dict = None) -> None:
+        if final_state is not None:
+            state_json = json.dumps(final_state)
+            await conn.execute(
+                "UPDATE game_sessions SET is_active = 0, state_json = ?, updated_at = ? WHERE id = ?",
+                (state_json, time.time(), session_id)
+            )
+        else:
+            await conn.execute(
+                "UPDATE game_sessions SET is_active = 0, updated_at = ? WHERE id = ?",
+                (time.time(), session_id)
+            )
+        await conn.commit()
 
 
 __all__ = [

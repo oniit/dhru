@@ -7,7 +7,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from bot.database import Database
 
-from . import attendance, commands, ktm, karpeg, kontrak, messages, triggers, broadcast, tugas, menfess
+from . import attendance, commands, ktm, karpeg, kontrak, messages, triggers, broadcast, tugas, menfess, games
 
 
 
@@ -50,6 +50,12 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("trigger", triggers.cmd_trigger_router))
     application.add_handler(CommandHandler("agra", commands.cmd_agra_router))
     application.add_handler(CommandHandler("hadir", attendance.cmd_hadir))
+    
+    # Games
+    application.add_handler(CommandHandler("atur", games.cmd_atur))
+    application.add_handler(CommandHandler("bermain", games.cmd_bermain))
+    application.add_handler(CommandHandler("status", games.cmd_status))
+    application.add_handler(CommandHandler("berhenti", games.cmd_berhenti))
     
     # New handlers
     application.add_handler(CommandHandler("kontrak", kontrak.cmd_kontrak_router))
