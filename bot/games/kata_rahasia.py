@@ -42,7 +42,8 @@ async def mulai_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE,
     initial_state = {
         "active_words": active_words,
         "scores": {}, # format: {"telegram_id": {"name": "User Name", "score": 10}}
-        "total_words": len(active_words)
+        "total_words": len(active_words),
+        "started_by": update.effective_user.id
     }
     
     await db.start_game_session(conn, chat_id, "kata_rahasia", setting_name, initial_state)

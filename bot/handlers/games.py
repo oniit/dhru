@@ -47,9 +47,6 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Game hanya bisa dimainkan di grup.")
         return
         
-    if not _is_admin(update.effective_user.id, context):
-        await update.message.reply_text("Tidak diizinkan.")
-        return
         
     args = update.message.text.split(maxsplit=2)
     if len(args) < 3:
@@ -97,10 +94,6 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.effective_chat or update.effective_chat.type == "private":
         return
         
-    if not _is_admin(update.effective_user.id, context):
-        await update.message.reply_text("Tidak diizinkan.")
-        return
-        
     args = update.message.text.split(maxsplit=1)
     if len(args) < 2:
         await update.message.reply_text("Penggunaan: /berhenti <nama_game>")
@@ -113,6 +106,15 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     session = await db.get_active_game_session(conn, update.effective_chat.id)
     if not session or session["game_name"] != game_name:
         await update.message.reply_text(f"Tidak ada sesi {game_name} yang aktif di grup ini.")
+        return
+        
+    import json
+    state = json.loads(session["state_json"])
+    is_starter = (update.effective_user.id == state.get("started_by"))
+    is_admin = _is_admin(update.effective_user.id, context)
+    
+    if not (is_starter or is_admin):
+        await update.message.reply_text("Hanya admin atau pemulai game yang bisa menghentikan permainan.")
         return
         
     if game_name == "kata_rahasia":
