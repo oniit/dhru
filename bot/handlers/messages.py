@@ -147,7 +147,12 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     if step == "MABA_NAME":
         name = text.title()
+        profile_before = profile_from_row(row)
         await db.set_profile_partial(conn, uid, {"full_name": name})
+        
+        from bot.handlers.common import award_lengkapi_agra
+        await award_lengkapi_agra(conn, db, uid, "full_name", profile_before, context, update.message.chat_id)
+        
         await db.set_onboarding_step(conn, uid, "MABA_REASON")
         await update.message.reply_text(f"Terima kasih, {name}. Selanjutnya, ketikkan **Alasan Bergabung** Anda:", parse_mode="Markdown")
         return

@@ -275,6 +275,15 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_kode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    await db.set_onboarding_step(conn, update.effective_user.id, "INPUT_CODE")
+    await update.message.reply_text("Silakan ketikkan/tempel kode akses (huruf besar) yang Anda terima dari pihak akademik:")
+
+
 async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
