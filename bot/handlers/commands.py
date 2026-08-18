@@ -812,9 +812,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         if action == "hubungi":
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Seputar Media Partner dan sejenisnya.", callback_data="pub:medpart")],
-                [InlineKeyboardButton("Menghubungi HRD.", callback_data="pub:hrd")],
-                [InlineKeyboardButton("Menghubungi Akademik.", callback_data="pub:akademik")],
+                [InlineKeyboardButton("Seputar kemitraan dan sejenisnya.", callback_data="pub:medpart")],
+                [InlineKeyboardButton("Menghubungi staf SDM.", callback_data="pub:hrd")],
+                [InlineKeyboardButton("Menghubungi staf Akademik.", callback_data="pub:akademik")],
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
             ])
             await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
