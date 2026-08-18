@@ -895,7 +895,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
                     reason_tmp = prof_tmp.get("join_reason", "-")
                     username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
-                    msg_pendaftar = f"📝 **Pendaftar Baru (MABA)**\n\n**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason_tmp}\n**ID:** `{uid}`"
+                    msg_pendaftar = f"📝 **Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason_tmp}\n**ID:** `{uid}`"
                     await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
                 except Exception as e:
                     import logging
