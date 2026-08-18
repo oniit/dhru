@@ -572,5 +572,7 @@ async def build_maba_verification_text(context, user_id: int | None = None) -> t
             
         text_verify += f"{i}. {link} {status_icon}\n"
         
-    text_verify += "\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini."
+    import datetime
+    now_str = datetime.datetime.now().strftime("%H:%M:%S")
+    text_verify += f"\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini.\n_(Terakhir dicek: {now_str})_"
     return text_verify, all_followed

@@ -875,7 +875,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 
             # If all followed, set role to maba and give link
             from bot.database import ROLE_MABA
-            await db.update_user_role(conn, uid, ROLE_MABA)
+            await db.set_role(conn, uid, ROLE_MABA)
             await db.set_onboarding_step(conn, uid, None)
             
             success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
