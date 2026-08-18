@@ -240,6 +240,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 maba_group = ((m_order - 1) % 4) + 1
                 await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
                 
+                await _mark_lengkapi_done_if_complete(conn, db, uid)
                 row_u = await user_row(conn, db, uid)
                 prof_u = profile_from_row(row_u) if row_u else {}
                 
