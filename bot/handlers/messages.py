@@ -190,7 +190,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     prof_tmp = profile_from_row(row_tmp)
                     name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
                     username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
-                    msg_pendaftar = f"📝 **Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason}\n**ID:** `{uid}`"
+                    msg_pendaftar = f"**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason}\n**ID:** `{uid}`"
                     await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
                 except Exception as e:
                     import logging
@@ -243,6 +243,22 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await _mark_lengkapi_done_if_complete(conn, db, uid)
                 row_u = await user_row(conn, db, uid)
                 prof_u = profile_from_row(row_u) if row_u else {}
+                
+                from bot.settings import KELOMPOK_GID
+                if KELOMPOK_GID:
+                    try:
+                        name_str = prof_u.get("full_name", "Tanpa Nama")
+                        username_str = f"@{row_u['username']}" if row_u and row_u.get("username") else "-"
+                        msg_kelompok = (
+                            f"📣 **Alokasi Kelompok MABA**\n\n"
+                            f"**Nama:** [{name_str}](tg://user?id={uid})\n"
+                            f"**Username:** {username_str}\n"
+                            f"**Kelompok:** {maba_group}"
+                        )
+                        await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="Markdown")
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
                 
                 if _is_lengkapi_done(prof_u):
                     from bot.settings import MABA_GROUP_GIDS
