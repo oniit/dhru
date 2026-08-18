@@ -93,6 +93,9 @@ MENFESS_CH_ID = int(_mc) if _mc else None
 _maba_chs = os.environ.get("MABA_CH_IDS", "").strip()
 MABA_CH_IDS = [int(x.strip()) for x in _maba_chs.split(",") if x.strip()] if _maba_chs else []
 
+_pendaftar_ch = os.environ.get("PENDAFTAR_CH_ID", "").strip()
+PENDAFTAR_CH_ID = int(_pendaftar_ch) if _pendaftar_ch else None
+
 MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
 
 # Agra Rewards Configuration

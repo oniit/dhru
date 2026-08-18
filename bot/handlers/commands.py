@@ -245,13 +245,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if role == ROLE_PUBLIC:
         buttons = []
         if not _is_lengkapi_done(profile):
-            buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
+            buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
             
         buttons.extend([
-            [InlineKeyboardButton("Daftar Maba", callback_data="maba:start")],
-            [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
-            [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
-            [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
+            [InlineKeyboardButton("👤 Daftar Akun Publik", callback_data="openlt:full_name")],
+            [InlineKeyboardButton("📦 Pakai Kode Akademik", callback_data="pub:kode")],
+            [InlineKeyboardButton("📞 Hubungi Instansi", callback_data="pub:hubungi")],
+            [InlineKeyboardButton("💬 Pertanyaan Lainnya", callback_data="pub:lainnya")]
         ])
         keyboard = InlineKeyboardMarkup(buttons)
         await update.message.reply_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
@@ -824,13 +824,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             profile_u = profile_from_row(row_u) if row_u else {}
             buttons = []
             if not _is_lengkapi_done(profile_u):
-                buttons.append([InlineKeyboardButton("Daftar Akun Publik", callback_data="openlt:full_name")])
-                
+                buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
+            
             buttons.extend([
-                [InlineKeyboardButton("Daftar Maba", callback_data="maba:start")],
-                [InlineKeyboardButton("Pakai Kode Akademik", callback_data="pub:kode")],
-                [InlineKeyboardButton("Hubungi Instansi", callback_data="pub:hubungi")],
-                [InlineKeyboardButton("Pertanyaan Lainnya", callback_data="pub:lainnya")]
+                [InlineKeyboardButton("👤 Daftar Akun Publik", callback_data="openlt:full_name")],
+                [InlineKeyboardButton("📦 Pakai Kode Akademik", callback_data="pub:kode")],
+                [InlineKeyboardButton("📞 Hubungi Instansi", callback_data="pub:hubungi")],
+                [InlineKeyboardButton("💬 Pertanyaan Lainnya", callback_data="pub:lainnya")]
             ])
             keyboard = InlineKeyboardMarkup(buttons)
             await q.edit_message_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
@@ -855,7 +855,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         if action == "start":
             await db.set_onboarding_step(conn, uid, "MABA_NAME")
-            await q.edit_message_text("Pendaftaran Maba/Camaba.\nSilakan ketikkan **Nama Lengkap** Anda:", parse_mode="Markdown")
+            await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan **Nama Lengkap** Anda:", parse_mode="Markdown")
         elif action == "verify":
             # This is called when they click "Verifikasi Kembali" after following channels
             # We need to check channels here. But we need their chat info.
@@ -885,6 +885,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
             await q.edit_message_text(success_text, disable_web_page_preview=True)
+            
+            from bot.settings import PENDAFTAR_CH_ID
+            if PENDAFTAR_CH_ID:
+                try:
+                    from bot.handlers.common import user_row, profile_from_row
+                    row_tmp = await user_row(conn, db, uid)
+                    prof_tmp = profile_from_row(row_tmp)
+                    name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
+                    reason_tmp = prof_tmp.get("join_reason", "-")
+                    username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
+                    msg_pendaftar = f"📝 **Pendaftar Baru (MABA)**\n\n**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason_tmp}\n**ID:** `{uid}`"
+                    await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Gagal mengirim info pendaftar ke {PENDAFTAR_CH_ID}: {e}")
             
         return
 

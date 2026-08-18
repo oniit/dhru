@@ -149,7 +149,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         name = text.title()
         await db.set_profile_partial(conn, uid, {"full_name": name})
         await db.set_onboarding_step(conn, uid, "MABA_REASON")
-        await update.message.reply_text("Terima kasih. Selanjutnya, ketikkan **Alasan Bergabung** Anda:", parse_mode="Markdown")
+        await update.message.reply_text(f"Terima kasih, {name}. Selanjutnya, ketikkan **Alasan Bergabung** Anda:", parse_mode="Markdown")
         return
         
     if step == "MABA_REASON":
@@ -177,6 +177,19 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
             
             await update.message.reply_text(success_text, disable_web_page_preview=True)
+            
+            from bot.settings import PENDAFTAR_CH_ID
+            if PENDAFTAR_CH_ID:
+                try:
+                    row_tmp = await user_row(conn, db, uid)
+                    prof_tmp = profile_from_row(row_tmp)
+                    name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
+                    username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
+                    msg_pendaftar = f"📝 **Pendaftar Baru (MABA)**\n\n**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason}\n**ID:** `{uid}`"
+                    await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Gagal mengirim info pendaftar ke {PENDAFTAR_CH_ID}: {e}")
             
         await db.set_onboarding_step(conn, uid, None)
         return
