@@ -3,17 +3,21 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from bot.settings import ROOT, BACKUP_CH_ID, PRESENCE_CH_ID, EDITOR_GID
 
-async def daily_staff_attendance_open(context, opened_by=0):
+async def daily_staff_attendance_open(context, opened_by=None):
     if not PRESENCE_CH_ID: return
     db = context.application.bot_data.get("db")
     conn = context.application.bot_data.get("conn")
     if not db or not conn: return
     
+    if opened_by is None:
+        from bot.settings import OWNER_ID
+        opened_by = OWNER_ID
+
     sid = await db.open_attendance_session(
         conn,
         class_id="staff_auto",
         title="Presensi Harian Staf",
-        opened_by=opened_by, # 0 = Bot, >0 = Admin (testauto)
+        opened_by=opened_by,
         chat_id=PRESENCE_CH_ID,
     )
     
