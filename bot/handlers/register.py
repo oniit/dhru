@@ -66,6 +66,9 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("menfess_read", menfess.cmd_menfess_read))
     application.add_handler(menfess.cmd_menfess_router, group=1)
 
+    from .promo import setup_promo_handlers
+    setup_promo_handlers(application)
+
     from telegram.ext import ChatMemberHandler, ChatJoinRequestHandler
     application.add_handler(ChatMemberHandler(messages.on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
     application.add_handler(ChatJoinRequestHandler(messages.on_chat_join_request))

@@ -18,6 +18,9 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pay` — Mengurangi saldo Agra (opsional untuk pembayaran _virtual_).
 - `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
 - `/menfess_read <id>` — Membaca detail pesan menfess dari history.
+- `/link_kerja` — Membuat kode OTP untuk menautkan "Akun Kerja" (akun promosi).
+- `/cek_akun_kerja` — Melihat daftar akun kerja yang sudah ditautkan.
+- `/lpm <link>` — Men-submit link pesan promosi dari grup publik untuk divalidasi dan mendapatkan reward Agra.
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.

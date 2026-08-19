@@ -308,6 +308,23 @@ CREATE TABLE IF NOT EXISTS menfess_history (
 
 CREATE INDEX IF NOT EXISTS idx_menfess_sender ON menfess_history(sender_id);
 CREATE INDEX IF NOT EXISTS idx_menfess_receiver ON menfess_history(receiver_id);
+
+CREATE TABLE IF NOT EXISTS promo_verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    link TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    created_at REAL NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+);
+
+CREATE TABLE IF NOT EXISTS linked_accounts (
+    main_user_id INTEGER NOT NULL,
+    promo_user_id INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    PRIMARY KEY (main_user_id, promo_user_id),
+    FOREIGN KEY (main_user_id) REFERENCES users(telegram_id)
+);
 """
 
 class AiosqliteRowMock:
@@ -2051,7 +2068,58 @@ class Database:
             )
         await conn.commit()
 
+    # --- LPM Promo & Linked Accounts ---
+    async def add_linked_account(self, conn: aiosqlite.Connection, main_user_id: int, promo_user_id: int) -> bool:
+        try:
+            now = time.time()
+            await conn.execute(
+                """
+                INSERT INTO linked_accounts (main_user_id, promo_user_id, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (main_user_id, promo_user_id, now)
+            )
+            await conn.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            # Already linked
+            return False
 
+    async def get_linked_accounts(self, conn: aiosqlite.Connection, main_user_id: int) -> list[int]:
+        cur = await conn.execute(
+            "SELECT promo_user_id FROM linked_accounts WHERE main_user_id = ?",
+            (main_user_id,)
+        )
+        rows = await cur.fetchall()
+        return [r["promo_user_id"] for r in rows]
+
+    async def get_main_account_by_linked(self, conn: aiosqlite.Connection, promo_user_id: int) -> int | None:
+        cur = await conn.execute(
+            "SELECT main_user_id FROM linked_accounts WHERE promo_user_id = ?",
+            (promo_user_id,)
+        )
+        row = await cur.fetchone()
+        return row["main_user_id"] if row else None
+
+    async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str) -> int:
+        now = time.time()
+        cur = await conn.execute(
+            """
+            INSERT INTO promo_verifications (user_id, link, status, created_at)
+            VALUES (?, ?, 'PENDING', ?)
+            """,
+            (user_id, link, now)
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def check_promo_link_exists(self, conn: aiosqlite.Connection, link: str) -> bool:
+        cur = await conn.execute(
+            "SELECT id FROM promo_verifications WHERE link = ?",
+            (link,)
+        )
+        row = await cur.fetchone()
+        return bool(row)
 __all__ = [
     "Database",
     "DB_PATH",
