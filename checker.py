@@ -57,6 +57,14 @@ async def process_pending_links():
                 if not match:
                     await conn.execute("UPDATE promo_verifications SET status = 'INVALID_URL' WHERE id = ?", (req_id,))
                     await conn.commit()
+                    import requests
+                    requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": main_user_id,
+                            "text": f"❌ Gagal memvalidasi link {link}\n\nFormat link tidak dikenali. Pastikan itu adalah link ke spesifik pesan (contoh: https://t.me/GrupName/123)"
+                        }
+                    )
                     continue
                     
                 chat_id = match.group(1)
@@ -64,10 +72,16 @@ async def process_pending_links():
                 
                 if chat_id == "c":
                     # Private group format: t.me/c/chat_id/msg_id
-                    # Pyrogram needs -100 prefix for chat IDs
-                    # We might skip private for now or handle them if bot is in them
                     await conn.execute("UPDATE promo_verifications SET status = 'PRIVATE_GROUP_NOT_SUPPORTED' WHERE id = ?", (req_id,))
                     await conn.commit()
+                    import requests
+                    requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": main_user_id,
+                            "text": f"❌ Gagal memvalidasi link {link}\n\nLink dari grup Private tidak dapat dibaca oleh bot. Pastikan promosi dilakukan di Grup Publik."
+                        }
+                    )
                     continue
 
                 try:
@@ -75,6 +89,14 @@ async def process_pending_links():
                     if not msg or msg.empty:
                         await conn.execute("UPDATE promo_verifications SET status = 'NOT_FOUND' WHERE id = ?", (req_id,))
                         await conn.commit()
+                        import requests
+                        requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                            json={
+                                "chat_id": main_user_id,
+                                "text": f"❌ Gagal memvalidasi link {link}\n\nPesan tidak ditemukan atau grup tersebut bersifat private/tidak bisa diakses oleh bot."
+                            }
+                        )
                         continue
                         
                     text = msg.text or msg.caption or ""
@@ -84,6 +106,14 @@ async def process_pending_links():
                     if "lchs" not in text.lower():
                         await conn.execute("UPDATE promo_verifications SET status = 'NO_KEYWORD' WHERE id = ?", (req_id,))
                         await conn.commit()
+                        import requests
+                        requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                            json={
+                                "chat_id": main_user_id,
+                                "text": f"❌ Gagal memvalidasi link {link}\n\nKata kunci 'lchs' tidak ditemukan di dalam pesan tersebut."
+                            }
+                        )
                         continue
                         
                     # 2. Cek kepemilikan pengirim
@@ -99,6 +129,14 @@ async def process_pending_links():
                     if not valid_sender:
                         await conn.execute("UPDATE promo_verifications SET status = 'SENDER_MISMATCH' WHERE id = ?", (req_id,))
                         await conn.commit()
+                        import requests
+                        requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                            json={
+                                "chat_id": main_user_id,
+                                "text": f"❌ Gagal memvalidasi link {link}\n\nPengirim pesan bukan akun utamamu dan bukan dari Akun Kerja yang sudah ditautkan."
+                            }
+                        )
                         continue
                         
                     # 3. Lolos semua validasi!
