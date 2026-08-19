@@ -103,7 +103,7 @@ async def process_pending_links():
                     sender_id = msg.from_user.id if msg.from_user else None
                     
                     # 1. Cek kata kunci
-                    if "lchs" not in text.lower():
+                    if "dhruva" not in text.lower():
                         await conn.execute("UPDATE promo_verifications SET status = 'NO_KEYWORD' WHERE id = ?", (req_id,))
                         await conn.commit()
                         import requests
@@ -111,7 +111,7 @@ async def process_pending_links():
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
-                                "text": f"❌ Gagal memvalidasi link {link}\n\nKata kunci 'lchs' tidak ditemukan di dalam pesan tersebut."
+                                "text": f"❌ Gagal memvalidasi link {link}\n\nSepertinya bukan teks promosi yang sesuai."
                             }
                         )
                         continue

@@ -88,7 +88,7 @@ async def lpm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await db.add_promo_verification(conn, user_id, link)
     
     await update.message.reply_text(
-        "⏳ Link berhasil disubmit! Sistem sedang memvalidasi pesanmu (memeriksa kata kunci 'dhruva' dan pengirim). "
+        "⏳ Link berhasil disubmit! Sistem sedang memvalidasi pesanmu. "
         "Jika valid, Agra akan otomatis masuk ke saldomu."
     )
 
