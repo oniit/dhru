@@ -1,11 +1,14 @@
 import asyncio
 import logging
 import re
-from decouple import config
+import os
+from dotenv import load_dotenv
 from pyrogram import Client, errors
 
 from bot.database import Database
-import os
+
+# Load environment variables
+load_dotenv()
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -13,9 +16,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("checker")
 
-API_ID = config("API_ID", cast=int, default=0)
-API_HASH = config("API_HASH", default="")
-BOT_TOKEN = config("BOT_TOKEN", default="")
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 if not API_ID or not API_HASH:
     raise ValueError("API_ID atau API_HASH tidak ditemukan di .env")
