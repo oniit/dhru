@@ -112,11 +112,22 @@ async def status_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     players_count = len(scores)
     
-    await update.message.reply_text(
+    players_count = len(scores)
+    
+    status_text = (
         f"🎮 **Status Kata Rahasia**\n"
         f"📍 Setting: {session['setting_name']}\n"
-        f"🔐 Kata tersisa: {len(active_words)}/{total_words}\n"
-        f"👥 Pemain aktif (punya poin): {players_count}",
+        f"🔐 Kata tersisa: {len(active_words)}/{total_words}"
+    )
+    
+    if scores:
+        status_text += "\n\n📊 **Skor Sementara:**\n"
+        sorted_scores = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
+        for i, s in enumerate(sorted_scores[:10]):
+            status_text += f"{i+1}. {s['name']} — {s['score']} poin\n"
+            
+    await update.message.reply_text(
+        status_text,
         parse_mode="Markdown"
     )
 
@@ -146,8 +157,33 @@ async def berhenti_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TY
         medal = medals[i] if i < len(medals) else "▫️"
         lines.append(f"{medal} {s['name']} — {s['score']} poin")
         
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="\n".join(lines),
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="\n".join(lines),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Error sending final score for kata_rahasia: {e}")
+
+async def hasil_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
+    state = json.loads(session["state_json"])
+    scores = state.get("scores", {})
+    
+    if not scores:
+        await update.message.reply_text("📉 **HASIL KATA RAHASIA TERAKHIR**\n\nBelum ada poin yang terkumpul pada sesi tersebut.", parse_mode="Markdown")
+        return
+        
+    sorted_scores = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
+    
+    lines = ["📜 **HASIL KATA RAHASIA TERAKHIR**\n"]
+    medals = ["🥇", "🥈", "🥉"]
+    
+    for i, s in enumerate(sorted_scores):
+        medal = medals[i] if i < len(medals) else "▫️"
+        lines.append(f"{medal} {s['name']} — {s['score']} poin")
+        
+    await update.message.reply_text(
+        "\n".join(lines),
         parse_mode="Markdown"
     )

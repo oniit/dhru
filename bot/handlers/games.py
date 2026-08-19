@@ -122,6 +122,31 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
+# /hasil <game_name>
+async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_chat or update.effective_chat.type == "private":
+        await update.message.reply_text("Game hanya dimainkan di grup.")
+        return
+        
+    args = update.message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await update.message.reply_text("Penggunaan: /hasil <nama_game>")
+        return
+        
+    game_name = args[1].lower()
+    conn = _conn(context)
+    db = _db(context)
+    
+    session = await db.get_last_ended_game_session(conn, update.effective_chat.id, game_name)
+    if not session:
+        await update.message.reply_text(f"Tidak ada histori game {game_name} yang sudah selesai di grup ini.")
+        return
+        
+    if game_name == "kata_rahasia":
+        await kata_rahasia.hasil_kata_rahasia(update, context, db, conn, session)
+    else:
+        await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
+
 async def process_game_message(conn, db, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """
     Called by messages.on_group_message for every natural message in a group.

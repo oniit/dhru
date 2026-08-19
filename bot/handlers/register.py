@@ -57,6 +57,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("bermain", games.cmd_bermain))
     application.add_handler(CommandHandler("status", games.cmd_status))
     application.add_handler(CommandHandler("berhenti", games.cmd_berhenti))
+    application.add_handler(CommandHandler("hasil", games.cmd_hasil))
     
     # New handlers
     application.add_handler(CommandHandler("kontrak", kontrak.cmd_kontrak_router))

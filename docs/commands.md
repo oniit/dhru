@@ -35,3 +35,10 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Ekstra
 - `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.
+
+## Mini Games
+- `/atur <game_name> <setting_name> <kata1, kata2, ...>` — (Admin) Mengatur konfigurasi game (contoh: kata rahasia).
+- `/bermain <game_name> <setting_name>` — Memulai sesi game di grup.
+- `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
+- `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.
+- `/hasil <game_name>` — Menampilkan skor akhir dari sesi game terakhir jika tertinggal.

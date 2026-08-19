@@ -2046,6 +2046,13 @@ class Database:
         )
         return await cur.fetchone()
 
+    async def get_last_ended_game_session(self, conn: aiosqlite.Connection, chat_id: int, game_name: str) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM game_sessions WHERE chat_id = ? AND game_name = ? AND is_active = 0 ORDER BY updated_at DESC LIMIT 1",
+            (chat_id, game_name)
+        )
+        return await cur.fetchone()
+
     async def update_game_session_state(self, conn: aiosqlite.Connection, session_id: int, new_state: dict) -> None:
         state_json = json.dumps(new_state)
         await conn.execute(
