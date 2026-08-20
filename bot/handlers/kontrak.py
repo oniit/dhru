@@ -229,6 +229,20 @@ async def _generate_and_send_kontrak(
         caption=cap,
     )
 
+    if not is_admin_check:
+        from bot.settings import OWNER_ID
+        if OWNER_ID and str(OWNER_ID) != "0":
+            try:
+                owner_cap = f"🔔 <b>Notifikasi Kontrak Staf</b>\n\nStaf <b>{name}</b> {username_str} telah mengisi/memperbarui kontrak kerjanya.\nPeriode: {period_str}"
+                await context.bot.send_photo(
+                    chat_id=OWNER_ID,
+                    photo=BytesIO(png_bytes),
+                    caption=owner_cap,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                log.warning("Gagal mengirim notif kontrak ke owner: %s", e)
+
 
 async def cmd_kontrak_renew(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
