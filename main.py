@@ -38,6 +38,25 @@ async def post_init(application: Application) -> None:
     application.bot_data["conn"] = conn
     log.info("Database siap.")
 
+    import os, json
+    if os.path.exists(".restart.json"):
+        try:
+            with open(".restart.json", "r") as f:
+                data = json.load(f)
+            await application.bot.edit_message_text(
+                "✅ <b>Bot siap digunakan!</b>",
+                chat_id=data["chat_id"],
+                message_id=data["message_id"],
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            log.warning("Gagal mengirim notif selesai restart: %s", e)
+        finally:
+            try:
+                os.remove(".restart.json")
+            except Exception:
+                pass
+
 
 async def post_shutdown(application: Application) -> None:
     conn = application.bot_data.get("conn")

@@ -352,7 +352,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
     lines = [
         "<b>Perintah umum</b>",
         "/start — Daftar & sinkron profil Telegram",
-        "/profile — Profil & total Agra",
+        "/profile — Profil akun & total Agra",
         "/lengkapi — Isi data wajib awal (sekali)",
         "/ubah — Ajukan perubahan (disetujui admin)",
         "",
@@ -4036,6 +4036,11 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Tidak diizinkan.")
         return
 
-    import os
-    await update.message.reply_text("Memulai ulang botdhru...")
+    import os, json
+    msg = await update.message.reply_text("Memulai ulang bot...")
+    try:
+        with open(".restart.json", "w") as f:
+            json.dump({"chat_id": msg.chat_id, "message_id": msg.message_id}, f)
+    except Exception:
+        pass
     os.system("sudo systemctl restart botdhru")
