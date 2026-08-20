@@ -175,9 +175,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             from bot.settings import MABA_GROUP_LINK
             await db.update_user_role(conn, uid, ROLE_MABA)
             
-            success_text = "✅ Berhasil! Menuju langkah terakhir sebelum resmi terdaftar sebagai Mahasiswa Baru.\n\n"
+            success_text = "✅ Berhasil! Menuju *langkah terakhir* sebelum resmi terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim tautan _copy link_ dengan format: `/lpm link`  ke Sang Poros.\n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n**Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra**"
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim tautan _copy link_ dengan format: `/lpm link`  ke Sang Poros.\n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n*Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra*"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
             
