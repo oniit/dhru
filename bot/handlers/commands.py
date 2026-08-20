@@ -889,7 +889,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
             success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nDi dalam grup, Anda akan mendapatkan informasi seputar kode akademik."
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan menginput tautan 'copy link'nya di sini dengan format: \n\n `/lpm link` \n\n (1 unggahan OPSTUD yang sukses terinput akan diganti dengan 1 Agra)"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
