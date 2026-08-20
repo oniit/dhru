@@ -4024,3 +4024,18 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await db.add_audit(conn, update.effective_user.id, "detail", f"{kind} count={len(parsed_users)}")
     await _reply_daftar_chunks(update, title, out_lines)
+
+
+async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+
+    import os
+    await update.message.reply_text("Memulai ulang botdhru...")
+    os.system("sudo systemctl restart botdhru")
