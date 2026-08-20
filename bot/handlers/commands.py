@@ -887,9 +887,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await db.set_role(conn, uid, ROLE_MABA)
             await db.set_onboarding_step(conn, uid, None)
             
-            success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
+            success_text = "✅ Berhasil! Menuju langkah terakhir sebelum resmi terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim ke sini tautan copy link dengan format: `/lpm link` \n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n**Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra**"
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim tautan _copy link_ dengan format: `/lpm link`  ke Sang Poros.\n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n**Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra**"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
