@@ -181,7 +181,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
             
-            await update.message.reply_text(success_text, disable_web_page_preview=True)
+            await update.message.reply_text(success_text, disable_web_page_preview=True, parse_mode="Markdown")
             
             from bot.settings import PENDAFTAR_CH_ID
             if PENDAFTAR_CH_ID:

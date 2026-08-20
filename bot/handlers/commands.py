@@ -889,11 +889,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
             success_text = "✅ Berhasil! Anda telah terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan menginput tautan 'copy link'nya di sini dengan format: \n\n `/lpm link` \n\n (1 unggahan OPSTUD yang sukses terinput akan diganti dengan 1 Agra)"
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim ke sini tautan copy link dengan format: `/lpm link` \n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n**Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra**"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
-            await q.edit_message_text(success_text, disable_web_page_preview=True)
+            await q.edit_message_text(success_text, disable_web_page_preview=True, parse_mode="Markdown")
             
             from bot.settings import PENDAFTAR_CH_ID
             if PENDAFTAR_CH_ID:
