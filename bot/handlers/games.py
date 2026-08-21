@@ -194,10 +194,6 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         # unless specifically required by the game mechanics.
         return False
     elif game_name == "kantong_rempah":
-        text = update.message.text or update.message.caption or ""
-        if text.strip().lower().startswith("/tebak"):
-            await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text.strip())
-            return True
         return False
     elif game_name == "tahan_dulu":
         # Tahan dulu intercepts ANY text message during WAITING phase
@@ -207,3 +203,23 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         return False
         
     return False
+
+# /tebak <angka>
+async def cmd_tebak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or update.effective_chat.type == "private":
+        return
+        
+    args = update.message.text.split(maxsplit=1)
+    if len(args) < 2:
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    
+    session = await db.get_active_game_session(conn, update.effective_chat.id)
+    if not session:
+        return
+        
+    if session["game_name"] == "kantong_rempah":
+        text = update.message.text.strip()
+        await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text)
