@@ -123,15 +123,19 @@ async def job_end_deposit_phase(context: ContextTypes.DEFAULT_TYPE):
     
     menit_tebak = state.get("menit_tebak", 3)
     
-    await context.bot.send_message(
+    msg = await context.bot.send_message(
         chat_id=chat_id,
         text=f"⏳ <b>Waktu Setor Habis!</b>\n\n"
              f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>1 bot</b>.\n"
              f"Sekarang tebak total seluruh rempah yang terkumpul!\n\n"
              f"Ketik <code>/tebak &lt;angka&gt;</code> di grup ini (contoh: <code>/tebak 15</code>).\n\n"
-             f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>",
+             f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>\n"
+             f"👥 <b>Telah menebak:</b>\n<i>Belum ada</i>",
         parse_mode="HTML"
     )
+    
+    state["guess_msg_id"] = msg.message_id
+    await db.update_game_session_state(conn, session_id, state)
     
     context.job_queue.run_once(
         job_end_guess_phase,
@@ -253,13 +257,12 @@ async def proses_tebakan_grup(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         user = update.effective_user
         uid_str = str(user.id)
-        name = user.first_name or user.username or str(user.id)
         
         guesses = state.setdefault("guesses", {})
         
         # Perbolehkan update tebakan
         guesses[uid_str] = {
-            "name": name,
+            "name": user.first_name or user.username or str(user.id),
             "guess": guess_val
         }
         
@@ -267,7 +270,23 @@ async def proses_tebakan_grup(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     # Send feedback outside the lock to minimize lock contention time
     try:
-        await update.message.reply_text(f"✅ Tebakan {guess_val} dicatat!", quote=True)
+        if "guess_msg_id" in state:
+            players_count = len(state.get("deposits", {}))
+            menit_tebak = state.get("menit_tebak", 3)
+            
+            guessed_list = "\n".join([f"- {data['name']}" for uid, data in state["guesses"].items()])
+            
+            await context.bot.edit_message_text(
+                chat_id=session["chat_id"],
+                message_id=state["guess_msg_id"],
+                text=f"⏳ <b>Waktu Setor Habis!</b>\n\n"
+                     f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>1 bot</b>.\n"
+                     f"Sekarang tebak total seluruh rempah yang terkumpul!\n\n"
+                     f"Ketik <code>/tebak &lt;angka&gt;</code> di grup ini (contoh: <code>/tebak 15</code>).\n\n"
+                     f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>\n"
+                     f"👥 <b>Telah menebak:</b>\n{guessed_list}",
+                parse_mode="HTML"
+            )
     except Exception:
         pass
 
