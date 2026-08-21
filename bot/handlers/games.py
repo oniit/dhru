@@ -53,11 +53,11 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     args = update.message.text.split()
     if len(args) < 2:
         await update.message.reply_text(
-            "🎮 **Daftar Mini-Games**\n"
-            "• `/bermain kata_rahasia <setting>` — Tebak kata berkelompok\n"
-            "• `/bermain kantong_rempah [menit]` — Tebak total rempah (via PC)\n"
-            "• `/bermain tahan_dulu [detik]` — Adu cepat / reflex\n",
-            parse_mode="Markdown"
+            "🎮 <b>Daftar Mini-Games</b>\n"
+            "• <code>/bermain kata_rahasia &lt;setting&gt;</code> — Tebak kata berkelompok\n"
+            "• <code>/bermain kantong_rempah [menit]</code> — Tebak total rempah (via PC)\n"
+            "• <code>/bermain tahan_dulu [detik]</code> — Adu cepat / reflex\n",
+            parse_mode="HTML"
         )
         return
         

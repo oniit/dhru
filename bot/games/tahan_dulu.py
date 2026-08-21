@@ -50,12 +50,12 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         return
         
     await update.message.reply_text(
-        f"⏳ **GAME: Tahan Dulu** ⏳\n\n"
+        f"⏳ <b>GAME: Tahan Dulu</b> ⏳\n\n"
         f"Tahan dulu...\n"
-        f"Balas pesan apapun SEBELUM **{delay_min} detik** = penalti (-2).\n"
+        f"Balas pesan apapun SEBELUM <b>{delay_min} detik</b> = penalti (-2).\n"
         f"Setelah itu, yang merespons paling cepat dapat poin!\n\n"
-        f"_Waktu dimulai dari sekarang!_",
-        parse_mode="Markdown"
+        f"<i>Waktu dimulai dari sekarang!</i>",
+        parse_mode="HTML"
     )
     
     # Jadwalkan perpindahan ke end round (delay_min + 7 detik)
@@ -172,19 +172,19 @@ async def job_end_tahan_dulu(context: ContextTypes.DEFAULT_TYPE):
         for i, s in enumerate(lb[:5], 1):
             lb_lines.append(f"{i}. {s['name']} — {s['score']}")
             
-        text = "⏱ **Hasil Ronde Tahan Dulu**\n\n"
+        text = "⏱ <b>Hasil Ronde Tahan Dulu</b>\n\n"
         if lines:
             text += "\n".join(lines) + "\n\n"
         else:
             text += "😅 Tidak ada yang berpartisipasi.\n\n"
             
-        text += "🏆 **Leaderboard (Top 5)**\n"
+        text += "🏆 <b>Leaderboard (Top 5)</b>\n"
         if lb_lines:
             text += "\n".join(lb_lines)
         else:
             text += "Belum ada skor."
             
-        text += "\n\n_Sesi telah dihentikan. Ketik /bermain tahan_dulu untuk memulai ronde baru._"
+        text += "\n\n<i>Sesi telah dihentikan. Ketik /bermain tahan_dulu untuk memulai ronde baru.</i>"
         
         await db.update_game_session_state(conn, session_id, state)
         await db.end_game_session(conn, session_id)
@@ -192,7 +192,7 @@ async def job_end_tahan_dulu(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=chat_id,
         text=text,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 async def status_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
@@ -200,11 +200,11 @@ async def status_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     phase = state["phase"]
     
     if phase == PHASE_WAITING:
-        msg = f"🎮 **Tahan Dulu** sedang berjalan!\nSedang dalam ronde menunggu respon."
+        msg = f"🎮 <b>Tahan Dulu</b> sedang berjalan!\nSedang dalam ronde menunggu respon."
     else:
-        msg = "🎮 **Tahan Dulu** (Selesai)"
+        msg = "🎮 <b>Tahan Dulu</b> (Selesai)"
         
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 async def berhenti_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict = None):
     chat_id = update.effective_chat.id
@@ -235,8 +235,8 @@ async def hasil_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         lb.append(s)
     lb.sort(key=lambda x: x["score"], reverse=True)
     
-    lines = ["🏆 **Leaderboard Tahan Dulu (Akhir)**"]
+    lines = ["🏆 <b>Leaderboard Tahan Dulu (Akhir)</b>"]
     for i, s in enumerate(lb, 1):
         lines.append(f"{i}. {s['name']} — {s['score']}")
         
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")

@@ -71,12 +71,12 @@ async def mulai_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TYP
     ])
     
     await update.message.reply_text(
-        f"🎮 **Kantong Rempah** dimulai!\n\n"
-        f"Tahap 1: **Setor Rempah**\n"
+        f"🎮 <b>Kantong Rempah</b> dimulai!\n\n"
+        f"Tahap 1: <b>Setor Rempah</b>\n"
         f"Silakan setor jumlah rempah Anda (0-10) melalui PC bot dengan mengeklik tombol di bawah.\n\n"
-        f"⏱ Waktu setor: **{menit_setor} menit**",
+        f"⏱ Waktu setor: <b>{menit_setor} menit</b>",
         reply_markup=kb,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     
     # Jadwalkan perpindahan ke Guess Phase
@@ -125,12 +125,12 @@ async def job_end_deposit_phase(context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"⏳ **Waktu Setor Habis!**\n\n"
-             f"Rempah berhasil dikumpulkan oleh **{players_count} pemain** + **1 bot**.\n"
+        text=f"⏳ <b>Waktu Setor Habis!</b>\n\n"
+             f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>1 bot</b>.\n"
              f"Sekarang tebak total seluruh rempah yang terkumpul!\n\n"
-             f"Ketik `/tebak <angka>` di grup ini (contoh: `/tebak 15`).\n\n"
-             f"⏱ Waktu tebak: **{menit_tebak} menit**",
-        parse_mode="Markdown"
+             f"Ketik <code>/tebak &lt;angka&gt;</code> di grup ini (contoh: <code>/tebak 15</code>).\n\n"
+             f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>",
+        parse_mode="HTML"
     )
     
     context.job_queue.run_once(
@@ -172,14 +172,14 @@ async def job_end_guess_phase(context: ContextTypes.DEFAULT_TYPE):
     bot_guess = random.randint(0, max_possible_total)
     
     lines = [
-        "🎉 **WAKTU HABIS! HASIL KANTONG REMPAH**\n",
-        f"Setoran Bot: **{bot_deposit}**",
-        f"Total Rempah Sebenarnya: **{total_deposit}**\n",
+        "🎉 <b>WAKTU HABIS! HASIL KANTONG REMPAH</b>\n",
+        f"Setoran Bot: <b>{bot_deposit}</b>",
+        f"Total Rempah Sebenarnya: <b>{total_deposit}</b>\n",
     ]
     
     if not guesses:
         lines.append("😅 Tidak ada yang menebak di ronde ini.")
-        await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="Markdown")
+        await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
         return
         
     # Hitung selisih
@@ -208,21 +208,21 @@ async def job_end_guess_phase(context: ContextTypes.DEFAULT_TYPE):
     best_diff = results[0]["diff"]
     winners = [r for r in results if r["diff"] == best_diff]
     
-    lines.append("🏆 **Peringkat Tebakan:**")
+    lines.append("🏆 <b>Peringkat Tebakan:</b>")
     for i, r in enumerate(results[:10]):
         medal = "🥇" if r["diff"] == best_diff else "▫️"
         lines.append(f"{medal} {r['name']} — Tebak: {r['guess']} (Selisih {r['diff']})")
         
-    lines.append("\n🌟 **Pemenang:**")
+    lines.append("\n🌟 <b>Pemenang:</b>")
     winner_names = [w["name"] for w in winners]
     lines.append(", ".join(winner_names))
     if best_diff == 0:
-        lines.append("_(Tebakan Tepat Sasaran! 🎯)_")
+        lines.append("<i>(Tebakan Tepat Sasaran! 🎯)</i>")
         
     await context.bot.send_message(
         chat_id=chat_id,
         text="\n".join(lines),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 import asyncio
@@ -270,14 +270,14 @@ async def status_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TY
     
     if phase == PHASE_DEPOSIT:
         players = len(state.get("deposits", {}))
-        msg = f"🎮 **Kantong Rempah** (Fase Setor)\n👥 Menunggu setoran... ({players} pemain telah menyetor)"
+        msg = f"🎮 <b>Kantong Rempah</b> (Fase Setor)\n👥 Menunggu setoran... ({players} pemain telah menyetor)"
     elif phase == PHASE_GUESS:
         players = len(state.get("guesses", {}))
-        msg = f"🎮 **Kantong Rempah** (Fase Tebak)\n🗣 Menunggu tebakan... ({players} pemain telah menebak)"
+        msg = f"🎮 <b>Kantong Rempah</b> (Fase Tebak)\n🗣 Menunggu tebakan... ({players} pemain telah menebak)"
     else:
-        msg = "🎮 **Kantong Rempah** (Selesai)"
+        msg = "🎮 <b>Kantong Rempah</b> (Selesai)"
         
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 async def berhenti_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict = None):
     chat_id = update.effective_chat.id
@@ -303,4 +303,4 @@ async def hasil_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TYP
     total_deposit = state.get("total_deposit", 0)
     bot_deposit = state.get("bot_deposit", 0)
     
-    await update.message.reply_text(f"📜 **Hasil Terakhir Kantong Rempah**\nTotal deposit: {total_deposit}\nDeposit Bot: {bot_deposit}", parse_mode="Markdown")
+    await update.message.reply_text(f"📜 <b>Hasil Terakhir Kantong Rempah</b>\nTotal deposit: {total_deposit}\nDeposit Bot: {bot_deposit}", parse_mode="HTML")
