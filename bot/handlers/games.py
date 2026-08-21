@@ -1,6 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 import bot.games.kata_rahasia as kata_rahasia
+import bot.games.kantong_rempah as kantong_rempah
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["conn"]
@@ -61,6 +62,16 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     if game_name == "kata_rahasia":
         await kata_rahasia.mulai_kata_rahasia(update, context, db, conn, setting_name)
+    elif game_name == "kantong_rempah":
+        # kantong_rempah parses its own settings from args text
+        args_text = ""
+        if len(args) > 2:
+            args_text = " ".join(args[2:])
+        elif len(args) > 1 and len(update.message.text.split(maxsplit=1)) > 1:
+            # Handle /bermain kantong_rempah 1 (where setting_name is actually the time argument)
+            args_text = " ".join(update.message.text.split()[2:])
+            
+        await kantong_rempah.mulai_kantong_rempah(update, context, db, conn, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -86,6 +97,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         
     if game_name == "kata_rahasia":
         await kata_rahasia.status_kata_rahasia(update, context, db, conn, session)
+    elif game_name == "kantong_rempah":
+        await kantong_rempah.status_kantong_rempah(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -119,6 +132,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         
     if game_name == "kata_rahasia":
         await kata_rahasia.berhenti_kata_rahasia(update, context, db, conn, session)
+    elif game_name == "kantong_rempah":
+        await kantong_rempah.berhenti_kantong_rempah(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -144,6 +159,8 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         
     if game_name == "kata_rahasia":
         await kata_rahasia.hasil_kata_rahasia(update, context, db, conn, session)
+    elif game_name == "kantong_rempah":
+        await kantong_rempah.hasil_kantong_rempah(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -165,6 +182,12 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         await kata_rahasia.proses_pesan_kata_rahasia(update, context, db, conn, session)
         # We return False because natural messages shouldn't stop other listeners (like activity tracking)
         # unless specifically required by the game mechanics.
+        return False
+    elif game_name == "kantong_rempah":
+        text = update.message.text or update.message.caption or ""
+        if text.strip().lower().startswith("/tebak"):
+            await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text.strip())
+            return True
         return False
         
     return False

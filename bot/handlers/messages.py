@@ -145,6 +145,57 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 logging.getLogger(__name__).warning(f"Gagal meneruskan pesan ke PETINGGI_GID ({PETINGGI_GID}): {e}")
         return
         
+    if step.startswith("REMPAH_SETOR:"):
+        chat_id_str = step.split(":", 1)[1]
+        try:
+            deposit_val = int(text)
+            if not (0 <= deposit_val <= 10):
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("Harap masukkan angka antara 0 hingga 10:")
+            return
+            
+        # Get active session for that chat
+        chat_id = int(chat_id_str)
+        session = await db.get_active_game_session(conn, chat_id)
+        if not session or session["game_name"] != "kantong_rempah":
+            await update.message.reply_text("Sesi game Kantong Rempah di grup tersebut sudah tidak aktif atau sudah selesai.")
+            await db.set_onboarding_step(conn, uid, None)
+            return
+            
+        import asyncio
+        import json
+        
+        session_id = session["id"]
+        lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
+        
+        async with lock:
+            current_session = await db.get_active_game_session(conn, chat_id)
+            if not current_session or current_session["id"] != session_id:
+                await update.message.reply_text("Sesi game Kantong Rempah di grup tersebut sudah tidak aktif.")
+                await db.set_onboarding_step(conn, uid, None)
+                return
+                
+            state = json.loads(current_session["state_json"])
+            
+            # Check phase
+            if state.get("phase") != "deposit":
+                await update.message.reply_text("Fase setoran untuk grup ini sudah ditutup!")
+                await db.set_onboarding_step(conn, uid, None)
+                return
+                
+            deposits = state.setdefault("deposits", {})
+            deposits[str(uid)] = {
+                "name": update.effective_user.first_name or update.effective_user.username or str(uid),
+                "amount": deposit_val
+            }
+            
+            await db.update_game_session_state(conn, session_id, state)
+            
+        await db.set_onboarding_step(conn, uid, None)
+        await update.message.reply_text(f"✅ Berhasil menyetor **{deposit_val}** kantong rempah! Silakan kembali ke grup.", parse_mode="Markdown")
+        return
+
     if step == "MABA_NAME":
         name = text.title()
         profile_before = profile_from_row(row)

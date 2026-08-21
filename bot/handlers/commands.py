@@ -242,6 +242,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = profile_from_row(row)
     role = row["role"] if row else ROLE_PUBLIC
     
+    parts = update.message.text.split()
+    if len(parts) > 1 and parts[1].startswith("rempah_"):
+        chat_id_str = parts[1][7:]
+        await db.set_onboarding_step(conn, u.id, f"REMPAH_SETOR:{chat_id_str}")
+        await update.message.reply_text("Silakan ketikkan angka nominal setoran rempah Anda (0-10):")
+        return
+        
     if role == ROLE_PUBLIC:
         buttons = []
         if not _is_lengkapi_done(profile):
