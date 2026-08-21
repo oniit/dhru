@@ -38,9 +38,11 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.
 
 ## Mini Games
-- `/atur <game_name> <setting_name> <kata1, kata2, ...>` — (Admin) Mengatur konfigurasi game (contoh: kata rahasia).
-- `/bermain <game_name> <setting_name_or_args>` — Memulai sesi game di grup.
-  - *Untuk Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]` (opsional, default 2 3).
+- `/bermain` — Menampilkan daftar mini-games yang tersedia.
+- `/bermain <game_name> <args>` — Memulai sesi game di grup.
+  - *Kata Rahasia:* `/bermain kata_rahasia <setting>`
+  - *Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]`
+  - *Tahan Dulu:* `/bermain tahan_dulu [detik]`
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
 - `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
 - `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.

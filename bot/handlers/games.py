@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import bot.games.kata_rahasia as kata_rahasia
 import bot.games.kantong_rempah as kantong_rempah
+import bot.games.tahan_dulu as tahan_dulu
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["conn"]
@@ -49,13 +50,19 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
         
         
-    args = update.message.text.split(maxsplit=2)
-    if len(args) < 3:
-        await update.message.reply_text("Penggunaan: /bermain <nama_game> <nama_setting>")
+    args = update.message.text.split()
+    if len(args) < 2:
+        await update.message.reply_text(
+            "🎮 **Daftar Mini-Games**\n"
+            "• `/bermain kata_rahasia <setting>` — Tebak kata berkelompok\n"
+            "• `/bermain kantong_rempah [menit]` — Tebak total rempah (via PC)\n"
+            "• `/bermain tahan_dulu [detik]` — Adu cepat / reflex\n",
+            parse_mode="Markdown"
+        )
         return
         
     game_name = args[1].lower()
-    setting_name = args[2].lower()
+    setting_name = args[2].lower() if len(args) > 2 else "default"
     
     conn = _conn(context)
     db = _db(context)
@@ -64,14 +71,11 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await kata_rahasia.mulai_kata_rahasia(update, context, db, conn, setting_name)
     elif game_name == "kantong_rempah":
         # kantong_rempah parses its own settings from args text
-        args_text = ""
-        if len(args) > 2:
-            args_text = " ".join(args[2:])
-        elif len(args) > 1 and len(update.message.text.split(maxsplit=1)) > 1:
-            # Handle /bermain kantong_rempah 1 (where setting_name is actually the time argument)
-            args_text = " ".join(update.message.text.split()[2:])
-            
+        args_text = " ".join(args[2:])
         await kantong_rempah.mulai_kantong_rempah(update, context, db, conn, args_text)
+    elif game_name == "tahan_dulu":
+        args_text = " ".join(args[2:])
+        await tahan_dulu.mulai_tahan_dulu(update, context, db, conn, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -99,6 +103,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await kata_rahasia.status_kata_rahasia(update, context, db, conn, session)
     elif game_name == "kantong_rempah":
         await kantong_rempah.status_kantong_rempah(update, context, db, conn, session)
+    elif game_name == "tahan_dulu":
+        await tahan_dulu.status_tahan_dulu(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -134,6 +140,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await kata_rahasia.berhenti_kata_rahasia(update, context, db, conn, session)
     elif game_name == "kantong_rempah":
         await kantong_rempah.berhenti_kantong_rempah(update, context, db, conn, session)
+    elif game_name == "tahan_dulu":
+        await tahan_dulu.berhenti_tahan_dulu(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -161,6 +169,8 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await kata_rahasia.hasil_kata_rahasia(update, context, db, conn, session)
     elif game_name == "kantong_rempah":
         await kantong_rempah.hasil_kantong_rempah(update, context, db, conn, session)
+    elif game_name == "tahan_dulu":
+        await tahan_dulu.hasil_tahan_dulu(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -188,6 +198,12 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         if text.strip().lower().startswith("/tebak"):
             await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text.strip())
             return True
+        return False
+    elif game_name == "tahan_dulu":
+        # Tahan dulu intercepts ANY text message during WAITING phase
+        text = update.message.text or update.message.caption or ""
+        if text.strip():
+            await tahan_dulu.proses_pesan_tahan_dulu(update, context, db, conn, session)
         return False
         
     return False
