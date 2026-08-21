@@ -253,16 +253,23 @@ async def proses_tebakan_grup(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         user = update.effective_user
         uid_str = str(user.id)
+        name = user.first_name or user.username or str(user.id)
         
         guesses = state.setdefault("guesses", {})
         
         # Perbolehkan update tebakan
         guesses[uid_str] = {
-            "name": user.first_name or user.username or str(user.id),
+            "name": name,
             "guess": guess_val
         }
         
         await db.update_game_session_state(conn, session_id, state)
+        
+    # Send feedback outside the lock to minimize lock contention time
+    try:
+        await update.message.reply_text(f"✅ Tebakan {guess_val} dicatat!", quote=True)
+    except Exception:
+        pass
 
 async def status_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     state = json.loads(session["state_json"])
