@@ -43,6 +43,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
   - *Kata Rahasia:* `/bermain kata_rahasia <setting>`
   - *Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]`
   - *Tahan Dulu:* `/bermain tahan_dulu [detik]`
+  - *Adu React:* `/bermain adu_react`
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
 - `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
 - `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.

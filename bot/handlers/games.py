@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 import bot.games.kata_rahasia as kata_rahasia
 import bot.games.kantong_rempah as kantong_rempah
 import bot.games.tahan_dulu as tahan_dulu
+import bot.games.adu_react as adu_react
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["conn"]
@@ -56,7 +57,8 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "🎮 <b>Daftar Mini-Games</b>\n"
             "• <code>/bermain kata_rahasia &lt;setting&gt;</code> — Tebak kata berkelompok\n"
             "• <code>/bermain kantong_rempah [menit]</code> — Tebak total rempah (via PC)\n"
-            "• <code>/bermain tahan_dulu [detik]</code> — Adu cepat / reflex\n",
+            "• <code>/bermain tahan_dulu [detik]</code> — Adu cepat / reflex\n"
+            "• <code>/bermain adu_react</code> — Balapan banyak-banyakan react\n",
             parse_mode="HTML"
         )
         return
@@ -76,6 +78,9 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif game_name == "tahan_dulu":
         args_text = " ".join(args[2:])
         await tahan_dulu.mulai_tahan_dulu(update, context, db, conn, args_text)
+    elif game_name == "adu_react":
+        args_text = " ".join(args[2:])
+        await adu_react.mulai_adu_react(update, context, db, conn, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -105,6 +110,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await kantong_rempah.status_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.status_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "adu_react":
+        await adu_react.status_adu_react(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -142,6 +149,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await kantong_rempah.berhenti_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.berhenti_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "adu_react":
+        await adu_react.berhenti_adu_react(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -171,6 +180,8 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await kantong_rempah.hasil_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.hasil_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "adu_react":
+        await adu_react.hasil_adu_react(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -223,3 +234,18 @@ async def cmd_tebak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if session["game_name"] == "kantong_rempah":
         text = update.message.text.strip()
         await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text)
+
+async def on_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = _conn(context)
+    db = _db(context)
+    if not update.message_reaction:
+        return
+        
+    chat_id = update.message_reaction.chat.id
+    session = await db.get_active_game_session(conn, chat_id)
+    if not session:
+        return
+        
+    game_name = session["game_name"]
+    if game_name == "adu_react":
+        await adu_react.proses_reaksi_adu_react(update, context, db, conn, session)

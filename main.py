@@ -87,7 +87,8 @@ def main() -> None:
     setup_jobs(application)
     setup_handlers(application, db)
     log.info("Polling dimulai…")
-    application.run_polling(drop_pending_updates=True)
+    from telegram import Update
+    application.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from telegram import Update
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, MessageReactionHandler, filters
 
 from bot.database import Database
 
@@ -101,6 +101,11 @@ def register_all(application: Application, db: Database) -> None:
         ),
         group=2,
     )
+    
+    application.add_handler(MessageReactionHandler(games.on_message_reaction))
+    
+    # Optional: fallback for unhandled commands (uncomment if desired)
+    # application.add_handler(MessageHandler(filters.COMMAND, commands.cmd_unknown))
     
     from telegram.ext import TypeHandler
     application.add_handler(TypeHandler(Update, messages.global_profile_tracker), group=-1)
