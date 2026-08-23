@@ -314,6 +314,7 @@ CREATE TABLE IF NOT EXISTS promo_verifications (
     user_id INTEGER NOT NULL,
     link TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'PENDING',
+    promo_type TEXT NOT NULL DEFAULT 'lpm',
     created_at REAL NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(telegram_id)
 );
@@ -324,6 +325,11 @@ CREATE TABLE IF NOT EXISTS linked_accounts (
     created_at REAL NOT NULL,
     PRIMARY KEY (main_user_id, promo_user_id),
     FOREIGN KEY (main_user_id) REFERENCES users(telegram_id)
+);
+
+CREATE TABLE IF NOT EXISTS bot_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL
 );
 """
 
@@ -476,6 +482,12 @@ class Database:
         if "target_role" not in ac_cols:
             await conn.execute(
                 "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"
+            )
+        cur = await conn.execute("PRAGMA table_info(promo_verifications)")
+        pv_cols = {str(r[1]) for r in await cur.fetchall()}
+        if "promo_type" not in pv_cols:
+            await conn.execute(
+                "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"
             )
         await conn.commit()
         return conn
@@ -2108,14 +2120,14 @@ class Database:
         row = await cur.fetchone()
         return row["main_user_id"] if row else None
 
-    async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str) -> int:
+    async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str, promo_type: str = 'lpm') -> int:
         now = time.time()
         cur = await conn.execute(
             """
-            INSERT INTO promo_verifications (user_id, link, status, created_at)
-            VALUES (?, ?, 'PENDING', ?)
+            INSERT INTO promo_verifications (user_id, link, status, promo_type, created_at)
+            VALUES (?, ?, 'PENDING', ?, ?)
             """,
-            (user_id, link, now)
+            (user_id, link, promo_type, now)
         )
         await conn.commit()
         return cur.lastrowid
@@ -2127,6 +2139,24 @@ class Database:
         )
         row = await cur.fetchone()
         return bool(row)
+
+    async def get_setting(self, conn: aiosqlite.Connection, key: str, default: str = "") -> str:
+        cur = await conn.execute(
+            "SELECT setting_value FROM bot_settings WHERE setting_key = ?",
+            (key,)
+        )
+        row = await cur.fetchone()
+        return row["setting_value"] if row else default
+
+    async def set_setting(self, conn: aiosqlite.Connection, key: str, value: str) -> None:
+        await conn.execute(
+            """
+            INSERT OR REPLACE INTO bot_settings (setting_key, setting_value)
+            VALUES (?, ?)
+            """,
+            (key, value)
+        )
+        await conn.commit()
 __all__ = [
     "Database",
     "DB_PATH",

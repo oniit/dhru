@@ -4,8 +4,8 @@ import logging
 import random
 import string
 import time
-from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 from bot.database import Database
 
@@ -144,12 +144,99 @@ async def handle_otp_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
         OTP_STORE.pop(text, None)
 
+async def promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from bot.settings import OWNER_ID
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("Khusus Owner.")
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("Set Syarat Kata LPM", callback_data="promo_set_lpm")],
+        [InlineKeyboardButton("Set Link Post Story", callback_data="promo_set_story")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("⚙️ *Menu Promo & Story Settings*", reply_markup=reply_markup, parse_mode="Markdown")
+
+async def promo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    from bot.settings import OWNER_ID
+    if update.effective_user.id != OWNER_ID:
+        await query.answer("Khusus Owner.", show_alert=True)
+        return
+        
+    await query.answer()
+    
+    if query.data == "promo_set_lpm":
+        context.user_data["promo_state"] = "wait_lpm"
+        await query.edit_message_text("Kirimkan syarat kata untuk LPM (misal: dhruva):")
+    elif query.data == "promo_set_story":
+        context.user_data["promo_state"] = "wait_story"
+        await query.edit_message_text("Kirimkan link post channel untuk validasi Story (misal: https://t.me/channel/123):")
+
+async def promo_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = context.user_data.get("promo_state")
+    if not state or not update.message or not update.message.text:
+        return
+        
+    from bot.settings import OWNER_ID
+    if update.effective_user.id != OWNER_ID:
+        return
+        
+    text = update.message.text.strip()
+    db: Database = context.bot_data["db"]
+    conn = context.bot_data["conn"]
+    
+    if state == "wait_lpm":
+        await db.set_setting(conn, "promo_lpm_keyword", text.lower())
+        await update.message.reply_text(f"✅ Syarat kata LPM berhasil diubah menjadi: `{text.lower()}`", parse_mode="Markdown")
+    elif state == "wait_story":
+        await db.set_setting(conn, "promo_story_post", text)
+        await update.message.reply_text(f"✅ Link post Story berhasil diubah menjadi:\n{text}")
+        
+    context.user_data.pop("promo_state", None)
+
+async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Format salah! Gunakan: `/story <link_story>`\nContoh: `/story https://t.me/username/s/15`", parse_mode="Markdown")
+        return
+        
+    link = context.args[0]
+    if "t.me/" not in link or "/s/" not in link:
+        await update.message.reply_text("Link tidak valid. Pastikan formatnya benar (contoh: t.me/username/s/15).")
+        return
+
+    db: Database = context.bot_data["db"]
+    conn = context.bot_data["conn"]
+    user_id = update.effective_user.id
+    
+    exists = await db.check_promo_link_exists(conn, link)
+    if exists:
+        await update.message.reply_text("❌ Link ini sudah pernah diklaim sebelumnya.")
+        return
+
+    await db.add_promo_verification(conn, user_id, link, promo_type="story")
+    
+    await update.message.reply_text(
+        "⏳ Link Story berhasil disubmit! Sistem sedang memvalidasi story-mu. "
+        "Pastikan akunmu publik agar bot bisa mengeceknya."
+    )
+
 def setup_promo_handlers(application) -> None:
     application.add_handler(CommandHandler("link_kerja", link_kerja_cmd))
     application.add_handler(CommandHandler("cek_akun_kerja", cek_akun_kerja_cmd))
     application.add_handler(CommandHandler("lpm", lpm_cmd))
+    application.add_handler(CommandHandler("story", story_cmd))
+    application.add_handler(CommandHandler("promo", promo_cmd))
+    application.add_handler(CallbackQueryHandler(promo_callback, pattern="^promo_set_"))
+    
     # Filter only text messages that start with KERJA-
     application.add_handler(
         MessageHandler(filters.TEXT & filters.Regex(r"(?i)^KERJA-[A-Z0-9]{6}$"), handle_otp_message),
-        group=1  # Put in group 1 so it doesn't conflict with main command handlers fallback
+        group=1
+    )
+    
+    # Text input handler for promo settings (runs in separate group so it doesn't block commands)
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, promo_text_handler),
+        group=2
     )

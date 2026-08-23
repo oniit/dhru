@@ -63,11 +63,12 @@ Menyimpan riwayat pengiriman pesan rahasia (menfess) antar pengguna beserta gift
 - `created_at` (REAL): Waktu pengiriman
 
 ### 10. `promo_verifications`
-Tabel untuk antrean validasi link promosi grup LPM.
+Tabel untuk antrean validasi link promosi grup LPM dan Story Telegram.
 - `id` (INTEGER PRIMARY KEY)
 - `user_id` (INTEGER): Telegram ID Akun Utama pengguna
-- `link` (TEXT): Tautan telegram pesan
+- `link` (TEXT): Tautan telegram pesan / story
 - `status` (TEXT): PENDING, VALID, INVALID, NO_KEYWORD, SENDER_MISMATCH, EXPIRED
+- `promo_type` (TEXT): Tipe promosi (`lpm` atau `story`).
 - `created_at` (REAL)
 
 ### 11. `linked_accounts`
@@ -75,6 +76,11 @@ Tabel untuk menautkan "Akun Kerja" (akun promosi/clone) ke "Akun Utama".
 - `main_user_id` (INTEGER): Telegram ID Akun Utama
 - `promo_user_id` (INTEGER): Telegram ID Akun Kerja
 - `created_at` (REAL)
+
+### 12. `bot_settings`
+Menyimpan konfigurasi dinamis bot (*key-value*). Digunakan untuk sistem promosi dinamis.
+- `setting_key` (TEXT PRIMARY KEY)
+- `setting_value` (TEXT)
 
 ## Migrasi ke Turso (Database Edge/Remote)
 Secara default, bot menggunakan SQLite lokal (`data/bot.db`). Namun bot mendukung database Turso melalui *environment variables*: `TURSO_DB_URL` dan `TURSO_AUTH_TOKEN`.
