@@ -3024,13 +3024,38 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 mg = ((m_order - 1) % 4) + 1
                 await db.set_profile_partial(conn, tid, {"maba_group": mg})
             
-            from bot.settings import MABA_GROUP_LINKS
-            link = MABA_GROUP_LINKS[mg - 1] if mg and mg <= len(MABA_GROUP_LINKS) else ""
-            if not link:
-                link = "(Link belum disetel oleh admin)"
-            from bot.settings import MABA_GROUP_NAMES
+            from bot.settings import MABA_GROUP_GIDS, MABA_GROUP_NAMES, KELOMPOK_GID
+            link = "(Grup kelompok belum disetel oleh admin)"
+            try:
+                if len(MABA_GROUP_GIDS) >= mg:
+                    gid = MABA_GROUP_GIDS[mg - 1]
+                    invite = await context.bot.create_chat_invite_link(
+                        chat_id=gid, 
+                        member_limit=1, 
+                        name=f"Maba {tid}"
+                    )
+                    link = invite.invite_link
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {tid}: {e}")
+                link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
+                
             extra_text = f"\n\nKamu ditempatkan di Kelompok {MABA_GROUP_NAMES.get(mg, mg)}.\nSilakan bergabung ke grup kelompokmu:\n{link}"
 
+            if KELOMPOK_GID:
+                try:
+                    name_str = prof.get("full_name", "Tanpa Nama")
+                    uname_str = f"@{urow['username']}" if urow.get("username") else "-"
+                    msg_kelompok = (
+                        f"📣 **Alokasi Kelompok MABA (Jalur Admin)**\n\n"
+                        f"**Nama:** [{name_str}](tg://user?id={tid})\n"
+                        f"**Username:** {uname_str}\n"
+                        f"**Kelompok:** {MABA_GROUP_NAMES.get(mg, mg)}"
+                    )
+                    await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="Markdown")
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok admin ke {KELOMPOK_GID}: {e}")
         try:
             await context.bot.send_message(
                 chat_id=tid,
