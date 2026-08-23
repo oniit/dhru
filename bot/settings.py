@@ -112,6 +112,13 @@ AGRA_REWARD_TUGAS = int(_rewards.get("tugas", 35))
 _maba_gids = os.environ.get("MABA_GROUP_GIDS", "").strip()
 MABA_GROUP_GIDS = [int(x.strip()) for x in _maba_gids.split(",") if x.strip()] if _maba_gids else []
 
+MABA_GROUP_NAMES = {
+    1: "Pramoerdita",
+    2: "Nusapraja",
+    3: "Candrakirana",
+    4: "Purnawijaya",
+}
+
 
 
 def _parse_id_list(s: str | None) -> set[int]:

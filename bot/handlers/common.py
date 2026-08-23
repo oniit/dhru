@@ -23,6 +23,7 @@ from bot.settings import (
     choice_label,
     field_applies_to_role,
     multi_choice_labels,
+    MABA_GROUP_NAMES,
 )
 
 if TYPE_CHECKING:
@@ -382,7 +383,7 @@ def format_profile_card(
             return role_display(row["role"])
         if key == "maba_group":
             mg = profile.get("maba_group")
-            return f"Kelompok {mg}" if mg else "—"
+            return f"Kelompok {MABA_GROUP_NAMES.get(mg, mg)}" if mg else "—"
         if key == "agra_total":
             return f"{agra:,}".replace(",", ".")
         if key == "auto_class_enrolled":

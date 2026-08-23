@@ -657,7 +657,7 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     "Silakan pantau Grup OSPEK untuk mendapatkan instruksi lebih lanjut."
                 )
             else:
-                from bot.settings import MABA_GROUP_GIDS
+                from bot.settings import MABA_GROUP_GIDS, MABA_GROUP_NAMES
                 mg = int(profile.get("maba_group", 1))
                 link = "(Grup kelompok belum disetel oleh admin)"
                 try:
@@ -675,7 +675,7 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
                     
                 await update.message.reply_text(
-                    f"Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Anda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}"
+                    f"Data awal sudah lengkap. Selanjutnya gunakan /ubah untuk perubahan.\n\n✨ Anda dimasukkan ke Kelompok {MABA_GROUP_NAMES.get(mg, mg)}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}"
                 )
         else:
             await update.message.reply_text(
@@ -3028,7 +3028,8 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             link = MABA_GROUP_LINKS[mg - 1] if mg and mg <= len(MABA_GROUP_LINKS) else ""
             if not link:
                 link = "(Link belum disetel oleh admin)"
-            extra_text = f"\n\nKamu ditempatkan di Kelompok {mg}.\nSilakan bergabung ke grup kelompokmu:\n{link}"
+            from bot.settings import MABA_GROUP_NAMES
+            extra_text = f"\n\nKamu ditempatkan di Kelompok {MABA_GROUP_NAMES.get(mg, mg)}.\nSilakan bergabung ke grup kelompokmu:\n{link}"
 
         try:
             await context.bot.send_message(

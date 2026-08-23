@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 import time
 import re
 
-from bot.settings import PROFILE_FIELDS, PETINGGI_GID
+from bot.settings import PROFILE_FIELDS, PETINGGI_GID, MABA_GROUP_NAMES
 
 from .common import (
     can_report,
@@ -304,7 +304,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                             f"📣 **Alokasi Kelompok MABA**\n\n"
                             f"**Nama:** [{name_str}](tg://user?id={uid})\n"
                             f"**Username:** {username_str}\n"
-                            f"**Kelompok:** {maba_group}"
+                            f"**Kelompok:** {MABA_GROUP_NAMES.get(maba_group, maba_group)}"
                         )
                         await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="Markdown")
                     except Exception as e:
@@ -327,9 +327,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         import logging
                         logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid}: {e}")
                         link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
-                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
+                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
                 else:
-                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {maba_group}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
+                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
             else:
                 await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
         else:
