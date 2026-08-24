@@ -142,11 +142,12 @@ async def process_pending_links():
                             await conn.execute("UPDATE promo_verifications SET status = 'NO_KEYWORD' WHERE id = ?", (req_id,))
                             await conn.commit()
                             import requests
+                            reason = f"(Harus memuat repost dari: {story_post_link})" if story_post_link else "(Link target belum disetel oleh admin)"
                             requests.post(
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
-                                    "text": f"❌ Gagal memvalidasi link {link}\n\nStory kamu tidak memuat (repost) postingan yang sesuai."
+                                    "text": f"❌ Gagal memvalidasi link {link}\n\nStory kamu tidak memuat (repost) postingan yang sesuai. {reason}"
                                 }
                             )
                             continue
