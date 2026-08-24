@@ -180,6 +180,14 @@ async def process_pending_links():
                         log.error(f"Error reading story {link}: {e}")
                         await conn.execute("UPDATE promo_verifications SET status = 'ERROR' WHERE id = ?", (req_id,))
                         await conn.commit()
+                        import requests
+                        requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                            json={
+                                "chat_id": main_user_id,
+                                "text": f"❌ Gagal memvalidasi link {link}\n\nTerjadi kesalahan sistem saat mencoba membaca Story-mu. Pastikan akun tidak di-private atau silakan hubungi admin jika ini terus terjadi."
+                            }
+                        )
 
                 else:
                     # LPM Logic
