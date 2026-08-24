@@ -508,43 +508,59 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not PETINGGI_GID or update.effective_chat.id != PETINGGI_GID:
         return
         
-    reply = update.message.reply_to_message
-    if reply and reply.from_user and reply.from_user.id == context.bot.id:
-        bot_text = reply.text or reply.caption or ""
-        matches = re.findall(r"#ID_(\d+)", bot_text)
-        if matches:
-            target_id = int(matches[0]) # Use the FIRST match since we put the header at the top
-            
-            # Stickers and Video Notes cannot have captions, so they cannot contain #balas. 
-            # We must forward them directly.
-            if update.message.sticker or update.message.video_note:
+    reply_match = re.match(r"(?i)^#balas(?:\s+|$)(.*)", text, re.DOTALL)
+    
+    # If the admin didn't use #balas, we only care if they sent a sticker/video_note as a direct reply to the bot
+    if not reply_match:
+        reply = update.message.reply_to_message
+        if reply and reply.from_user and reply.from_user.id == context.bot.id:
+            bot_text = reply.text or reply.caption or ""
+            matches = re.findall(r"#ID_(\d+)", bot_text)
+            if matches and (update.message.sticker or update.message.video_note):
+                target_id = int(matches[0])
                 try:
                     await update.message.copy(chat_id=target_id)
                     await update.message.reply_text("✅ Media (Stiker/Video Note) berhasil dikirim ke user.")
                 except Exception as e:
                     await update.message.reply_text(f"Gagal mengirim media: {e}")
-                return
-                
-            reply_match = re.match(r"(?i)^#balas(?:\s+|$)(.*)", text, re.DOTALL)
-            if reply_match:
-                reply_text = reply_match.group(1).strip()
-                if not reply_text and update.message.text:
-                    await update.message.reply_text("⚠️ Isi balasan tidak boleh kosong atau sertakan media. Gunakan format: #balas <pesan>")
-                    return
-                    
-                try:
-                    if update.message.text:
-                        # Use parse_mode=None to prevent HTML parsing crashes if admin types < or >
-                        await context.bot.send_message(chat_id=target_id, text=reply_text, parse_mode=None)
-                    else:
-                        await update.message.copy(
-                            chat_id=target_id,
-                            caption=reply_text,
-                            parse_mode=None
-                        )
-                    await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
-                except Exception as e:
-                    await update.message.reply_text(f"Gagal mengirim balasan: {e}")
+        return
+
+    # If they DID use #balas, validate everything and give errors if it fails
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Anda harus me-reply pesan (yang diforward dari user) untuk menggunakan #balas.")
+        return
+        
+    if not reply.from_user or reply.from_user.id != context.bot.id:
+        await update.message.reply_text("⚠️ Anda harus me-reply pesan yang dikirim oleh bot ini.")
+        return
+        
+    bot_text = reply.text or reply.caption or ""
+    matches = re.findall(r"#ID_(\d+)", bot_text)
+    if not matches:
+        await update.message.reply_text("⚠️ Gagal: Tidak dapat menemukan #ID_ user pada pesan yang direply. Pastikan pesan tersebut memiliki format ID.")
+        return
+        
+    target_id = int(matches[0])
+    reply_text = reply_match.group(1).strip()
+    
+    if not reply_text and update.message.text:
+        await update.message.reply_text("⚠️ Isi balasan tidak boleh kosong atau sertakan media. Gunakan format: #balas <pesan>")
+        return
+        
+    try:
+        if update.message.text:
+            # Use parse_mode=None to prevent HTML parsing crashes if admin types < or >
+            await context.bot.send_message(chat_id=target_id, text=reply_text, parse_mode=None)
+        else:
+            await update.message.copy(
+                chat_id=target_id,
+                caption=reply_text,
+                parse_mode=None
+            )
+        await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
+    except Exception as e:
+        await update.message.reply_text(f"Gagal mengirim balasan: {e}")
 
 from telegram import ChatMember
 async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
