@@ -489,6 +489,10 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     raw_text = update.message.text or update.message.caption or ""
     text = raw_text.strip()
     
+    # DEBUG TRACE START
+    if text.startswith("#balas"):
+        await update.message.reply_text("TRACE 1: Masuk on_group_message")
+    
     try:
         from .triggers import check_and_execute_trigger
         is_trigger = await check_and_execute_trigger(conn, update, context, text)
@@ -497,6 +501,9 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except ImportError:
         pass
         
+    if text.startswith("#balas"):
+        await update.message.reply_text("TRACE 2: Lolos Trigger")
+        
     try:
         from .games import process_game_message
         is_game_handled = await process_game_message(conn, _db(context), update, context)
@@ -504,6 +511,9 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
     except ImportError:
         pass
+
+    if text.startswith("#balas"):
+        await update.message.reply_text("TRACE 3: Lolos Game")
         
     from bot.settings import is_admin_elevated
     is_authorized = False
@@ -513,7 +523,12 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         is_authorized = True
         
     if not is_authorized:
+        if text.startswith("#balas"):
+            await update.message.reply_text("TRACE ERROR: Gagal Otorisasi")
         return
+
+    if text.startswith("#balas"):
+        await update.message.reply_text("TRACE 4: Lolos Otorisasi")
         
     reply_match = re.match(r"(?i)^#balas(?:\s+|$)(.*)", text, re.DOTALL)
     
