@@ -864,12 +864,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     if data.startswith("maba:"):
-        await q.answer()
         action = data.split(":")[1]
         conn = _conn(context)
         db = _db(context)
         
         if action == "start":
+            await q.answer()
             await db.set_onboarding_step(conn, uid, "MABA_NAME")
             await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan **Nama Lengkap** Anda:", parse_mode="Markdown")
         elif action == "verify":
@@ -882,6 +882,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             text_verify, all_followed = await build_maba_verification_text(context, uid)
                     
             if not all_followed:
+                await q.answer()
                 await q.edit_message_text(
                     text_verify,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]]),
@@ -891,6 +892,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 
             # If all followed, set onboarding step to MABA_PROMO_WAIT
             await db.set_onboarding_step(conn, uid, "MABA_PROMO_WAIT")
+            await q.answer()
             
             instruction_text = (
                 "✅ Channel berhasil diverifikasi!\n\n"
@@ -913,6 +915,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await q.answer("❌ Kamu belum melakukan promosi atau sistem masih memvalidasinya. Tunggu sampai ada notifikasi berhasil!", show_alert=True)
                 return
 
+            await q.answer()
             await db.set_role(conn, uid, ROLE_MABA)
             await db.set_onboarding_step(conn, uid, None)
             
