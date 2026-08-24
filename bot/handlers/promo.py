@@ -150,12 +150,25 @@ async def promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Khusus Owner.")
         return
     
+    db: Database = context.bot_data["db"]
+    conn = context.bot_data["conn"]
+    
+    current_lpm = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
+    current_story = await db.get_setting(conn, "promo_story_post", "(Belum diatur)")
+    
+    text = (
+        "⚙️ *Menu Promo & Story Settings*\n\n"
+        f"🔹 *Kata Kunci LPM Saat Ini:* `{current_lpm}`\n"
+        f"🔹 *Link Post Story Saat Ini:* `{current_story}`\n\n"
+        "Pilih tombol di bawah untuk mengubah pengaturannya:"
+    )
+    
     keyboard = [
         [InlineKeyboardButton("Set Syarat Kata LPM", callback_data="promo_set_lpm")],
         [InlineKeyboardButton("Set Link Post Story", callback_data="promo_set_story")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("⚙️ *Menu Promo & Story Settings*", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def promo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -171,10 +184,22 @@ async def promo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     if query.data == "promo_set_lpm":
         await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_LPM")
-        await query.edit_message_text("Kirimkan syarat kata untuk LPM (misal: dhruva):")
+        current_lpm = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
+        text = (
+            f"Kirimkan syarat kata untuk LPM.\n\n"
+            f"💡 *Kata saat ini:* `{current_lpm}`\n\n"
+            "_Kirim pesan berisi kata baru untuk mengubahnya, atau abaikan pesan ini jika tidak jadi mengubah._"
+        )
+        await query.edit_message_text(text, parse_mode="Markdown")
     elif query.data == "promo_set_story":
         await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_STORY")
-        await query.edit_message_text("Kirimkan link post channel untuk validasi Story (misal: https://t.me/channel/123):")
+        current_story = await db.get_setting(conn, "promo_story_post", "(Belum diatur)")
+        text = (
+            f"Kirimkan link post channel untuk validasi Story.\n\n"
+            f"💡 *Link saat ini:* `{current_story}`\n\n"
+            "_Kirim pesan berisi link baru (contoh: https://t.me/channel/123), atau abaikan jika tidak jadi mengubah._"
+        )
+        await query.edit_message_text(text, parse_mode="Markdown")
 
 async def promo_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     from bot.settings import OWNER_ID
