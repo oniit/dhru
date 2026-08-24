@@ -273,6 +273,6 @@ def setup_promo_handlers(application) -> None:
     
     # Text input handler for promo settings (runs in separate group so it doesn't block commands)
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, promo_text_handler),
+        MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, promo_text_handler),
         group=2
     )

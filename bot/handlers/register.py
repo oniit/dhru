@@ -7,14 +7,12 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from bot.database import Database
 
-from . import attendance, commands, ktm, karpeg, kontrak, messages, triggers, broadcast, tugas, menfess, games, debug
+from . import attendance, commands, ktm, karpeg, kontrak, messages, triggers, broadcast, tugas, menfess, games
 
 
 
 def register_all(application: Application, db: Database) -> None:
     application.bot_data["db"] = db
-    
-    application.add_handler(CommandHandler("cekbalas", debug.cmd_cekbalas))
 
     application.add_handler(CommandHandler("start", commands.cmd_start))
     application.add_handler(CommandHandler("help", commands.cmd_help))
@@ -111,5 +109,3 @@ def register_all(application: Application, db: Database) -> None:
     
     from telegram.ext import TypeHandler
     application.add_handler(TypeHandler(Update, messages.global_profile_tracker), group=-1)
-    
-    application.add_handler(MessageHandler(filters.ALL, debug.debug_balas_interceptor), group=-2)
