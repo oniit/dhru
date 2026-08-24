@@ -889,23 +889,43 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
                 return
                 
-            # If all followed, set role to maba and give link
+            # If all followed, set onboarding step to MABA_PROMO_WAIT
+            await db.set_onboarding_step(conn, uid, "MABA_PROMO_WAIT")
+            
+            instruction_text = (
+                "✅ Channel berhasil diverifikasi!\n\n"
+                "**Langkah Terakhir:**\n"
+                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal **1x promosi** (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
+                "Kirimkan buktinya ke sini dengan format:\n"
+                "`/lpm <link_pesan>` atau `/story <link_story>`\n\n"
+                "Jika sistem sudah membalas '*Link berhasil divalidasi*', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
+            )
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎁 Ambil Link OSPEK", callback_data="maba:claim_ospek")]])
+            await q.edit_message_text(instruction_text, reply_markup=kb, parse_mode="Markdown")
+            
+        elif action == "claim_ospek":
             from bot.database import ROLE_MABA
+            from bot.settings import MABA_GROUP_LINK, PENDAFTAR_CH_ID
+            from bot.handlers.common import user_row, profile_from_row
+
+            promo_count = await db.count_valid_promos(conn, uid)
+            if promo_count < 1:
+                await q.answer("❌ Kamu belum melakukan promosi atau sistem masih memvalidasinya. Tunggu sampai ada notifikasi berhasil!", show_alert=True)
+                return
+
             await db.set_role(conn, uid, ROLE_MABA)
             await db.set_onboarding_step(conn, uid, None)
             
-            success_text = "✅ Berhasil! Menuju *langkah terakhir* sebelum resmi terdaftar sebagai Mahasiswa Baru.\n\n"
+            success_text = "✅ Berhasil! Persyaratan promo terpenuhi. Anda resmi terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim tautan _copy link_ dengan format: `/lpm link`  ke Sang Poros.\n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n*Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra*"
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
             await q.edit_message_text(success_text, disable_web_page_preview=True, parse_mode="Markdown")
             
-            from bot.settings import PENDAFTAR_CH_ID
             if PENDAFTAR_CH_ID:
                 try:
-                    from bot.handlers.common import user_row, profile_from_row
                     row_tmp = await user_row(conn, db, uid)
                     prof_tmp = profile_from_row(row_tmp)
                     name_tmp = prof_tmp.get("full_name", "Tanpa Nama")

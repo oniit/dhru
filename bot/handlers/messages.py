@@ -222,31 +222,20 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text(text_verify, reply_markup=kb, parse_mode="Markdown")
         else:
             # Skip checking if no channels defined
-            from bot.database import ROLE_MABA
-            from bot.settings import MABA_GROUP_LINK
-            await db.update_user_role(conn, uid, ROLE_MABA)
+            await db.set_onboarding_step(conn, uid, "MABA_PROMO_WAIT")
             
-            success_text = "✅ Berhasil! Menuju *langkah terakhir* sebelum resmi terdaftar sebagai Mahasiswa Baru.\n\n"
-            if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nPastikan sudah menyebar unggahan OPSTUD ke minimal 1 LPM dan mengirim tautan _copy link_ dengan format: `/lpm link`  ke Sang Poros.\n\nContoh: /lpm https://t.me/DhruvaEkagra/18\n\n*Catatan: Tiap 1 sebaran yang berhasil diklaim akan diganti dengan 1 Agra*"
-            else:
-                success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
+            instruction_text = (
+                "✅ Alasan diterima!\n\n"
+                "**Langkah Terakhir:**\n"
+                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal **1x promosi** (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
+                "Kirimkan buktinya ke sini dengan format:\n"
+                "`/lpm <link_pesan>` atau `/story <link_story>`\n\n"
+                "Jika sistem sudah membalas '*Link berhasil divalidasi*', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
+            )
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎁 Ambil Link OSPEK", callback_data="maba:claim_ospek")]])
+            await update.message.reply_text(instruction_text, reply_markup=kb, parse_mode="Markdown")
             
-            await update.message.reply_text(success_text, disable_web_page_preview=True, parse_mode="Markdown")
-            
-            from bot.settings import PENDAFTAR_CH_ID
-            if PENDAFTAR_CH_ID:
-                try:
-                    row_tmp = await user_row(conn, db, uid)
-                    prof_tmp = profile_from_row(row_tmp)
-                    name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
-                    username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
-                    msg_pendaftar = f"**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason}\n**ID:** `{uid}`"
-                    await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Gagal mengirim info pendaftar ke {PENDAFTAR_CH_ID}: {e}")
-            
+
         await db.set_onboarding_step(conn, uid, None)
         return
 

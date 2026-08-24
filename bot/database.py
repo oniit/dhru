@@ -2140,6 +2140,13 @@ class Database:
         row = await cur.fetchone()
         return bool(row)
 
+    async def count_valid_promos(self, conn: aiosqlite.Connection, user_id: int) -> int:
+        cur = await conn.execute(
+            "SELECT COUNT(id) as cnt FROM promo_verifications WHERE user_id = ? AND status = 'VALID'",
+            (user_id,)
+        )
+        row = await cur.fetchone()
+        return row["cnt"] if row else 0
     async def get_setting(self, conn: aiosqlite.Connection, key: str, default: str = "") -> str:
         cur = await conn.execute(
             "SELECT setting_value FROM bot_settings WHERE setting_key = ?",
