@@ -4,5 +4,5 @@ PyYAML
 aiosqlite
 Pillow>=10.0
 libsql-client
-pyrogram
+pyrofork
 tgcrypto

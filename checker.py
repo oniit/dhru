@@ -128,8 +128,9 @@ async def process_pending_links():
 
                             if story.media_areas:
                                 for area in story.media_areas:
-                                    # MediaAreaChannelPost has channel_id and message_id
-                                    area_channel_id = getattr(area, "channel_id", None)
+                                    # MediaAreaChannelPost has chat and message_id in pyrofork
+                                    area_chat = getattr(area, "chat", None)
+                                    area_channel_id = area_chat.id if area_chat else getattr(area, "channel_id", None)
                                     area_msg_id = getattr(area, "message_id", None)
                                     
                                     # Sometimes API returns channel_id as raw ID without -100 prefix, so we check carefully
