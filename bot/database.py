@@ -1657,8 +1657,11 @@ class Database:
         cur = await conn.execute("DELETE FROM task_submissions WHERE student_id = ?", (telegram_id,))
         out["task_submissions"] = self._rowcount(cur)
 
-        cur = await conn.execute("DELETE FROM promo_verifications WHERE telegram_id = ?", (telegram_id,))
+        cur = await conn.execute("DELETE FROM promo_verifications WHERE user_id = ?", (telegram_id,))
         out["promo_verifications"] = self._rowcount(cur)
+        
+        cur = await conn.execute("DELETE FROM linked_accounts WHERE main_user_id = ? OR promo_user_id = ?", (telegram_id, telegram_id))
+        out["linked_accounts"] = self._rowcount(cur)
 
         return out
 
@@ -1736,10 +1739,16 @@ class Database:
         profile_change_requests_deleted = self._rowcount(cur)
 
         cur = await conn.execute(
-            f"DELETE FROM promo_verifications WHERE telegram_id IN ({p})",
+            f"DELETE FROM promo_verifications WHERE user_id IN ({p})",
             target_ids,
         )
         promo_verifications_deleted = self._rowcount(cur)
+        
+        cur = await conn.execute(
+            f"DELETE FROM linked_accounts WHERE main_user_id IN ({p}) OR promo_user_id IN ({p})",
+            (*target_ids, *target_ids),
+        )
+        linked_accounts_deleted = self._rowcount(cur)
 
         cur = await conn.execute(
             f"DELETE FROM audit_log WHERE actor_id IN ({p})",
@@ -1776,6 +1785,7 @@ class Database:
             "agra_ledger_deleted": agra_ledger_deleted,
             "profile_change_requests_deleted": profile_change_requests_deleted,
             "promo_verifications_deleted": promo_verifications_deleted,
+            "linked_accounts_deleted": linked_accounts_deleted,
             "audit_log_deleted": audit_log_deleted,
             "users_profile_reset": users_profile_reset,
             "task_submissions_deleted": task_submissions_deleted,
