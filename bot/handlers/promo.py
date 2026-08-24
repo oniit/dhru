@@ -166,34 +166,45 @@ async def promo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
     await query.answer()
     
+    db: Database = context.bot_data["db"]
+    conn = context.bot_data["conn"]
+    
     if query.data == "promo_set_lpm":
-        context.user_data["promo_state"] = "wait_lpm"
+        await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_LPM")
         await query.edit_message_text("Kirimkan syarat kata untuk LPM (misal: dhruva):")
     elif query.data == "promo_set_story":
-        context.user_data["promo_state"] = "wait_story"
+        await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_STORY")
         await query.edit_message_text("Kirimkan link post channel untuk validasi Story (misal: https://t.me/channel/123):")
 
 async def promo_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    state = context.user_data.get("promo_state")
-    if not state or not update.message or not update.message.text:
-        return
-        
     from bot.settings import OWNER_ID
     if update.effective_user.id != OWNER_ID:
         return
         
-    text = update.message.text.strip()
+    if not update.message or not update.message.text:
+        return
+        
     db: Database = context.bot_data["db"]
     conn = context.bot_data["conn"]
     
-    if state == "wait_lpm":
+    row = await db.get_user(conn, update.effective_user.id)
+    if not row:
+        return
+        
+    step = row["onboarding_step"]
+    if step not in ("PROMO_WAIT_LPM", "PROMO_WAIT_STORY"):
+        return
+        
+    text = update.message.text.strip()
+    
+    if step == "PROMO_WAIT_LPM":
         await db.set_setting(conn, "promo_lpm_keyword", text.lower())
         await update.message.reply_text(f"✅ Syarat kata LPM berhasil diubah menjadi: `{text.lower()}`", parse_mode="Markdown")
-    elif state == "wait_story":
+    elif step == "PROMO_WAIT_STORY":
         await db.set_setting(conn, "promo_story_post", text)
         await update.message.reply_text(f"✅ Link post Story berhasil diubah menjadi:\n{text}")
         
-    context.user_data.pop("promo_state", None)
+    await db.set_onboarding_step(conn, update.effective_user.id, None)
 
 async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
