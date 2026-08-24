@@ -505,7 +505,14 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except ImportError:
         pass
         
-    if not PETINGGI_GID or update.effective_chat.id != PETINGGI_GID:
+    from bot.settings import is_admin_elevated
+    is_authorized = False
+    if PETINGGI_GID and update.effective_chat.id == PETINGGI_GID:
+        is_authorized = True
+    elif is_admin_elevated(update.effective_user.id):
+        is_authorized = True
+        
+    if not is_authorized:
         return
         
     reply_match = re.match(r"(?i)^#balas(?:\s+|$)(.*)", text, re.DOTALL)
