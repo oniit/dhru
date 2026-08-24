@@ -464,22 +464,26 @@ async def track_group_activity(
     conn = _conn(context)
     db = _db(context)
     u = update.effective_user
-    await db.touch_group_seen_user(
-        conn,
-        chat_id=update.effective_chat.id,
-        telegram_id=u.id,
-        username=u.username,
-        first_name=u.first_name,
-        last_name=u.last_name,
-        is_bot=u.is_bot,
-    )
-    await db.upsert_bot_chat(
-        conn=conn,
-        chat_id=update.effective_chat.id,
-        chat_type=update.effective_chat.type,
-        title=update.effective_chat.title or "Tanpa Nama",
-        is_active=True
-    )
+    try:
+        await db.touch_group_seen_user(
+            conn,
+            chat_id=update.effective_chat.id,
+            telegram_id=u.id,
+            username=u.username,
+            first_name=u.first_name,
+            last_name=u.last_name,
+            is_bot=u.is_bot,
+        )
+        await db.upsert_bot_chat(
+            conn=conn,
+            chat_id=update.effective_chat.id,
+            chat_type=update.effective_chat.type,
+            title=update.effective_chat.title or "Tanpa Nama",
+            is_active=True
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in track_group_activity: {e}")
 
 async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -489,6 +493,9 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     raw_text = update.message.text or update.message.caption or ""
     text = raw_text.strip()
     
+    if text.startswith("/"):
+        return
+        
     # DEBUG TRACE START
     if text.startswith("#balas"):
         await update.message.reply_text("TRACE 1: Masuk on_group_message")

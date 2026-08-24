@@ -98,7 +98,7 @@ def register_all(application: Application, db: Database) -> None:
     )
     application.add_handler(
         MessageHandler(
-            ~filters.COMMAND & filters.ChatType.GROUPS,
+            filters.ChatType.GROUPS,
             messages.on_group_message,
         ),
         group=2,
