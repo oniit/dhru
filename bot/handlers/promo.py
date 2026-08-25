@@ -40,10 +40,10 @@ async def link_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = (
         "🔗 <b>Tautkan Akun Kerja</b>\n\n"
         "Untuk menautkan akun kerjamu (akun promosi), ikuti langkah ini:\n"
-        "1. Login ke akun kerjamu di Telegram.\n"
+        "1. Start bot ini di akun kerjamu.\n"
         f"2. Kirimkan pesan berisi kode di bawah ini ke bot ini secara langsung (DM):\n\n"
         f"<code>{code}</code>\n\n"
-        "*(Kode ini hanya berlaku selama 10 menit)*"
+        "<b>(Kode ini hanya berlaku selama 10 menit)</b>"
     )
     await update.message.reply_text(text, parse_mode="HTML")
 
@@ -57,7 +57,7 @@ async def cek_akun_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Kamu belum menautkan akun kerja apa pun. Gunakan /link_kerja untuk menautkan.")
         return
 
-    text = "📋 **Daftar Akun Kerjamu yang Terdaftar:**\n\n"
+    text = "📋 <b>Daftar Akun Kerjamu yang Terdaftar:</b>\n\n"
     for idx, acc_id in enumerate(linked_accounts, start=1):
         text += f"{idx}. <code>{acc_id}</code>\n"
     text += "\nJika kamu menggunakan salah satu akun di atas untuk menyebar link promosi, saldo Agra akan tetap masuk ke akun utama ini."
