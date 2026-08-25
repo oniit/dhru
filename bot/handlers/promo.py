@@ -38,7 +38,7 @@ async def link_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     }
 
     text = (
-        "🔗 **Tautkan Akun Kerja**\n\n"
+        "🔗 <b>Tautkan Akun Kerja</b>\n\n"
         "Untuk menautkan akun kerjamu (akun promosi), ikuti langkah ini:\n"
         "1. Login ke akun kerjamu di Telegram.\n"
         f"2. Kirimkan pesan berisi kode di bawah ini ke bot ini secara langsung (DM):\n\n"
