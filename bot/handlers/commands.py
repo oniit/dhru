@@ -282,6 +282,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines))
 
 
+async def cmd_maba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik lama)."""
+    u = update.effective_user
+    if not u:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    
+    await db.set_onboarding_step(conn, u.id, "MABA_NAME")
+    await update.message.reply_text(
+        "Ketikkan Nama Lengkap Anda:"
+    )
+
+
 async def cmd_kode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
@@ -819,7 +833,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "cancel_action":
         await q.answer("Aksi dibatalkan.")
-        await q.edit_message_text("Aksi dibatalkan.")
+        try:
+            await q.edit_message_text("Aksi dibatalkan.")
+        except Exception as e:
+            log.warning("cancel_action edit error: %s", e)
         return
 
     if data.startswith("pub:"):
@@ -833,7 +850,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 [InlineKeyboardButton("Menghubungi staf Akademik.", callback_data="pub:akademik")],
                 [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
             ])
-            await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
+            try:
+                await q.edit_message_text("Pilih instansi yang ingin Anda hubungi:", reply_markup=keyboard)
+            except Exception as e:
+                log.warning("pub:hubungi edit error: %s", e)
             
         elif action == "back":
             row_u = await user_row(conn, db, q.from_user.id)
@@ -849,11 +869,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 [InlineKeyboardButton("💬 Pertanyaan Lainnya", callback_data="pub:lainnya")]
             ])
             keyboard = InlineKeyboardMarkup(buttons)
-            await q.edit_message_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
+            try:
+                await q.edit_message_text("Selamat datang! Silakan pilih menu berikut:", reply_markup=keyboard)
+            except Exception as e:
+                log.warning("pub:back edit error: %s", e)
 
         elif action in ("medpart", "hrd", "akademik"):
             username = "@dhruvaekagrabot" if action == "medpart" else ("@HRDhruvabot" if action == "hrd" else "@acadhruvabot")
-            await q.edit_message_text(f"Silakan menghubungi {username}, ketik /start untuk kembali.")
+            try:
+                await q.edit_message_text(f"Silakan menghubungi {username}, ketik /start untuk kembali.")
+            except Exception as e:
+                log.warning("pub:action edit error: %s", e)
         elif action == "lainnya":
             await q.edit_message_text("Silakan ketik pertanyaan Anda. Pesan Anda akan langsung diteruskan ke tim kami.")
         elif action == "kode":
@@ -1733,12 +1759,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
         if _is_lengkapi_done(profile_u):
-            await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
+            try:
+                await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
+            except Exception:
+                pass
             return
         await db.set_onboarding_step(conn, uid, f"TEXT_LC:{field_key}")
-        await q.edit_message_text(
-            f"Kirim pesan teks untuk <b>{fdef.label}</b> (lengkapi).",
-        )
+        try:
+            await q.edit_message_text(
+                f"Kirim pesan teks untuk <b>{fdef.label}</b> (lengkapi).",
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("openlt edit_message_text error: %s", e)
         return
 
     if data.startswith("openec:"):

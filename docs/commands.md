@@ -7,6 +7,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/profil` — Menampilkan Kartu Profil pengguna (NIM, Jabatan, Poin Agra).
 - `/lengkapi` — Memulai proses pengisian data (_onboarding_) yang belum lengkap.
 - `/ubah` — Meminta perubahan data yang sudah terkunci (masuk ke antrean _pending_).
+- `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
 
 ## Akademik & Kelas
 - `/presensi` — (Bagi mahasiswa) Merekam kehadiran. (Bagi Dosen/Dekan) Menu membuka/menutup presensi.
