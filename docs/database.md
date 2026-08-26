@@ -82,6 +82,16 @@ Menyimpan konfigurasi dinamis bot (*key-value*). Digunakan untuk sistem promosi 
 - `setting_key` (TEXT PRIMARY KEY)
 - `setting_value` (TEXT)
 
+### 13. `userbot_requests`
+Tabel untuk IPC (Inter-Process Communication) antara bot utama (`main.py`) dan userbot (`checker.py`), digunakan untuk mengambil data anggota grup (/tagall).
+- `id` (INTEGER PRIMARY KEY)
+- `chat_id` (TEXT): ID obrolan/grup
+- `action` (TEXT): Tipe tugas (misal: 'GET_MEMBERS')
+- `status` (TEXT): 'PENDING', 'DONE', atau 'ERROR'
+- `result` (TEXT): Hasil balasan berupa JSON dari userbot
+- `created_at` (REAL)
+- `updated_at` (REAL)
+
 ## Migrasi ke Turso (Database Edge/Remote)
 Secara default, bot menggunakan SQLite lokal (`data/bot.db`). Namun bot mendukung database Turso melalui *environment variables*: `TURSO_DB_URL` dan `TURSO_AUTH_TOKEN`.
 Jika Anda memiliki data di SQLite lokal dan ingin memindahkannya ke Turso, Anda dapat menggunakan skrip migrasi yang telah disediakan:

@@ -26,6 +26,41 @@ if not API_ID or not API_HASH:
 # Initialize Pyrogram Client
 app = Client("checker", api_id=API_ID, api_hash=API_HASH)
 
+async def process_userbot_requests(conn):
+    try:
+        cur = await conn.execute("SELECT * FROM userbot_requests WHERE status = 'PENDING'")
+        pending_rows = await cur.fetchall()
+        for row in pending_rows:
+            req_id = row["id"]
+            chat_id = row["chat_id"]
+            action = row["action"]
+            
+            # Check expiration (if older than 30 seconds, mark as expired)
+            import time
+            if time.time() - row["created_at"] > 30:
+                await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = 'EXPIRED' WHERE id = ?", (req_id,))
+                await conn.commit()
+                continue
+                
+            if action == "GET_MEMBERS":
+                log.info(f"Fetching members for chat {chat_id}")
+                try:
+                    members = []
+                    async for member in app.get_chat_members(int(chat_id)):
+                        if member.user and not member.user.is_bot and not member.user.is_deleted:
+                            members.append(member.user.id)
+                    import json
+                    result_json = json.dumps(members)
+                    await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                    await conn.commit()
+                    log.info(f"Fetched {len(members)} members for chat {chat_id}")
+                except Exception as e:
+                    log.error(f"Error fetching members for chat {chat_id}: {e}")
+                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.commit()
+    except Exception as e:
+        log.error(f"Error in process_userbot_requests: {e}")
+
 async def process_pending_links():
     db = Database()
     conn = await db.connect()
@@ -307,8 +342,11 @@ async def process_pending_links():
         except Exception as e:
             log.error(f"Database error in checker loop: {e}")
             
+        # Process userbot requests
+        await process_userbot_requests(conn)
+            
         # Polling delay
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 async def main():
     log.info("Starting Pyrogram Checker...")

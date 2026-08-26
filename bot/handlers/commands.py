@@ -3352,7 +3352,40 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Hanya Staf, Pengajar, atau BEM yang bisa melakukan tag all.")
         return
 
-    all_ids = await db.list_group_seen_user_ids(conn, update.effective_chat.id)
+    # Request userbot to fetch members
+    chat_id_str = str(update.effective_chat.id)
+    req_id = await db.create_userbot_request(conn, chat_id_str, "GET_MEMBERS")
+    
+    # Send waiting message
+    wait_msg = await update.message.reply_text("⏳ Mohon menunggu...")
+    
+    # Poll for result up to 10 seconds
+    import asyncio, json
+    userbot_ids = []
+    success = False
+    for _ in range(10):
+        await asyncio.sleep(1)
+        req_row = await db.get_userbot_request(conn, req_id)
+        if req_row and req_row["status"] == "DONE":
+            try:
+                userbot_ids = json.loads(req_row["result"])
+                success = True
+            except Exception:
+                pass
+            break
+        elif req_row and req_row["status"] == "ERROR":
+            break
+            
+    # Fallback to group_seen_users if userbot fails
+    if success and userbot_ids:
+        all_ids = userbot_ids
+    else:
+        all_ids = await db.list_group_seen_user_ids(conn, update.effective_chat.id)
+        
+    try:
+        await wait_msg.delete()
+    except:
+        pass
     ids = [tid for tid in all_ids if tid != actor]
     if not ids:
         await update.message.reply_text(

@@ -331,6 +331,16 @@ CREATE TABLE IF NOT EXISTS bot_settings (
     setting_key TEXT PRIMARY KEY,
     setting_value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS userbot_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    result TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
 
 class AiosqliteRowMock:
@@ -2168,12 +2178,39 @@ class Database:
         row = await cur.fetchone()
         return row["cnt"] if row else 0
     async def get_setting(self, conn: aiosqlite.Connection, key: str, default: str = "") -> str:
-        cur = await conn.execute(
-            "SELECT setting_value FROM bot_settings WHERE setting_key = ?",
-            (key,)
-        )
+        cur = await conn.execute("SELECT setting_value FROM bot_settings WHERE setting_key = ?", (key,))
         row = await cur.fetchone()
-        return row["setting_value"] if row else default
+        if row:
+            return row["setting_value"]
+        return default
+
+    async def create_userbot_request(self, conn: aiosqlite.Connection, chat_id: str, action: str) -> int:
+        cur = await conn.execute(
+            """
+            INSERT INTO userbot_requests (chat_id, action, status, created_at, updated_at)
+            VALUES (?, ?, 'PENDING', ?, ?)
+            """,
+            (chat_id, action, time.time(), time.time())
+        )
+        return cur.lastrowid
+
+    async def get_userbot_request(self, conn: aiosqlite.Connection, request_id: int) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM userbot_requests WHERE id = ?",
+            (request_id,)
+        )
+        return await cur.fetchone()
+
+    async def update_userbot_request(self, conn: aiosqlite.Connection, request_id: int, status: str, result: str = None) -> None:
+        await conn.execute(
+            """
+            UPDATE userbot_requests 
+            SET status = ?, result = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, result, time.time(), request_id)
+        )
+        await conn.commit()
 
     async def set_setting(self, conn: aiosqlite.Connection, key: str, value: str) -> None:
         await conn.execute(
