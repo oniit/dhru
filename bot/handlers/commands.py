@@ -2724,15 +2724,14 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not context.args:
         await update.message.reply_text(
             "<b>Menu Daftar Pengguna:</b>\n"
-            "<code>/daftar all</code> — Semua pengguna\n"
-            "<code>/daftar mhs</code> — Semua mahasiswa\n"
+            "<code>/daftar sisya</code> — Mahasiswa & BEM\n"
+            "<code>/daftar charya</code> — Staf, Admin, Owner\n"
+            "<code>/daftar pravesin</code> — MABA\n"
+            "<code>/daftar publik</code> — Publik/Eksternal\n"
             "<code>/daftar fakultas &lt;id&gt;</code>\n"
             "<code>/daftar jurusan &lt;id&gt;</code>\n"
             "<code>/daftar kelas &lt;id&gt;</code>\n"
             "<code>/daftar ukm &lt;id&gt;</code>\n"
-            "<code>/daftar admin</code>\n"
-            "<code>/daftar staf</code>\n"
-            "<code>/daftar dosen</code>\n"
             "<code>/daftar all_staf</code>\n\n"
             "<b>Info Data Server (Admin/Owner):</b>\n"
             "<code>/daftar grup</code> — Lihat daftar grup yang diikuti bot\n"
@@ -2788,35 +2787,33 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         matching.append((name, r["username"], int(r["telegram_id"])))
 
-    if kind == "admin":
-        title = "Daftar Petinggi"
-        for r in all_rows:
-            if r["role"] in (ROLE_OWNER, ROLE_ADMIN):
-                p = json.loads(r["profile_json"] or "{}")
-                push_row(r, p)
-    elif kind == "all":
+    if kind == "all":
         title = "Daftar semua user"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             push_row(r, p)
-    elif kind == "mhs":
-        title = "Daftar semua mahasiswa"
+    elif kind == "sisya":
+        title = "Daftar Sisya"
         for r in all_rows:
-            if r["role"] == ROLE_STUDENT:
+            if r["role"] in (ROLE_STUDENT, ROLE_BEM):
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
-    elif kind == "staf":
-        title = "Daftar staf (non-dosen)"
+    elif kind == "charya":
+        title = "Daftar Charya"
         for r in all_rows:
-            if r["role"] == ROLE_INTERNAL:
+            if r["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
                 p = json.loads(r["profile_json"] or "{}")
-                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
-                if "d_dosen" not in p_jabs and "d_guru_besar" not in p_jabs:
-                    push_row(r, p)
-    elif kind == "all_staf":
-        title = "Daftar staf (admin + internal)"
+                push_row(r, p)
+    elif kind == "pravesin":
+        title = "Daftar Pravesin"
         for r in all_rows:
-            if r["role"] in (ROLE_ADMIN, ROLE_INTERNAL):
+            if r["role"] == ROLE_MABA:
+                p = json.loads(r["profile_json"] or "{}")
+                push_row(r, p)
+    elif kind == "publik":
+        title = "Daftar Publik"
+        for r in all_rows:
+            if r["role"] == ROLE_PUBLIC:
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
     elif kind == "dosen":
@@ -3315,7 +3312,7 @@ async def cmd_all_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         "<b>Menu Mention Grup (/tagall)</b>\n"
         "<code>/all [pesan]</code> — Mention semua anggota grup\n"
-        "<code>/all role &lt;id&gt; [pesan]</code> — Filter berdasar role\n"
+        "<code>/all &lt;role&gt; [pesan]</code> — Filter role (contoh: sisya, pravesin, charya, publik)\n"
         "<code>/all fakultas &lt;id&gt; [pesan]</code> — Filter fakultas\n"
         "<code>/all jurusan &lt;id&gt; [pesan]</code> — Filter jurusan\n"
         "<code>/all kelas &lt;id&gt; [pesan]</code> — Filter kelas\n"
@@ -3411,10 +3408,10 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await update.message.reply_text(f"Nilai {possible_type} belum ditentukan.")
                 return
-        elif possible_type == "umum":
-            filter_type = "umum"
+        elif possible_type in ("umum", "publik", "pravesin", "sisya", "charya"):
+            filter_type = possible_type
             if len(parts) > 2:
-                custom_body = parts[2]
+                custom_body = raw_text.split(maxsplit=2)[2]
         else:
             # Not a filter keyword, so it's a message for all
             custom_body = raw_text.split(maxsplit=1)[1]
@@ -3430,6 +3427,14 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             
             match = False
             if filter_type == "role" and u_role == filter_val:
+                match = True
+            elif filter_type == "publik" and u_role == "public":
+                match = True
+            elif filter_type == "pravesin" and u_role == "maba":
+                match = True
+            elif filter_type == "sisya" and u_role in ("student", "bem"):
+                match = True
+            elif filter_type == "charya" and u_role in ("internal", "admin", "owner"):
                 match = True
             elif filter_type == "fakultas" and str(u_prof.get("faculty", "")).lower() == filter_val:
                 match = True
@@ -3522,10 +3527,12 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif sub == "charya":
             where_clause = "WHERE u.role IN ('internal', 'admin', 'owner')"
             title_suffix = " (Charya)"
-        elif sub == "ext":
+        elif sub == "publik":
             where_clause = "WHERE u.role = 'public'"
-            title_suffix = " (Eksternal)"
-            
+            title_suffix = " (Publik)"
+        elif sub == "pravesin":
+            where_clause = "WHERE u.role = 'maba'"
+            title_suffix = " (Pravesin)"
     cur = await conn.execute(
         f"""
         SELECT t.target_telegram_id, t.total, u.profile_json, u.first_name, u.username
@@ -3574,7 +3581,8 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "<code>/agra top</code> — Lihat peringkat Agra (17 besar)",
             "<code>/agra top sisya</code> — Top 17 (Student & BEM)",
             "<code>/agra top charya</code> — Top 17 (Staf/Petinggi)",
-            "<code>/agra top ext</code> — Top 17 (Eksternal)",
+            "<code>/agra top pravesin</code> — Top 17 (MABA)",
+            "<code>/agra top publik</code> — Top 17 (Eksternal)",
             "<code>/agra log</code> — Lihat riwayat Agra pribadi"
         ]
         
