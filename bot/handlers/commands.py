@@ -3390,7 +3390,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    raw_text = (update.message.text or "").strip()
+    raw_text = (update.message.text or update.message.caption or "").strip()
     parts = raw_text.split(maxsplit=3)
     
     filter_type = None
@@ -3489,9 +3489,11 @@ async def _execute_mention_batch(update: Update, context: ContextTypes.DEFAULT_T
             if custom_body_html
             else f"{header}\n\n{mentions}"
         )
+        reply_to_id = update.message.reply_to_message.message_id if update.message.reply_to_message else None
         await update.message.reply_text(
             text,
             disable_web_page_preview=True,
+            reply_to_message_id=reply_to_id
         )
         if idx < total:
             await asyncio.sleep(pause_sec)
