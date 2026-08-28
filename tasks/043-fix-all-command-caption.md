@@ -14,3 +14,5 @@ User melaporkan bahwa perintah `/all pesan` tidak berfungsi. Setelah ditelusuri,
 
 ## File yang Diubah
 - `bot/handlers/commands.py` (pada fungsi `cmd_all`)
+
+3. Menambahkan pengaman (try-except) saat bot mencoba membuat request ke userbot. Jika tabel userbot_requests tidak ditemukan di database (misal karena belum dimigrasi), bot tidak akan *crash* secara diam-diam, melainkan akan langsung memakai fallback group_seen_users.
