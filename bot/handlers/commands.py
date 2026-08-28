@@ -3474,6 +3474,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _execute_mention_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, ids: list[int], custom_body: str) -> None:
     import html
+    import random
     custom_body_html = html.escape(custom_body)
 
     batch_size = 7
