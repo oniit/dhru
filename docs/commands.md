@@ -47,7 +47,11 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
   - *Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]`
   - *Tahan Dulu:* `/bermain tahan_dulu [detik]`
   - *Adu React:* `/bermain adu_react`
+  - *Tujuh Pusaka:* `/bermain tujuh_pusaka`
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
+- `/ikut` — Bergabung ke dalam game (contoh: Tujuh Pusaka).
+- `/mulai_game` — (Admin/Pemulai) Memulai ronde 1 pada game (contoh: Tujuh Pusaka).
+- `/pusaka <kartu>` — (Khusus Game Tujuh Pusaka) Memilih kartu pusaka yang akan dikeluarkan.
 - `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
 - `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.
 - `/hasil <game_name>` — Menampilkan skor akhir dari sesi game terakhir jika tertinggal.
