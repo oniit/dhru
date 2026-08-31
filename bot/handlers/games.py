@@ -252,6 +252,20 @@ async def cmd_tebak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         text = update.message.text.strip()
         await kantong_rempah.proses_tebakan_grup(update, context, db, conn, session, text)
 
+async def cmd_tujuh_pusaka_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or update.effective_chat.type == "private":
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    
+    session = await db.get_active_game_session(conn, update.effective_chat.id)
+    if not session:
+        return
+        
+    if session["game_name"] == "tujuh_pusaka":
+        await tujuh_pusaka.proses_pesan_tujuh_pusaka(update, context, db, conn, session)
+
 async def on_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = _conn(context)
     db = _db(context)
