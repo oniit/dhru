@@ -58,40 +58,57 @@ async def mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE,
     )
 
 async def ikut_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
-    state = json.loads(session["state_json"])
-    if state["phase"] != PHASE_REGISTRATION:
-        return
-        
-    user = update.effective_user
-    uid_str = str(user.id)
+    session_id = session["id"]
+    lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
     
-    if uid_str in state["players"]:
-        await update.message.reply_text(f"{user.first_name}, Anda sudah terdaftar.")
-        return
+    async with lock:
+        current_session = await db.get_active_game_session(conn, session["chat_id"])
+        if not current_session or current_session["id"] != session_id:
+            return
+            
+        state = json.loads(current_session["state_json"])
+        if state["phase"] != PHASE_REGISTRATION:
+            return
+            
+        user = update.effective_user
+        uid_str = str(user.id)
         
-    state["players"][uid_str] = {
-        "name": user.first_name,
-        "cards": list(CARDS.keys()),
-        "wins": 0,
-        "next_round_penalty": 0
-    }
-    
-    await db.update_game_session_state(conn, session["id"], state)
+        if uid_str in state["players"]:
+            await update.message.reply_text(f"{user.first_name}, Anda sudah terdaftar.")
+            return
+            
+        state["players"][uid_str] = {
+            "name": user.first_name,
+            "cards": list(CARDS.keys()),
+            "wins": 0,
+            "next_round_penalty": 0
+        }
+        
+        await db.update_game_session_state(conn, session_id, state)
+        
     await update.message.reply_text(f"✅ {user.first_name} berhasil ikut Tujuh Pusaka! ({len(state['players'])} pemain)")
 
 async def paksa_mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
-    state = json.loads(session["state_json"])
-    if state["phase"] != PHASE_REGISTRATION:
-        return
-        
-    if not state["players"]:
-        await update.message.reply_text("Belum ada yang mendaftar!")
-        return
-        
-    state["phase"] = PHASE_PLAYING
-    state["round"] = 1
+    session_id = session["id"]
+    lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
     
-    await db.update_game_session_state(conn, session["id"], state)
+    async with lock:
+        current_session = await db.get_active_game_session(conn, session["chat_id"])
+        if not current_session or current_session["id"] != session_id:
+            return
+            
+        state = json.loads(current_session["state_json"])
+        if state["phase"] != PHASE_REGISTRATION:
+            return
+            
+        if not state["players"]:
+            await update.message.reply_text("Belum ada yang mendaftar!")
+            return
+            
+        state["phase"] = PHASE_PLAYING
+        state["round"] = 1
+        
+        await db.update_game_session_state(conn, session_id, state)
     
     await update.message.reply_text(
         f"⚔️ <b>Permainan Dimulai!</b>\n\n"
@@ -108,7 +125,7 @@ async def paksa_mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT
         120, # 2 minutes per round max
         chat_id=session["chat_id"],
         name=f"tujuh_pusaka_timeout_{session['chat_id']}",
-        data={"session_id": session["id"], "round": 1}
+        data={"session_id": session_id, "round": 1}
     )
 
 async def proses_pesan_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
