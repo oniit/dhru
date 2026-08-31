@@ -378,6 +378,12 @@ async def status_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE
         msg = f"🎮 <b>Tujuh Pusaka</b> (Registrasi)\n👥 {len(state['players'])} pemain terdaftar."
     else:
         msg = f"🎮 <b>Tujuh Pusaka</b> (Ronde {state['round']})\n⏳ Menunggu pemain memilih kartu..."
+        uid_str = str(update.effective_user.id)
+        if uid_str in state["players"]:
+            p_data = state["players"][uid_str]
+            sisa = ", ".join([c.title() for c in p_data["cards"]]) if p_data["cards"] else "Habis"
+            msg += f"\n\n🃏 <b>Sisa Kartu {p_data['name']}:</b>\n{sisa}"
+            
     await update.message.reply_text(msg, parse_mode="HTML")
 
 async def berhenti_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict = None):
