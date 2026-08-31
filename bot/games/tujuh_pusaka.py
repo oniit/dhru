@@ -117,18 +117,23 @@ async def proses_pesan_tujuh_pusaka(update: Update, context: ContextTypes.DEFAUL
         
     text = update.message.text.strip().lower()
     
-    if text.startswith("/ikut"):
+    parts = text.split()
+    if not parts:
+        return
+        
+    cmd = parts[0]
+    
+    if cmd == "/ikut" or cmd.startswith("/ikut@"):
         await ikut_tujuh_pusaka(update, context, db, conn, session)
         return
         
-    if text.startswith("/mulai_game"):
+    if cmd == "/mulai_game" or cmd.startswith("/mulai_game@"):
         state = json.loads(session["state_json"])
         if update.effective_user.id == state.get("started_by") or update.effective_user.id in context.application.bot_data.get("ADMIN_IDS", []):
             await paksa_mulai_tujuh_pusaka(update, context, db, conn, session)
         return
         
-    if text.startswith("/pusaka "):
-        parts = text.split()
+    if cmd == "/pusaka" or cmd.startswith("/pusaka@"):
         if len(parts) < 2: return
         card_choice = parts[1]
         await pilih_kartu(update, context, db, conn, session, card_choice)
@@ -205,7 +210,7 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
             return "draw", 0, 0, ""
             
     # Calculate effective strengths
-    def get_effective(c_id, opp_id, current_str, opp_current_str, is_leony_copy=False):
+    def get_effective(c_id, opp_id, current_str, opp_current_str):
         bonus = 0
         cancel_opp_bonus = False
         
@@ -299,6 +304,7 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
         for uid_str, p_data in state["players"].items():
             if uid_str not in state["choices"]:
                 lines.append(f"❌ {p_data['name']} tidak memilih kartu dan kalah.")
+                p_data["next_round_penalty"] = 0
                 continue
                 
             p_card_id = state["choices"][uid_str]
