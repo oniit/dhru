@@ -951,9 +951,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.edit_message_text(instruction_text, reply_markup=kb, parse_mode="Markdown")
             
         elif action == "claim_ospek":
-            from bot.database import ROLE_MABA
             from bot.settings import MABA_GROUP_LINK, PENDAFTAR_CH_ID
-            from bot.handlers.common import user_row, profile_from_row
 
             promo_count = await db.count_valid_promos(conn, uid)
             if promo_count < 1:
