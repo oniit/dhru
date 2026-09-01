@@ -49,12 +49,88 @@ async def mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     await db.start_game_session(conn, chat_id, "tujuh_pusaka", "default", initial_state)
     
+    session = await db.get_active_game_session(conn, chat_id)
+    if not session:
+        return
+    
     await update.message.reply_text(
         f"🎮 <b>Tujuh Pusaka</b> dibuka!\n\n"
         f"Ketik <code>/ikut</code> untuk bergabung ke dalam permainan.\n"
-        f"Jika sudah siap, admin atau pembuat room bisa mengetik <code>/mulai_game</code> untuk memulai ronde pertama.\n\n"
+        f"Jika sudah siap, admin atau pembuat room bisa mengetik <code>/mulai_game</code> untuk memulai ronde pertama.\n"
+        f"<i>Permainan akan otomatis dimulai dalam 3 menit.</i>\n\n"
         f"{CARD_INFO}",
         parse_mode="HTML"
+    )
+
+    # Jadwalkan reminder dan auto start
+    context.job_queue.run_once(job_tujuh_pusaka_reminder, 120, chat_id=chat_id, name=f"tp_rem1_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Tujuh Pusaka</b>: 1 menit lagi permainan akan otomatis dimulai!"})
+    context.job_queue.run_once(job_tujuh_pusaka_reminder, 150, chat_id=chat_id, name=f"tp_rem2_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Tujuh Pusaka</b>: 30 detik lagi!"})
+    context.job_queue.run_once(job_tujuh_pusaka_reminder, 165, chat_id=chat_id, name=f"tp_rem3_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Tujuh Pusaka</b>: 15 detik lagi!"})
+    context.job_queue.run_once(job_tujuh_pusaka_autostart, 180, chat_id=chat_id, name=f"tp_auto_{chat_id}", data={"session_id": session["id"]})
+
+async def job_tujuh_pusaka_reminder(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    chat_id = job.chat_id
+    text = job.data["text"]
+    session_id = job.data["session_id"]
+    
+    db = context.application.bot_data["db"]
+    conn = context.application.bot_data["conn"]
+    
+    session = await db.get_active_game_session(conn, chat_id)
+    if not session or session["id"] != session_id: return
+        
+    state = json.loads(session["state_json"])
+    if state["phase"] != PHASE_REGISTRATION: return
+        
+    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+
+async def job_tujuh_pusaka_autostart(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    chat_id = job.chat_id
+    session_id = job.data["session_id"]
+    
+    db = context.application.bot_data["db"]
+    conn = context.application.bot_data["conn"]
+    
+    lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
+    
+    async with lock:
+        session = await db.get_active_game_session(conn, chat_id)
+        if not session or session["id"] != session_id: return
+            
+        state = json.loads(session["state_json"])
+        if state["phase"] != PHASE_REGISTRATION: return
+            
+        if not state["players"]:
+            await context.bot.send_message(chat_id=chat_id, text="⚠️ Waktu habis, tetapi permainan dibatalkan karena belum ada pemain yang mendaftar.")
+            await db.end_game_session(conn, chat_id, "tujuh_pusaka")
+            return
+            
+        state["phase"] = PHASE_PLAYING
+        state["round"] = 1
+        
+        await db.update_game_session_state(conn, session_id, state)
+        
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"⚔️ <b>Permainan Dimulai Secara Otomatis!</b>\n\n"
+            f"<b>Ronde 1</b>\n"
+            f"Silakan setiap pemain memilih 1 kartu dengan mengetik:\n"
+            f"<code>/pusaka &lt;nama_kartu&gt;</code> (Contoh: <code>/pusaka dika</code>)\n\n"
+            f"Sistem akan langsung memproses ronde jika semua pemain telah memilih."
+        ),
+        parse_mode="HTML"
+    )
+    
+    # Auto timeout for round
+    context.job_queue.run_once(
+        job_timeout_round,
+        120, # 2 minutes per round max
+        chat_id=chat_id,
+        name=f"tujuh_pusaka_timeout_{chat_id}",
+        data={"session_id": session_id, "round": 1}
     )
 
 async def ikut_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):

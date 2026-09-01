@@ -1650,6 +1650,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await q.answer()
                 return
             _, field_key, choice_id = parts
+            print(f"[DEBUG admlc] field: {field_key}, choice: {choice_id}")
             await q.answer()
             tid_target = context.user_data.get(ADMIN_TARGET_KEY)
             step_row = await user_row(conn, db, uid)
@@ -1660,19 +1661,20 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if not tid_target:
                 await q.edit_message_text("Target tidak ada.")
                 return
-            fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
-            
             m = context.user_data.get(MULTI_UD_KEY)
             if not m or m.get("field") != field_key or m.get("flow") != "ad":
                 await q.edit_message_text("Sesi habis.")
                 return
-            ids_set: set[str] = m["ids"]
-            if choice_id in ids_set:
-                ids_set.discard(choice_id)
+            ids = m["ids"]
+            print(f"[DEBUG admlc] BEFORE toggle ids: {ids}")
+            if choice_id in ids:
+                ids.discard(choice_id)
             else:
-                ids_set.add(choice_id)
+                ids.add(choice_id)
+            print(f"[DEBUG admlc] AFTER toggle ids: {ids}")
             fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
             if not fdef or not fdef.choices_key:
+                print("[DEBUG admlc] missing fdef or choices_key")
                 return
             trow = await user_row(conn, db, tid_target)
             tprof_now = profile_from_row(trow) if trow else {}
@@ -1903,6 +1905,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.answer()
             return
         _, field_key, choice_id = parts
+        print(f"[DEBUG mlc] field: {field_key}, choice: {choice_id}")
         await q.answer()
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
@@ -1920,12 +1923,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             _multi_clear(context)
             return
         ids: set[str] = m["ids"]
+        print(f"[DEBUG mlc] BEFORE toggle ids: {ids}")
         if choice_id in ids:
             ids.discard(choice_id)
         else:
             ids.add(choice_id)
+        print(f"[DEBUG mlc] AFTER toggle ids: {ids}")
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         if not fdef or not fdef.choices_key:
+            print("[DEBUG mlc] missing fdef or choices_key")
             return
         row_now = await user_row(conn, db, uid)
         prof_now = profile_from_row(row_now) if row_now else {}
@@ -2004,6 +2010,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.answer()
             return
         _, field_key, choice_id = parts
+        print(f"[DEBUG mec] field: {field_key}, choice: {choice_id}")
         await q.answer()
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
@@ -2021,12 +2028,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             _multi_clear(context)
             return
         ids = m["ids"]
+        print(f"[DEBUG mec] BEFORE toggle ids: {ids}")
         if choice_id in ids:
             ids.discard(choice_id)
         else:
             ids.add(choice_id)
+        print(f"[DEBUG mec] AFTER toggle ids: {ids}")
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         if not fdef or not fdef.choices_key:
+            print("[DEBUG mec] missing fdef or choices_key")
             return
         row_now = await user_row(conn, db, uid)
         prof_now = profile_from_row(row_now) if row_now else {}

@@ -80,14 +80,42 @@ async def mulai_kantong_rempah(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     
     # Jadwalkan perpindahan ke Guess Phase
+    total_dep_sec = menit_setor * 60
     context.job_queue.run_once(
         job_end_deposit_phase,
-        menit_setor * 60,
+        total_dep_sec,
         chat_id=chat_id,
         name=f"rempah_dep_{chat_id}",
         data={"session_id": session["id"]}
     )
+    
+    # Reminders
+    if total_dep_sec > 60:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_dep_sec - 60, chat_id=chat_id, name=f"kr_dep_rem1_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Kantong Rempah (Setor)</b>: 1 menit lagi ditutup!", "phase": PHASE_DEPOSIT})
+    if total_dep_sec > 30:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_dep_sec - 30, chat_id=chat_id, name=f"kr_dep_rem2_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Kantong Rempah (Setor)</b>: 30 detik lagi!", "phase": PHASE_DEPOSIT})
+    if total_dep_sec > 15:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_dep_sec - 15, chat_id=chat_id, name=f"kr_dep_rem3_{chat_id}", data={"session_id": session["id"], "text": "⏳ <b>Kantong Rempah (Setor)</b>: 15 detik lagi!", "phase": PHASE_DEPOSIT})
 
+async def job_kantong_rempah_reminder(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    chat_id = job.chat_id
+    text = job.data["text"]
+    session_id = job.data["session_id"]
+    expected_phase = job.data["phase"]
+    
+    db = context.application.bot_data["db"]
+    conn = context.application.bot_data["conn"]
+    
+    session = await db.get_active_game_session(conn, chat_id)
+    if not session or session["id"] != session_id or session["game_name"] != "kantong_rempah":
+        return
+        
+    state = json.loads(session["state_json"])
+    if state["phase"] != expected_phase:
+        return
+        
+    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
 
 async def job_end_deposit_phase(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -137,13 +165,22 @@ async def job_end_deposit_phase(context: ContextTypes.DEFAULT_TYPE):
     state["guess_msg_id"] = msg.message_id
     await db.update_game_session_state(conn, session_id, state)
     
+    total_guess_sec = menit_tebak * 60
     context.job_queue.run_once(
         job_end_guess_phase,
-        menit_tebak * 60,
+        total_guess_sec,
         chat_id=chat_id,
         name=f"rempah_guess_{chat_id}",
         data={"session_id": session_id}
     )
+    
+    # Reminders
+    if total_guess_sec > 60:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_guess_sec - 60, chat_id=chat_id, name=f"kr_gue_rem1_{chat_id}", data={"session_id": session_id, "text": "⏳ <b>Kantong Rempah (Tebak)</b>: 1 menit lagi ditutup!", "phase": PHASE_GUESS})
+    if total_guess_sec > 30:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_guess_sec - 30, chat_id=chat_id, name=f"kr_gue_rem2_{chat_id}", data={"session_id": session_id, "text": "⏳ <b>Kantong Rempah (Tebak)</b>: 30 detik lagi!", "phase": PHASE_GUESS})
+    if total_guess_sec > 15:
+        context.job_queue.run_once(job_kantong_rempah_reminder, total_guess_sec - 15, chat_id=chat_id, name=f"kr_gue_rem3_{chat_id}", data={"session_id": session_id, "text": "⏳ <b>Kantong Rempah (Tebak)</b>: 15 detik lagi!", "phase": PHASE_GUESS})
 
 async def job_end_guess_phase(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
