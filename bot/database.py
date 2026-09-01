@@ -342,6 +342,14 @@ CREATE TABLE IF NOT EXISTS userbot_requests (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_chat_stats (
+    user_id INTEGER NOT NULL,
+    chat_id INTEGER NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    last_active_at REAL NOT NULL,
+    PRIMARY KEY (user_id, chat_id)
+);
 """
 
 class AiosqliteRowMock:
@@ -2254,6 +2262,53 @@ class Database:
             (key, value)
         )
         await conn.commit()
+
+    async def increment_message_count(self, conn: aiosqlite.Connection, user_id: int, chat_id: int) -> None:
+        now = time.time()
+        await conn.execute(
+            """
+            INSERT INTO user_chat_stats (user_id, chat_id, message_count, last_active_at)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                message_count = message_count + 1,
+                last_active_at = excluded.last_active_at
+            """,
+            (user_id, chat_id, now)
+        )
+        await conn.commit()
+
+    async def get_all_users_chat_tiers(self, conn: aiosqlite.Connection) -> dict[int, str]:
+        cur = await conn.execute(
+            "SELECT user_id, SUM(message_count) as total_msg FROM user_chat_stats GROUP BY user_id"
+        )
+        rows = await cur.fetchall()
+        if not rows:
+            return {}
+        scores = [int(r["total_msg"]) for r in rows]
+        scores.sort()
+        
+        tiers = {}
+        n = len(scores)
+        for r in rows:
+            uid = r["user_id"]
+            score = int(r["total_msg"])
+            if score == 0:
+                tiers[uid] = "C"
+                continue
+            rank = scores.index(score)
+            percentile = rank / n
+            if percentile >= 0.66:
+                tiers[uid] = "A"
+            elif percentile >= 0.33:
+                tiers[uid] = "B"
+            else:
+                tiers[uid] = "C"
+        return tiers
+
+    async def get_user_chat_tier(self, conn: aiosqlite.Connection, user_id: int) -> str:
+        tiers = await self.get_all_users_chat_tiers(conn)
+        return tiers.get(user_id, "C")
+
 __all__ = [
     "Database",
     "DB_PATH",

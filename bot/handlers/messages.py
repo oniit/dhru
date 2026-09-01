@@ -271,13 +271,42 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if target_role == "internal":
                 await update.message.reply_text("🔑 Kode akses internal valid! Peran Anda kini diubah menjadi Staf Internal.\nSilakan lengkapi profil Anda dengan mengetik /lengkapi.")
             elif target_role == "maba":
-                cur_maba = await conn.execute(
-                    "SELECT COUNT(*) as c FROM access_codes WHERE target_role = 'maba' AND used_by IS NOT NULL AND (used_at < (SELECT used_at FROM access_codes WHERE code = ?) OR (used_at = (SELECT used_at FROM access_codes WHERE code = ?) AND code <= ?))",
-                    (code, code, code)
-                )
-                maba_order_row = await cur_maba.fetchone()
-                m_order = int(maba_order_row["c"]) if maba_order_row else 1
-                maba_group = ((m_order - 1) % 4) + 1
+                # --- TIERED ROUND-ROBIN + BALANCER ---
+                user_tier = await db.get_user_chat_tier(conn, uid)
+                
+                # Fetch all current mabas
+                cur_mabas = await conn.execute("SELECT telegram_id, profile_json FROM users WHERE role = 'maba'")
+                all_mabas = await cur_mabas.fetchall()
+                
+                tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+                total_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+                
+                # Retrieve all tiers at once to be efficient
+                all_tiers = await db.get_all_users_chat_tiers(conn)
+                
+                for r in all_mabas:
+                    if str(r["telegram_id"]) == str(uid):
+                        continue # Skip current user
+                    prof = json.loads(r["profile_json"]) if r["profile_json"] else {}
+                    mg = int(prof.get("maba_group", 0))
+                    if 1 <= mg <= 4:
+                        total_counts[mg] += 1
+                        t = all_tiers.get(r["telegram_id"], "C")
+                        if t == user_tier:
+                            tier_counts[mg] += 1
+                            
+                # Priority 1: Distribute based on Tier
+                min_tier_count = min(tier_counts.values())
+                candidate_groups = [g for g, c in tier_counts.items() if c == min_tier_count]
+                
+                # Priority 2: Balancer (Pick the group with the lowest total members)
+                if len(candidate_groups) == 1:
+                    maba_group = candidate_groups[0]
+                else:
+                    min_total = min(total_counts[g] for g in candidate_groups)
+                    best_groups = [g for g in candidate_groups if total_counts[g] == min_total]
+                    maba_group = best_groups[0]
+                
                 await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
                 
                 await _mark_lengkapi_done_if_complete(conn, db, uid)
@@ -481,6 +510,12 @@ async def track_group_activity(
             title=update.effective_chat.title or "Tanpa Nama",
             is_active=True
         )
+        if not u.is_bot:
+            await db.increment_message_count(
+                conn=conn,
+                user_id=u.id,
+                chat_id=update.effective_chat.id
+            )
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Error in track_group_activity: {e}")

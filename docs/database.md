@@ -92,6 +92,14 @@ Tabel untuk IPC (Inter-Process Communication) antara bot utama (`main.py`) dan u
 - `created_at` (REAL)
 - `updated_at` (REAL)
 
+### 14. `user_chat_stats`
+Sistem pelacakan jumlah pesan (Chatfightbot) untuk mengukur tingkat keaktifan user di dalam grup.
+- `user_id` (INTEGER): Telegram ID Pengguna
+- `chat_id` (INTEGER): Telegram ID Grup
+- `message_count` (INTEGER): Total pesan yang dikirim
+- `last_active_at` (REAL): Waktu terakhir mengirim pesan
+- `PRIMARY KEY (user_id, chat_id)`
+
 ## Migrasi ke Turso (Database Edge/Remote)
 Secara default, bot menggunakan SQLite lokal (`data/bot.db`). Namun bot mendukung database Turso melalui *environment variables*: `TURSO_DB_URL` dan `TURSO_AUTH_TOKEN`.
 Jika Anda memiliki data di SQLite lokal dan ingin memindahkannya ke Turso, Anda dapat menggunakan skrip migrasi yang telah disediakan:
