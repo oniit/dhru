@@ -157,7 +157,8 @@ async def ikut_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             "name": user.first_name,
             "cards": list(CARDS.keys()),
             "wins": 0,
-            "next_round_penalty": 0
+            "next_round_penalty": 0,
+            "bot_next_round_penalty": 0
         }
         
         await db.update_game_session_state(conn, session_id, state)
@@ -384,31 +385,34 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
         
         round_num = state["round"]
         
-        # Bot chooses card
         bot_available = state["bot_cards"]
         b_card_id = random.choice(bot_available)
         state["bot_cards"].remove(b_card_id)
         
         lines = [f"⚔️ <b>Hasil Ronde {round_num}</b>", f"🤖 Bot mengeluarkan: <b>{CARDS[b_card_id]['name']}</b>\n"]
         
-        bot_next_penalty = 0
-        bot_current_penalty = state.get("bot_next_penalty", 0)
-        
         for uid_str, p_data in state["players"].items():
             if uid_str not in state["choices"]:
-                lines.append(f"❌ {p_data['name']} tidak memilih kartu dan kalah.")
+                if p_data["cards"]:
+                    burned_card = random.choice(p_data["cards"])
+                    p_data["cards"].remove(burned_card)
+                    burned_name = CARDS[burned_card]["name"]
+                    lines.append(f"❌ {p_data['name']} tidak memilih kartu (kalah) & kartu <b>{burned_name}</b> hangus dibakar waktu!")
+                else:
+                    lines.append(f"❌ {p_data['name']} tidak memilih kartu dan kalah.")
                 p_data["next_round_penalty"] = 0
+                p_data["bot_next_round_penalty"] = 0
                 continue
                 
             p_card_id = state["choices"][uid_str]
             p_data["cards"].remove(p_card_id)
             
             p_penalty = p_data["next_round_penalty"]
-            b_penalty = bot_current_penalty
+            b_penalty = p_data.get("bot_next_round_penalty", 0)
             
             res, p_next_pen, b_next_pen, desc = calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty)
             
-            bot_next_penalty = max(bot_next_penalty, b_next_pen)
+            p_data["bot_next_round_penalty"] = b_next_pen
             p_data["next_round_penalty"] = p_next_pen
             
             if res == "player":
@@ -419,7 +423,6 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
             else:
                 lines.append(f"➖ {p_data['name']} <b>DRAW</b> | {desc}")
                 
-        state["bot_next_penalty"] = bot_next_penalty
         state["choices"] = {}
         
         if round_num == 7:
