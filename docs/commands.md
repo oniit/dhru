@@ -29,8 +29,10 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
 - `/admin_data <username>` — Membuka menu pengeditan paksa terhadap profil pengguna (Bypass persetujuan).
-- `/owner_reset` — (Hanya Owner) Menu sapu jagat untuk me-reset data presensi, log, atau _database_ secara massal.
-- `/reload` — (Hanya Owner/Admin) Memulai ulang layanan bot secara langsung lewat terminal (`sudo systemctl restart botdhru`).
+- `/orreset_user <id> <tipe>`: (Owner) Reset data profil user (onboarding, rank, dll).
+- `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
+- `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
+- `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_.
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
 - `/broadcast` — Mengirimkan pesan siaran ke semua saluran, bot _chats_, atau anggota fakultas tertentu.
@@ -41,6 +43,9 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.
 
 ## Mini Games
+- `/atur <game_name> <setting_name> <args>` — Mengatur konfigurasi game (Create/Update).
+- `/hapus_setting <game_name> <setting_name>` — Menghapus konfigurasi game.
+- `/cek_setting <game_name>` — Menampilkan daftar konfigurasi game yang sudah diatur.
 - `/bermain` — Menampilkan daftar mini-games yang tersedia.
 - `/bermain <game_name> <args>` — Memulai sesi game di grup.
   - *Kata Rahasia:* `/bermain kata_rahasia <setting>`

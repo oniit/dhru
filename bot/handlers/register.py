@@ -34,6 +34,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("owner_reset", commands.cmd_owner_reset))
     application.add_handler(CommandHandler("daftar", commands.cmd_daftar))
     application.add_handler(CommandHandler("maba", commands.cmd_maba))
+    application.add_handler(CommandHandler("ospek_mode", commands.cmd_ospek_mode))
     application.add_handler(CommandHandler("detail", commands.cmd_detail))
     application.add_handler(CommandHandler("admin_data", commands.cmd_admin_data))
     application.add_handler(CommandHandler("pending", commands.cmd_pending))
@@ -56,6 +57,8 @@ def register_all(application: Application, db: Database) -> None:
     
     # Games
     application.add_handler(CommandHandler("atur", games.cmd_atur))
+    application.add_handler(CommandHandler("hapus_setting", games.cmd_hapus_setting))
+    application.add_handler(CommandHandler("cek_setting", games.cmd_cek_setting))
     application.add_handler(CommandHandler("bermain", games.cmd_bermain))
     application.add_handler(CommandHandler("status", games.cmd_status))
     application.add_handler(CommandHandler("berhenti", games.cmd_berhenti))

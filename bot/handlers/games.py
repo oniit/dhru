@@ -25,7 +25,7 @@ async def cmd_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Tidak diizinkan.")
         return
         
-    args = update.message.text.split(maxsplit=3)
+    args = (update.message.text or "").split(maxsplit=3)
     if len(args) < 4:
         await update.message.reply_text("Penggunaan: /atur <nama_game> <nama_setting> <konfigurasi...>")
         return
@@ -42,6 +42,58 @@ async def cmd_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
+# /hapus_setting <game_name> <setting_name>
+async def cmd_hapus_setting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+        
+    if not _is_admin(update.effective_user.id, context):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+        
+    args = (update.message.text or "").split(maxsplit=2)
+    if len(args) < 3:
+        await update.message.reply_text("Penggunaan: /hapus_setting <nama_game> <nama_setting>")
+        return
+        
+    game_name = args[1].lower()
+    setting_name = args[2].lower()
+    
+    conn = _conn(context)
+    db = _db(context)
+    
+    deleted = await db.delete_game_setting(conn, game_name, setting_name)
+    if deleted:
+        await update.message.reply_text(f"✅ Setting '{setting_name}' untuk game '{game_name}' berhasil dihapus.")
+    else:
+        await update.message.reply_text(f"❌ Setting '{setting_name}' tidak ditemukan untuk game '{game_name}'.")
+
+# /cek_setting <game_name>
+async def cmd_cek_setting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+        
+    args = (update.message.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        await update.message.reply_text("Penggunaan: /cek_setting <nama_game>")
+        return
+        
+    game_name = args[1].lower()
+    
+    conn = _conn(context)
+    db = _db(context)
+    
+    settings = await db.get_all_game_settings(conn, game_name)
+    if not settings:
+        await update.message.reply_text(f"Belum ada setting yang diatur untuk game '{game_name}'.")
+        return
+        
+    text = f"⚙️ **Daftar Setting '{game_name}'**:\n"
+    for s in settings:
+        text += f"- `{s}`\n"
+        
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 # /bermain <game_name> <setting_name>
 async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -52,7 +104,7 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
         
         
-    args = update.message.text.split()
+    args = (update.message.text or "").split()
     if len(args) < 2:
         await update.message.reply_text(
             "🎮 <b>Daftar Mini-Games</b>\n"
@@ -94,7 +146,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Game hanya dimainkan di grup.")
         return
         
-    args = update.message.text.split(maxsplit=1)
+    args = (update.message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await update.message.reply_text("Penggunaan: /status <nama_game>")
         return
@@ -126,7 +178,7 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.effective_chat or update.effective_chat.type == "private":
         return
         
-    args = update.message.text.split(maxsplit=1)
+    args = (update.message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await update.message.reply_text("Penggunaan: /berhenti <nama_game>")
         return
@@ -168,7 +220,7 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Game hanya dimainkan di grup.")
         return
         
-    args = update.message.text.split(maxsplit=1)
+    args = (update.message.text or "").split(maxsplit=1)
     if len(args) < 2:
         await update.message.reply_text("Penggunaan: /hasil <nama_game>")
         return
@@ -237,7 +289,7 @@ async def cmd_tebak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or update.effective_chat.type == "private":
         return
         
-    args = update.message.text.split(maxsplit=1)
+    args = (update.message.text or "").split(maxsplit=1)
     if len(args) < 2:
         return
         

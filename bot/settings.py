@@ -108,6 +108,8 @@ AGRA_REWARD_CLASS_IZIN = int(_rewards.get("class_izin", 10))
 AGRA_REWARD_STAFF_AUTO = int(_rewards.get("staff_auto", 2))
 AGRA_REWARD_LENGKAPI = int(_rewards.get("lengkapi", 15))
 AGRA_REWARD_TUGAS = int(_rewards.get("tugas", 35))
+AGRA_REWARD_TUGAS_MABA = int(_rewards.get("tugas_maba", 15))
+AGRA_REWARD_MABA_AUTO = int(_rewards.get("maba_auto", 5))
 
 _maba_gids = os.environ.get("MABA_GROUP_GIDS", "").strip()
 MABA_GROUP_GIDS = [int(x.strip()) for x in _maba_gids.split(",") if x.strip()] if _maba_gids else []

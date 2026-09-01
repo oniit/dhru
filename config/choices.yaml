@@ -70,6 +70,11 @@ classes:
     majors: st
     sks: 3
 
+  # Khusus Ospek
+  - id: ospek_maba
+    label: Penugasan Ospek
+    sks: 0
+
 positions:
   - id: rektor
     label: Adhipati अधिपति
@@ -143,6 +148,10 @@ position_details:
   - id: d_lain
     label: Lainnya
     position: lainnya
+  - id: p_panitia_ospek
+    label: Panitia Ospek
+    position: lainnya
+
 
 bem_positions:
   - id: bem_ketua

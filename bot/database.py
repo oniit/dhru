@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS attendance_sessions (
     opened_at REAL NOT NULL,
     closed_at REAL,
     announce_message_id INTEGER,
+    extra_data TEXT,
     FOREIGN KEY (opened_by) REFERENCES users(telegram_id)
 );
 
@@ -458,6 +459,10 @@ class Database:
         conn.row_factory = aiosqlite.Row
         
         await conn.executescript(SCHEMA)
+        try:
+            await conn.execute("ALTER TABLE attendance_sessions ADD COLUMN extra_data TEXT")
+        except Exception:
+            pass
         
         tagall_path = self.path.parent / "tagall.db"
         if tagall_path.exists():
@@ -942,6 +947,18 @@ class Database:
         await conn.execute(
             "UPDATE attendance_sessions SET announce_message_id = ? WHERE id = ?",
             (message_id, session_id),
+        )
+        await conn.commit()
+
+    async def set_attendance_extra_data(
+        self,
+        conn: aiosqlite.Connection,
+        session_id: int,
+        extra_data: str | None,
+    ) -> None:
+        await conn.execute(
+            "UPDATE attendance_sessions SET extra_data = ? WHERE id = ?",
+            (extra_data, session_id),
         )
         await conn.commit()
 
@@ -2062,6 +2079,22 @@ class Database:
         )
         row = await cur.fetchone()
         return json.loads(row["data_json"]) if row else None
+
+    async def get_all_game_settings(self, conn: aiosqlite.Connection, game_name: str) -> list[str]:
+        cur = await conn.execute(
+            "SELECT setting_name FROM game_settings WHERE game_name = ?",
+            (game_name,)
+        )
+        rows = await cur.fetchall()
+        return [r["setting_name"] for r in rows]
+
+    async def delete_game_setting(self, conn: aiosqlite.Connection, game_name: str, setting_name: str) -> bool:
+        cur = await conn.execute(
+            "DELETE FROM game_settings WHERE game_name = ? AND setting_name = ?",
+            (game_name, setting_name)
+        )
+        await conn.commit()
+        return cur.rowcount > 0
 
     async def start_game_session(self, conn: aiosqlite.Connection, chat_id: int, game_name: str, setting_name: str, initial_state: dict) -> int:
         state_json = json.dumps(initial_state)

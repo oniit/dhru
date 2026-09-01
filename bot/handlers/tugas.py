@@ -17,6 +17,7 @@ from bot.database import (
 )
 from bot.settings import (
     AGRA_REWARD_TUGAS,
+    AGRA_REWARD_TUGAS_MABA,
     CHOICES,
     TASK_CH_ID,
 )
@@ -53,11 +54,11 @@ def _class_label(class_id: str) -> str:
 
 
 def _can_manage_tasks(role: str, profile: dict) -> bool:
-    """Dosen, Guru Besar, Coach, Admin, Owner bisa membuka tugas."""
+    """Dosen, Guru Besar, Coach, Admin, Owner, Panitia Ospek bisa membuka tugas."""
     if role in (ROLE_OWNER, ROLE_ADMIN):
         return True
     jabs = get_user_jabatans(profile)
-    return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs
+    return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs or "p_panitia_ospek" in jabs
 
 
 def _task_class_ids_for_lecturer(profile: dict) -> list[str]:
@@ -620,13 +621,15 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         task = await db.get_task(conn, sub["task_id"])
         task_title = task["title"] if task else "?"
         class_label = _class_label(task["class_id"]) if task else "?"
+        
+        reward = AGRA_REWARD_TUGAS_MABA if task and task["class_id"] == "ospek_maba" else AGRA_REWARD_TUGAS
 
         # Add Agra reward
         await db.add_agra(
             conn,
             target_id=sub["student_id"],
             actor_id=uid,
-            amount=AGRA_REWARD_TUGAS,
+            amount=reward,
             description=f"Tugas diterima: {task_title} ({class_label})",
             chat_id=None,
             message_id=None,
@@ -641,7 +644,7 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _send_dm(
             context, sub["student_id"],
             f"✅ Tugas <b>{task_title}</b> ({class_label}) telah <b>diterima</b>!\n"
-            f"🎁 Kamu mendapat <b>{AGRA_REWARD_TUGAS} Agra</b>."
+            f"🎁 Kamu mendapat <b>{reward} Agra</b>."
         )
 
         # Get student name for feedback
@@ -651,7 +654,7 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         await q.edit_message_text(
             f"✅ Submission dari <b>{sname}</b> untuk tugas <b>{task_title}</b> telah diterima.\n"
-            f"Agra +{AGRA_REWARD_TUGAS} diberikan."
+            f"Agra +{reward} diberikan."
         )
         return
 

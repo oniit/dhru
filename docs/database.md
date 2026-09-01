@@ -45,7 +45,7 @@ Menyimpan riwayat keluar-masuk (mutasi) poin Agra. Karena sifatnya ledger, saldo
 - Transaksi pemotongan saldo bersifat atomik (*atomic subqueries*) untuk mencegah kecurangan (*race conditions*) pada eksekusi konkuren, khususnya saat menggunakan integrasi mock Turso.
 
 ### 6. `attendance_sessions` & `attendance_records`
-Manajemen sesi absen yang dibuka dosen, serta entri absen mahasiswanya.
+Manajemen sesi absen yang dibuka dosen, serta entri absen mahasiswanya. Di dalam `attendance_sessions` terdapat kolom `extra_data` bertipe TEXT (JSON) untuk mendukung pemisahan layout absensi (seperti pesan per grup di fitur Ospek).
 
 ### 7. `tasks` & `task_submissions`
 Manajemen tugas dosen dan tempat berkumpulnya kiriman jawaban (_submission_) mahasiswa.

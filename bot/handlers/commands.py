@@ -242,7 +242,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = profile_from_row(row)
     role = row["role"] if row else ROLE_PUBLIC
     
-    parts = update.message.text.split()
+    parts = (update.message.text or "").split()
     if len(parts) > 1 and parts[1].startswith("rempah_"):
         chat_id_str = parts[1][7:]
         await db.set_onboarding_step(conn, u.id, f"REMPAH_SETOR:{chat_id_str}")
@@ -281,6 +281,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text("\n".join(lines))
 
+async def cmd_ospek_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    conn = _conn(context)
+    db = _db(context)
+    uid = update.effective_user.id
+    row = await user_row(conn, db, uid)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+
+    parts = (update.message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or parts[1].lower() not in ("on", "off"):
+        current = await db.get_setting(conn, "ospek_mode", "off")
+        await update.message.reply_text(f"Penggunaan: /ospek_mode [on|off]\nStatus saat ini: {current.upper()}")
+        return
+
+    mode = parts[1].lower()
+    await db.set_setting(conn, "ospek_mode", mode)
+    await update.message.reply_text(f"Ospek mode disetel ke: {mode.upper()}")
+
 
 async def cmd_maba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik lama)."""
@@ -315,7 +334,7 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Tidak diizinkan.")
         return
     
-    parts = update.message.text.split()
+    parts = (update.message.text or "").split()
     count = 1
     target_role = "student"
     

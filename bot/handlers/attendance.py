@@ -211,6 +211,71 @@ async def refresh_auto_presensi_announcement(context, db, conn, session_id: int)
     await refresh_presensi_announcement(context, db, conn, session_id)
 
 
+async def refresh_maba_presensi_announcement(context, db, conn, session_id: int):
+    sess = await db.get_attendance_session(conn, session_id)
+    if not sess:
+        return
+    _, records = await db.attendance_recap_session(conn, session_id)
+    closed = sess["closed_at"] is not None
+    
+    # 1. Update Global Master Message (if exists)
+    if sess["announce_message_id"] and sess["chat_id"]:
+        text_global = _format_presensi_block(sess, records, closed=closed, show_record_times=False)
+        try:
+            await context.bot.edit_message_text(
+                chat_id=sess["chat_id"],
+                message_id=sess["announce_message_id"],
+                text=text_global[:4000],
+            )
+        except Exception as e:
+            log.debug("edit global maba presensi: %s", e)
+            
+    # 2. Update Local Group Messages
+    extra_data_str = sess.get("extra_data")
+    if extra_data_str:
+        try:
+            extra_data = json.loads(extra_data_str)
+            kb = None
+            if not closed:
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{session_id}")]])
+            
+            for group_id, info in extra_data.items():
+                g_chat_id = info.get("chat_id")
+                g_msg_id = info.get("msg_id")
+                if not g_chat_id or not g_msg_id:
+                    continue
+                
+                # Filter records for this group only
+                group_records = []
+                for r in records:
+                    profile = json.loads(r["profile_json"] or "{}")
+                    mg = str(profile.get("maba_group", ""))
+                    if mg == group_id:
+                        group_records.append(r)
+                
+                # Create customized title for the group
+                from bot.settings import MABA_GROUP_NAMES
+                g_name = MABA_GROUP_NAMES.get(int(group_id), group_id) if group_id.isdigit() else group_id
+                
+                # Fake a session dict for formatting with custom title
+                local_sess = dict(sess)
+                local_sess["title"] = f"Presensi Harian Ospek - Kelompok {g_name}"
+                
+                text_local = _format_presensi_block(local_sess, group_records, closed=closed, show_record_times=False)
+                
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=g_chat_id,
+                        message_id=g_msg_id,
+                        text=text_local[:4000],
+                        reply_markup=kb,
+                    )
+                except Exception as e:
+                    log.debug(f"edit local maba presensi for group {group_id}: {e}")
+        except json.JSONDecodeError:
+            pass
+
+
 async def _send_presensi_dm(context: ContextTypes.DEFAULT_TYPE, uid: int, text: str) -> None:
     try:
         await context.bot.send_message(
@@ -325,13 +390,20 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if sess["class_id"] == "staff_auto":
             notif = f"Sesi presensi otomatis <b>{c_lab}</b> telah ditutup."
+        elif sess["class_id"] == "maba_auto":
+            from bot.settings import AGRA_REWARD_MABA_AUTO
+            notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{AGRA_REWARD_MABA_AUTO} Agra</b> (Status: {status_label})."
         else:
             amt = AGRA_REWARD_CLASS_HADIR if status == "hadir" else AGRA_REWARD_CLASS_IZIN
             notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{amt} Agra</b> (Status: {status_label})."
             
         await _send_presensi_dm(context, t_uid, notif)
 
-    await refresh_presensi_announcement(context, db, conn, sid)
+    if sess["class_id"] == "maba_auto":
+        await refresh_maba_presensi_announcement(context, db, conn, sid)
+    else:
+        await refresh_presensi_announcement(context, db, conn, sid)
+        
     await update.message.reply_text(f"Sesi <code>{sid}</code> ditutup.")
 
 
@@ -396,6 +468,9 @@ async def _record_hadir(
         if sess["class_id"] == "staff_auto":
             # Only Hadir is possible for staff_auto
             diff = AGRA_REWARD_STAFF_AUTO if status == "hadir" else 0
+        elif sess["class_id"] == "maba_auto":
+            from bot.settings import AGRA_REWARD_MABA_AUTO
+            diff = AGRA_REWARD_MABA_AUTO if status == "hadir" else 0
         else:
             if status == "hadir":
                 diff = AGRA_REWARD_CLASS_HADIR if not old_status else (AGRA_REWARD_CLASS_HADIR - AGRA_REWARD_CLASS_IZIN)
@@ -415,7 +490,7 @@ async def _record_hadir(
                 message_id=None
             )
 
-        agra_text = f" (+{diff} Agra)" if sess["class_id"] == "staff_auto" else ""
+        agra_text = f" (+{diff} Agra)" if sess["class_id"] in ("staff_auto", "maba_auto") else ""
         if old_status:
             return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.{agra_text}", True
         return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.{agra_text}", True
@@ -710,6 +785,24 @@ async def cmd_test_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(f"✅ Trigger presensi harian otomatis telah dijalankan secara manual.\n\nSesi ID: <code>{sid}</code>\nAnda bisa menutupnya dengan <code>/presensi tutup {sid}</code>")
 
 
+async def cmd_test_maba_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Hanya Owner/Admin yang bisa menggunakan ini.")
+        return
+        
+    from bot.jobs import daily_maba_attendance_open
+    sid = await daily_maba_attendance_open(context)
+    if not sid:
+        await update.message.reply_text("Gagal membuka presensi maba (Mungkin ospek_mode mati atau channel tidak di set).")
+        return
+    await update.message.reply_text(f"✅ Trigger presensi maba otomatis telah dijalankan secara manual.\n\nSesi ID: <code>{sid}</code>\nAnda bisa menutupnya dengan <code>/presensi tutup {sid}</code>")
+
+
 async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     q = update.callback_query
     if not q or not q.data or not q.from_user:
@@ -726,14 +819,28 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
     if not row:
         await q.answer("Ketik /start dulu.", show_alert=True)
         return
+        
+    sess = await db.get_attendance_session(conn, sid)
+    if not sess:
+        await q.answer("Sesi tidak ditemukan.", show_alert=True)
+        return
+        
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
-    # Khusus staff_auto, valid jika role == ROLE_INTERNAL
+    
     if action == "sh":
-        if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
-            await q.answer("Hanya untuk staf.", show_alert=True)
-            return
-        user_classes.append("staff_auto")
+        if sess["class_id"] == "staff_auto":
+            if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+                await q.answer("Hanya untuk staf.", show_alert=True)
+                return
+            user_classes.append("staff_auto")
+        elif sess["class_id"] == "maba_auto":
+            from bot.database import ROLE_MABA
+            if row["role"] != ROLE_MABA:
+                await q.answer("Hanya untuk maba.", show_alert=True)
+                return
+            user_classes.append("maba_auto")
+            
     # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
@@ -747,7 +854,10 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     if ok:
         await q.answer()
-        await refresh_presensi_announcement(context, db, conn, sid)
+        if sess["class_id"] == "maba_auto":
+            await refresh_maba_presensi_announcement(context, db, conn, sid)
+        else:
+            await refresh_presensi_announcement(context, db, conn, sid)
         await _send_presensi_dm(context, uid, msg)
     else:
         await q.answer(msg, show_alert=True)
@@ -781,7 +891,8 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
                 lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
             
             if role in (ROLE_OWNER, ROLE_ADMIN):
-                lines.append("<code>/presensi testauto</code> — Test presensi harian")
+                lines.append("<code>/presensi testauto</code> — Test presensi harian staf")
+                lines.append("<code>/presensi test_maba_auto</code> — Test presensi harian maba")
             
             lines.append("<code>/presensi sesi</code> — Sesi aktif" + (" <i>(terfilter)</i>" if allowed_classes is not None else ""))
             lines.append("<code>/presensi rekap</code> — Rekap kehadiran")
@@ -808,6 +919,7 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif subcmd == "rekap": await cmd_rekap_hadir(update, context)
         elif subcmd == "hadir": await cmd_hadir(update, context)
         elif subcmd == "testauto": await cmd_test_auto(update, context)
+        elif subcmd == "test_maba_auto": await cmd_test_maba_auto(update, context)
         else: await update.message.reply_text("Sub-command Presensi tidak ditemukan. Ketik /presensi untuk panduan.")
     finally:
         context.args = original_args

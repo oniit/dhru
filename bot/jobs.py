@@ -125,6 +125,78 @@ async def daily_birthday_reminder(context):
         except Exception as e:
             print("Gagal kirim reminder ultah:", e)
 
+async def daily_maba_attendance_open(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    
+    ospek_mode = await db.get_setting(conn, "ospek_mode", "off")
+    if ospek_mode != "on":
+        return
+
+    from bot.settings import OWNER_ID, MABA_GROUP_GIDS, PRESENCE_CH_ID
+    if not PRESENCE_CH_ID: return
+
+    sid = await db.open_attendance_session(
+        conn,
+        class_id="maba_auto",
+        title="Presensi Harian Maba (Ospek)",
+        opened_by=OWNER_ID,
+        chat_id=PRESENCE_CH_ID,
+    )
+    
+    import asyncio
+    msg = None
+    for attempt in range(3):
+        try:
+            msg = await context.bot.send_message(
+                chat_id=PRESENCE_CH_ID,
+                text="Membuka sesi presensi otomatis maba...",
+            )
+            await db.set_attendance_announce_message(conn, sid, msg.message_id)
+            break
+        except Exception as e:
+            if attempt < 2:
+                await asyncio.sleep(5)
+    
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{sid}")]])
+    
+    extra_data = {}
+    for i, gid in enumerate(MABA_GROUP_GIDS):
+        try:
+            group_msg = await context.bot.send_message(
+                chat_id=gid,
+                text="🔔 *Presensi Harian Ospek*\n\nSilakan klik tombol di bawah ini untuk mencatatkan kehadiran Anda hari ini.",
+                parse_mode="Markdown",
+                reply_markup=kb
+            )
+            extra_data[str(i + 1)] = {"chat_id": gid, "msg_id": group_msg.message_id}
+        except Exception:
+            pass
+        await asyncio.sleep(0.1)
+
+    import json
+    await db.set_attendance_extra_data(conn, sid, json.dumps(extra_data))
+
+    from bot.handlers.attendance import refresh_maba_presensi_announcement
+    await refresh_maba_presensi_announcement(context, db, conn, sid)
+    
+    return sid
+
+
+async def daily_maba_attendance_close(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    
+    sess = await db.get_open_session_for_class(conn, "maba_auto")
+    if not sess: return
+    
+    await db.close_attendance_session(conn, sess["id"])
+    
+    from bot.handlers.attendance import refresh_maba_presensi_announcement
+    await refresh_maba_presensi_announcement(context, db, conn, sess["id"])
+
 def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
@@ -143,3 +215,6 @@ def setup_jobs(application: Application):
         jq.run_daily(daily_staff_attendance_open, datetime.time(hour=7, minute=0, second=0, tzinfo=wib))
         # Tutup presensi jam 23:59 WIB
         jq.run_daily(daily_staff_attendance_close, datetime.time(hour=23, minute=59, second=0, tzinfo=wib))
+        
+        jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=0, second=0, tzinfo=wib))
+        jq.run_daily(daily_maba_attendance_close, datetime.time(hour=22, minute=0, second=0, tzinfo=wib))

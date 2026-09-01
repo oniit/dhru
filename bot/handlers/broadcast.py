@@ -17,7 +17,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Tidak diizinkan.")
         return
         
-    parts = update.message.text.split(maxsplit=2)
+    parts = (update.message.text or "").split(maxsplit=2)
     if len(parts) < 3:
         await update.message.reply_text("Gunakan: /broadcast &lt;all|nonpublic|role_name&gt; &lt;pesan&gt;\nContoh: /broadcast student halo semua!")
         return

@@ -167,7 +167,7 @@ def can_daftar_as_dean(role: str, profile: dict | None) -> bool:
 
 def is_lecturer_profile(profile: dict | None) -> bool:
     jabs = get_user_jabatans(profile)
-    return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs
+    return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs or "p_panitia_ospek" in jabs
 
 
 def lecturer_class_ids(profile: dict | None) -> list[str]:
@@ -179,6 +179,8 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
         ids.extend(normalize_multi_choice_value(profile.get("teaching_classes")))
     if "d_coach" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("club_enrolled")))
+    if "p_panitia_ospek" in jabs:
+        ids.append("ospek_maba")
     return list(dict.fromkeys(ids))
 
 
