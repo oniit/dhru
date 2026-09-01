@@ -92,6 +92,7 @@ async def proses_pesan_kata_rahasia(update: Update, context: ContextTypes.DEFAUL
         
         # Update state to DB
         await db.update_game_session_state(conn, session["id"], state)
+        session["state_json"] = json.dumps(state)
         
         await update.message.reply_text(
             f"🎯 Benar! +{points} poin untuk {user.first_name}!",
