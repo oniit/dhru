@@ -197,6 +197,70 @@ async def daily_maba_attendance_close(context):
     from bot.handlers.attendance import refresh_maba_presensi_announcement
     await refresh_maba_presensi_announcement(context, db, conn, sess["id"])
 
+async def process_broadcast_queue(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    
+    job = await db.get_pending_broadcast_job(conn)
+    if not job: return
+
+    job_id = job["id"]
+    msg_text = job["message_text"]
+    reporter_id = job["reporter_id"]
+    try:
+        targets = json.loads(job["target_users_json"])
+        processed = set(json.loads(job["processed_users_json"]))
+    except Exception:
+        await db.update_broadcast_job(conn, job_id, [], "failed")
+        return
+
+    remaining = [u for u in targets if u not in processed]
+    if not remaining:
+        await db.update_broadcast_job(conn, job_id, list(processed), "completed")
+        if reporter_id:
+            try:
+                await context.bot.send_message(
+                    chat_id=reporter_id,
+                    text=f"✅ Broadcast {job_id} selesai.\nBerhasil/Diproses: {len(processed)} user."
+                )
+            except Exception: pass
+        return
+
+    # Process a batch of 30
+    batch = remaining[:30]
+    success_in_batch = 0
+    from telegram.error import RetryAfter
+    import asyncio
+
+    for uid in batch:
+        try:
+            await context.bot.send_message(
+                chat_id=uid,
+                text=msg_text,
+                parse_mode="HTML"
+            )
+            success_in_batch += 1
+            processed.add(uid)
+        except RetryAfter as e:
+            # Stop batch, will retry next run
+            break
+        except Exception:
+            # Mark as processed even if failed to avoid infinite loop
+            processed.add(uid)
+        await asyncio.sleep(0.05)
+
+    status = "completed" if len(processed) >= len(targets) else "pending"
+    await db.update_broadcast_job(conn, job_id, list(processed), status)
+    
+    if status == "completed" and reporter_id:
+        try:
+            await context.bot.send_message(
+                chat_id=reporter_id,
+                text=f"✅ Broadcast {job_id} selesai.\nDiproses: {len(processed)} user."
+            )
+        except Exception: pass
+
 def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
@@ -208,6 +272,9 @@ def setup_jobs(application: Application):
     # Run daily at midnight WIB
     jq.run_daily(daily_birthday_reminder, datetime.time(hour=8, minute=0, second=0, tzinfo=wib))
     jq.run_daily(daily_auto_close_tasks, datetime.time(hour=0, minute=0, second=0, tzinfo=wib))
+
+    # Background queue
+    jq.run_repeating(process_broadcast_queue, interval=10, first=10)
 
 
     if PRESENCE_CH_ID:

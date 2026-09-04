@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import html
+import urllib.parse
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -45,6 +47,24 @@ def role_display(role: str) -> str:
 
 async def user_row(conn: aiosqlite.Connection, db: Database, telegram_id: int):
     return await db.get_user(conn, telegram_id)
+
+import time
+RATE_LIMIT_CACHE = {}
+
+def rate_limit_check(user_id: int, command_key: str, limit_seconds: int = 5) -> bool:
+    """
+    Returns True if the user is ALLOWED to proceed (not rate limited).
+    Returns False if they are sending requests too quickly.
+    """
+    now = time.time()
+    cache_key = f"{user_id}:{command_key}"
+    last_time = RATE_LIMIT_CACHE.get(cache_key, 0)
+    
+    if now - last_time < limit_seconds:
+        return False
+        
+    RATE_LIMIT_CACHE[cache_key] = now
+    return True
 
 
 def profile_from_row(row) -> dict:
@@ -374,10 +394,11 @@ def format_profile_card(
             raw = profile.get("full_name")
             if not raw:
                 return "—"
+            raw_esc = html.escape(raw)
             u = row["username"]
             if u:
-                return f'<a href="https://t.me/{u}">{raw}</a>'
-            return f'<a href="tg://user?id={row["telegram_id"]}">{raw}</a>'
+                return f'<a href="https://t.me/{u}">{raw_esc}</a>'
+            return f'<a href="tg://user?id={row["telegram_id"]}">{raw_esc}</a>'
         if key == "student_id":
             raw = profile.get("student_id")
             return f"<code>{raw}</code>" if raw else "—"
@@ -544,7 +565,7 @@ async def build_maba_verification_text(context, user_id: int | None = None) -> t
         return "", True
         
     text_verify = "Data berhasil disimpan.\n\n" \
-                  "Tahap terakhir: Anda **diwajibkan** untuk bergabung/follow channel berikut:\n"
+                  "Tahap terakhir: Anda <b>diwajibkan</b> untuk bergabung/follow channel berikut:\n"
                   
     all_followed = True
     for i, ch_id in enumerate(MABA_CH_IDS, 1):
@@ -578,5 +599,5 @@ async def build_maba_verification_text(context, user_id: int | None = None) -> t
     import datetime
     tz = datetime.timezone(datetime.timedelta(hours=7))
     now_str = datetime.datetime.now(tz).strftime("%H:%M:%S")
-    text_verify += f"\nSetelah bergabung, tekan tombol **Verifikasi Kembali** di bawah ini.\n_(Terakhir dicek: {now_str})_"
+    text_verify += f"\nSetelah bergabung, tekan tombol <b>Verifikasi Kembali</b> di bawah ini.\n<i>(Terakhir dicek: {now_str})</i>"
     return text_verify, all_followed

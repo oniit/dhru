@@ -19,7 +19,7 @@ async def mulai_adu_react(update: Update, context: ContextTypes.DEFAULT_TYPE, db
         "reactions": {}
     }
     
-    await db.start_game_session(conn, chat_id, "adu_react", state)
+    await db.start_game_session(conn, chat_id, "adu_react", "default", state)
     
     await update.message.reply_text(
         "⚡ <b>Game Adu React dimulai!</b>\n\n"

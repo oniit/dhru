@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import html
 import logging
 from typing import TYPE_CHECKING
 
@@ -142,12 +143,15 @@ async def _post_or_update_channel(
     content_preview = sub["content"]
     if len(content_preview) > 500:
         content_preview = content_preview[:500] + "…"
+    content_preview = html.escape(content_preview)
+    student_name_esc = html.escape(student_name)
+    task_title_esc = html.escape(task['title'])
 
     text = (
         f"📋 {hashtags}\n\n"
-        f"👤 <b>Pengirim:</b> {student_name}\n"
+        f"👤 <b>Pengirim:</b> {student_name_esc}\n"
         f"📚 <b>Matkul:</b> {_class_label(task['class_id'])}\n"
-        f"📝 <b>Tugas:</b> {task['title']}\n\n"
+        f"📝 <b>Tugas:</b> {task_title_esc}\n\n"
         f"<b>Hasil:</b>\n{content_preview}\n\n"
         f"<b>Status:</b> {status_emoji} {status_label}"
     )
@@ -572,11 +576,14 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         content = sub["content"]
         if len(content) > 2000:
             content = content[:2000] + "…"
+        content = html.escape(content)
+        sname_esc = html.escape(sname)
+        task_title_esc = html.escape(task['title'] if task else '?')
 
         lines = [
             f"📋 <b>Submission</b> <code>#{sub_id}</code>",
-            f"<b>Tugas:</b> {task['title'] if task else '?'} ({_class_label(task['class_id']) if task else '?'})",
-            f"<b>Pengirim:</b> {sname}",
+            f"<b>Tugas:</b> {task_title_esc} ({_class_label(task['class_id']) if task else '?'})",
+            f"<b>Pengirim:</b> {sname_esc}",
             f"<b>Waktu:</b> {format_local_time(sub['submitted_at'])}",
             f"<b>Status:</b> {_submission_status_emoji(sub['status'])} {_submission_status_label(sub['status'])}",
             f"\n<b>Jawaban:</b>\n{content}",

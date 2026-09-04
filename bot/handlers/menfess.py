@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -30,6 +31,14 @@ def _db(context: ContextTypes.DEFAULT_TYPE) -> Database:
     return context.application.bot_data["db"]
 
 async def cmd_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    from bot.handlers.common import rate_limit_check
+    if not update.effective_user or not rate_limit_check(update.effective_user.id, "menfess", 3):
+        if update.message:
+            await update.message.reply_text("❌ Jangan spam! Tunggu beberapa detik sebelum mengakses menu lagi.")
+        elif update.callback_query:
+            await update.callback_query.answer("Terlalu cepat!", show_alert=True)
+        return ConversationHandler.END
+        
     keyboard = [
         [InlineKeyboardButton("Kirim Menfess", callback_data="menfess:send")],
         [InlineKeyboardButton("History Masuk", callback_data="menfess:inbox"),
@@ -288,14 +297,13 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     sender_row = await db.get_user(conn, sender_id)
     is_internal = sender_row and sender_row["role"] == "internal"
     
+    start_of_day_utc = 0
     if is_internal:
-        import time
-        now_ts = time.time()
-        tz_offset = 7 * 3600
-        local_time = now_ts + tz_offset
-        days = local_time // 86400
-        start_of_day_local = days * 86400
-        start_of_day_utc = start_of_day_local - tz_offset
+        from bot.timefmt import get_today_wib, TZ
+        import datetime
+        today_date = get_today_wib()
+        start_of_day_local_dt = datetime.datetime.combine(today_date, datetime.time.min, tzinfo=TZ)
+        start_of_day_utc = start_of_day_local_dt.timestamp()
         
         sent_today = await db.get_menfess_sent_today_count(conn, sender_id, start_of_day_utc)
         if sent_today == 0:
@@ -311,9 +319,6 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
                 else:
                     await update.callback_query.message.edit_text(fail_msg)
                 return ConversationHandler.END
-                
-            cashback_amount = 2
-            
     gift_text = f" [🎁 {gift} agra]" if gift > 0 else ""
     
     # ATOMIC DEDUCTION (Mencegah Race Condition TOCTOU)
@@ -376,16 +381,16 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         return ConversationHandler.END
     
     # Add cashback if eligible
-    if cashback_amount > 0:
-        await db.add_agra(
+    if is_internal:
+        added_cashback = await db.add_agra_cashback_if_first_today(
             conn,
             target_id=sender_id,
-            actor_id=sender_id,
-            amount=cashback_amount,
+            amount=2,
             description="Bonus menfess pertama hari ini (Internal)",
-            chat_id=update.effective_chat.id if update.effective_chat else None,
-            message_id=update.effective_message.message_id if update.effective_message else None
+            start_of_day_utc=start_of_day_utc
         )
+        if added_cashback:
+            cashback_amount = 2
     
     # Add to receiver (if gift > 0)
     if gift > 0:
@@ -488,5 +493,10 @@ cmd_menfess_router = ConversationHandler(
         CONFIRM: [CallbackQueryHandler(on_confirm_callback, pattern="^confirm:")],
         GIFT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, gift_amount_handler), CommandHandler("cancel", gift_amount_handler)],
     },
-    fallbacks=[CommandHandler("cancel", lambda u, c: ConversationHandler.END)],
+    fallbacks=[
+        CommandHandler("cancel", lambda u, c: ConversationHandler.END),
+        MessageHandler(filters.COMMAND, lambda u, c: ConversationHandler.END)
+    ],
+    per_chat=True,
+    per_user=True,
 )

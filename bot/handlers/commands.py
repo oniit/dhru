@@ -7,7 +7,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import random
@@ -309,6 +308,11 @@ async def cmd_maba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = _conn(context)
     db = _db(context)
     
+    row = await user_row(conn, db, u.id)
+    if row and row["role"] not in ("public", "maba", "owner"):
+        await update.message.reply_text("Anda sudah memiliki role lain dan tidak dapat mendaftar sebagai mahasiswa baru.")
+        return
+        
     await db.set_onboarding_step(conn, u.id, "MABA_NAME")
     await update.message.reply_text(
         "Ketikkan Nama Lengkap Anda:"
@@ -513,7 +517,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             return
         token = parts[1].strip()
-        if token.isdigit():
+        if token.isdigit() and int(token) > 0:
             if len(token) < 8:
                 cur = await conn.execute("SELECT telegram_id FROM users ORDER BY created_at ASC, telegram_id ASC LIMIT 1 OFFSET ?", (int(token)-1,))
                 rkr = await cur.fetchone()
@@ -576,7 +580,7 @@ def _format_birth_date(raw: str) -> str:
     m_name = months.get(mm, mm)
     
     y = int(yy)
-    if y >= 30:
+    if y >= 50:
         year = f"19{yy}"
     else:
         year = f"20{yy}"
@@ -602,7 +606,7 @@ async def cmd_profile_dtl(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             return
         token = parts[1].strip()
-        if token.isdigit():
+        if token.isdigit() and int(token) > 0:
             if len(token) < 8:
                 cur = await conn.execute("SELECT telegram_id FROM users ORDER BY created_at ASC, telegram_id ASC LIMIT 1 OFFSET ?", (int(token)-1,))
                 rkr = await cur.fetchone()
@@ -916,7 +920,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if action == "start":
             await q.answer()
             await db.set_onboarding_step(conn, uid, "MABA_NAME")
-            await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan **Nama Lengkap** Anda:", parse_mode="Markdown")
+            await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan <b>Nama Lengkap</b> Anda:", parse_mode="HTML")
         elif action == "verify":
             # This is called when they click "Verifikasi Kembali" after following channels
             # We need to check channels here. But we need their chat info.
@@ -931,7 +935,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await q.edit_message_text(
                     text_verify,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]]),
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
                 return
                 
@@ -941,14 +945,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
             instruction_text = (
                 "✅ Channel berhasil diverifikasi!\n\n"
-                "**Langkah Terakhir:**\n"
-                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal **1x promosi** (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
+                "<b>Langkah Terakhir:</b>\n"
+                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal <b>1x promosi</b> (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
                 "Kirimkan buktinya ke sini dengan format:\n"
-                "`/lpm <link_pesan>` atau `/story <link_story>`\n\n"
-                "Jika sistem sudah membalas '*Link berhasil divalidasi*', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
+                "<code>/lpm &lt;link_pesan&gt;</code> atau <code>/story &lt;link_story&gt;</code>\n\n"
+                "Jika sistem sudah membalas '<i>Link berhasil divalidasi</i>', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
             )
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎁 Ambil Link OSPEK", callback_data="maba:claim_ospek")]])
-            await q.edit_message_text(instruction_text, reply_markup=kb, parse_mode="Markdown")
+            await q.edit_message_text(instruction_text, reply_markup=kb, parse_mode="HTML")
             
         elif action == "claim_ospek":
             from bot.settings import MABA_GROUP_LINK, PENDAFTAR_CH_ID
@@ -964,11 +968,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
             success_text = "✅ Berhasil! Persyaratan promo terpenuhi. Anda resmi terdaftar sebagai Mahasiswa Baru.\n\n"
             if MABA_GROUP_LINK:
-                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nKegiatan promosi dapat tetap dilanjutkan dengan mengirim format: `/lpm <link_pesan>` atau `/story <link_story>`\n\n (Hadiah *1 Agra* per 1 sebaran LPM dan *3 Agra* per 1 _post story_)"
+                success_text += f"Silakan bergabung ke grup OSPEK melalui link berikut:\n{MABA_GROUP_LINK}\n\nKegiatan promosi dapat tetap dilanjutkan dengan mengirim format: <code>/lpm &lt;link_pesan&gt;</code> atau <code>/story &lt;link_story&gt;</code>\n\n (Hadiah <b>1 Agra</b> per 1 sebaran LPM dan <b>3 Agra</b> per 1 <i>post story</i>)"
             else:
                 success_text += "Grup OSPEK belum diatur oleh admin. Silakan tunggu informasi selanjutnya."
                 
-            await q.edit_message_text(success_text, disable_web_page_preview=True, parse_mode="Markdown")
+            await q.edit_message_text(success_text, disable_web_page_preview=True, parse_mode="HTML")
             
             if PENDAFTAR_CH_ID:
                 try:
@@ -977,8 +981,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     name_tmp = prof_tmp.get("full_name", "Tanpa Nama")
                     reason_tmp = prof_tmp.get("join_reason", "-")
                     username_tmp = f"@{row_tmp['username']}" if row_tmp and row_tmp["username"] else "-"
-                    msg_pendaftar = f"**Nama:** [{name_tmp}](tg://user?id={uid})\n**Username:** {username_tmp}\n**Alasan Bergabung:** {reason_tmp}\n**ID:** `{uid}`"
-                    await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="Markdown")
+                    msg_pendaftar = f"<b>Nama:</b> <a href=\"tg://user?id={uid}\">{name_tmp}</a>\n<b>Username:</b> {username_tmp}\n<b>Alasan Bergabung:</b> {reason_tmp}\n<b>ID:</b> <code>{uid}</code>"
+                    await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="HTML")
                 except Exception as e:
                     import logging
                     logging.getLogger(__name__).warning(f"Gagal mengirim info pendaftar ke {PENDAFTAR_CH_ID}: {e}")
@@ -1549,7 +1553,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await db.set_onboarding_step(conn, uid, None)
                 await q.edit_message_text("Selesai mengedit data user.")
                 return
-            tid_target = context.user_data.get(ADMIN_TARGET_KEY)
+            tid_target = context.user_data.get("admin_targets", {}).get(q.message.message_id) or context.user_data.get(ADMIN_TARGET_KEY)
+            if tid_target:
+                context.user_data[ADMIN_TARGET_KEY] = tid_target
             if not tid_target:
                 await q.edit_message_text("Pilih user dulu: /admin_data <id/username>.")
                 return
@@ -1562,6 +1568,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await q.edit_message_text("Field tidak valid.")
                 return
             tprof = profile_from_row(trow)
+            t_role = trow["role"] or ROLE_STUDENT
+            if not field_applies_to_role(fdef, t_role, tprof):
+                await q.edit_message_text(f"Field ini tidak berlaku untuk role target ({t_role}).")
+                return
             if fdef.type == "text":
                 await db.set_onboarding_step(conn, uid, f"ADMIN_TEXT_LC:{field_key}")
                 await q.edit_message_text(
@@ -1611,7 +1621,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if data.startswith("adlc:"):
             await q.answer()
             _, field_key, choice_id = data.split(":", 2)
-            tid_target = context.user_data.get(ADMIN_TARGET_KEY)
+            tid_target = context.user_data.get("admin_targets", {}).get(q.message.message_id) or context.user_data.get(ADMIN_TARGET_KEY)
             step_row = await user_row(conn, db, uid)
             step = (step_row["onboarding_step"] or "") if step_row else ""
             if not step.startswith("PICK_AD_LC:") or step.split(":", 1)[1] != field_key:
@@ -1650,7 +1660,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             _, field_key, choice_id = parts
             print(f"[DEBUG admlc] field: {field_key}, choice: {choice_id}")
             await q.answer()
-            tid_target = context.user_data.get(ADMIN_TARGET_KEY)
+            tid_target = context.user_data.get("admin_targets", {}).get(q.message.message_id) or context.user_data.get(ADMIN_TARGET_KEY)
             step_row = await user_row(conn, db, uid)
             step = (step_row["onboarding_step"] or "") if step_row else ""
             if not step.startswith("MULTI_AD_LC:") or step.split(":", 1)[1] != field_key:
@@ -1680,7 +1690,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             kb = keyboard_for_multi_choices(
                 field_key,
                 fdef.choices_key,
-                ids_set,
+                ids,
                 toggle_prefix="admlc",
                 done_prefix="admld",
                 options=opts,
@@ -1693,7 +1703,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if data.startswith("admld:"):
             field_key = data.split(":", 1)[1]
-            tid_target = context.user_data.get(ADMIN_TARGET_KEY)
+            tid_target = context.user_data.get("admin_targets", {}).get(q.message.message_id) or context.user_data.get(ADMIN_TARGET_KEY)
             step_row = await user_row(conn, db, uid)
             step = (step_row["onboarding_step"] or "") if step_row else ""
             m = context.user_data.get(MULTI_UD_KEY)
@@ -2670,11 +2680,14 @@ async def cmd_admin_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _multi_clear(context)
     await db.set_onboarding_step(conn, actor, None)
     un = trow["username"] or "—"
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         f"Edit profil <code>{target_tid}</code> (@{un}). "
         f"Pilih field — tersimpan langsung, tanpa persetujuan:",
         reply_markup=_admin_profile_keyboard(),
     )
+    if "admin_targets" not in context.user_data:
+        context.user_data["admin_targets"] = {}
+    context.user_data["admin_targets"][msg.message_id] = target_tid
 
 
 def _daftar_clean_display(s: str) -> str:
@@ -3127,12 +3140,12 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     name_str = prof.get("full_name", "Tanpa Nama")
                     uname_str = f"@{urow['username']}" if urow.get("username") else "-"
                     msg_kelompok = (
-                        f"📣 **Alokasi Kelompok MABA (Jalur Admin)**\n\n"
-                        f"**Nama:** [{name_str}](tg://user?id={tid})\n"
-                        f"**Username:** {uname_str}\n"
-                        f"**Kelompok:** {MABA_GROUP_NAMES.get(mg, mg)}"
+                        f"📣 <b>Alokasi Kelompok MABA (Jalur Admin)</b>\n\n"
+                        f"<b>Nama:</b> <a href=\"tg://user?id={tid}\">{name_str}</a>\n"
+                        f"<b>Username:</b> {uname_str}\n"
+                        f"<b>Kelompok:</b> {MABA_GROUP_NAMES.get(mg, mg)}"
                     )
-                    await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="Markdown")
+                    await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
                 except Exception as e:
                     import logging
                     logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok admin ke {KELOMPOK_GID}: {e}")
@@ -4099,7 +4112,7 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Hanya admin, owner, dekan, atau dosen/coach.")
         return
     if not context.args:
-        await update.message.reply_text("Gunakan format seperti /daftar, contoh: /detail all, /detail mhs")
+        await update.message.reply_text("Gunakan format seperti /daftar, contoh: /detail all, /detail sisya, /detail charya")
         return
 
     kind = context.args[0].lower()
@@ -4125,37 +4138,34 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         })
 
     title = "Detail Pengguna"
-    if kind == "admin":
+    if kind == "charya":
         for r in all_rows:
-            if r["role"] in (ROLE_OWNER, ROLE_ADMIN):
+            if r["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
                 push_row(r, json.loads(r["profile_json"] or "{}"))
     elif kind == "all":
         for r in all_rows:
             push_row(r, json.loads(r["profile_json"] or "{}"))
-    elif kind == "mhs":
+    elif kind == "sisya":
         for r in all_rows:
-            if r["role"] == ROLE_STUDENT:
+            if r["role"] in (ROLE_STUDENT, ROLE_BEM):
                 push_row(r, json.loads(r["profile_json"] or "{}"))
-    elif kind == "staf":
+    elif kind == "pravesi":
         for r in all_rows:
-            if r["role"] == ROLE_INTERNAL:
-                p = json.loads(r["profile_json"] or "{}")
-                p_jabs = normalize_multi_choice_value(p.get("position_detail"))
-                if "d_dosen" not in p_jabs and "d_guru_besar" not in p_jabs:
-                    push_row(r, p)
-    elif kind == "all_staf":
+            if r["role"] == ROLE_MABA:
+                push_row(r, json.loads(r["profile_json"] or "{}"))
+    elif kind == "publik":
         for r in all_rows:
-            if r["role"] in (ROLE_ADMIN, ROLE_INTERNAL):
+            if r["role"] == ROLE_PUBLIC:
                 push_row(r, json.loads(r["profile_json"] or "{}"))
     elif kind == "dosen":
         for r in all_rows:
             if r["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
                 p = json.loads(r["profile_json"] or "{}")
                 p_jabs = normalize_multi_choice_value(p.get("position_detail"))
-                if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs:
+                if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs or "d_coach" in p_jabs:
                     push_row(r, p)
     else:
-        await update.message.reply_text("Format tidak dikenali. Ketik /detail all atau mhs.")
+        await update.message.reply_text("Format tidak dikenali. Ketik /detail all, sisya, charya, pravesi, atau publik.")
         return
 
     is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)

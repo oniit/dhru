@@ -1,4 +1,6 @@
 import asyncio
+import time
+import requests
 import logging
 import re
 import os
@@ -36,7 +38,6 @@ async def process_userbot_requests(conn):
             action = row["action"]
             
             # Check expiration (if older than 30 seconds, mark as expired)
-            import time
             if time.time() - row["created_at"] > 30:
                 await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = 'EXPIRED' WHERE id = ?", (req_id,))
                 await conn.commit()
@@ -79,7 +80,6 @@ async def process_pending_links():
                 created_at = row["created_at"]
                 
                 # Check expiration (2 days)
-                import time
                 if time.time() - created_at > 2 * 24 * 3600:
                     await conn.execute("UPDATE promo_verifications SET status = 'EXPIRED' WHERE id = ?", (req_id,))
                     await conn.commit()
@@ -95,8 +95,7 @@ async def process_pending_links():
                     if not match:
                         await conn.execute("UPDATE promo_verifications SET status = 'INVALID_URL' WHERE id = ?", (req_id,))
                         await conn.commit()
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
@@ -113,8 +112,7 @@ async def process_pending_links():
                         if not stories or not stories[0]:
                             await conn.execute("UPDATE promo_verifications SET status = 'NOT_FOUND' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -137,8 +135,7 @@ async def process_pending_links():
                         if not valid_sender:
                             await conn.execute("UPDATE promo_verifications SET status = 'SENDER_MISMATCH' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -177,9 +174,8 @@ async def process_pending_links():
                         if not has_channel_post:
                             await conn.execute("UPDATE promo_verifications SET status = 'NO_KEYWORD' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
                             reason = f"(Harus memuat repost dari: {story_post_link})" if story_post_link else "(Link target belum disetel oleh admin)"
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -200,8 +196,7 @@ async def process_pending_links():
                             message_id=None
                         )
                         await conn.commit()
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
@@ -216,8 +211,7 @@ async def process_pending_links():
                         log.error(f"Error reading story {link}: {e}")
                         await conn.execute("UPDATE promo_verifications SET status = 'ERROR' WHERE id = ?", (req_id,))
                         await conn.commit()
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
@@ -231,8 +225,7 @@ async def process_pending_links():
                     if not match:
                         await conn.execute("UPDATE promo_verifications SET status = 'INVALID_URL' WHERE id = ?", (req_id,))
                         await conn.commit()
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
@@ -247,8 +240,7 @@ async def process_pending_links():
                     if chat_id == "c":
                         await conn.execute("UPDATE promo_verifications SET status = 'PRIVATE_GROUP_NOT_SUPPORTED' WHERE id = ?", (req_id,))
                         await conn.commit()
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,
@@ -262,8 +254,7 @@ async def process_pending_links():
                         if not msg or msg.empty:
                             await conn.execute("UPDATE promo_verifications SET status = 'NOT_FOUND' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -278,8 +269,7 @@ async def process_pending_links():
                         if lpm_keyword.lower() not in text.lower():
                             await conn.execute("UPDATE promo_verifications SET status = 'NO_KEYWORD' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -299,8 +289,7 @@ async def process_pending_links():
                         if not valid_sender:
                             await conn.execute("UPDATE promo_verifications SET status = 'SENDER_MISMATCH' WHERE id = ?", (req_id,))
                             await conn.commit()
-                            import requests
-                            requests.post(
+                            await asyncio.to_thread(requests.post,
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
@@ -322,8 +311,7 @@ async def process_pending_links():
                         await conn.commit()
                         log.info(f"Link {link} VALID. +1 Agra for {main_user_id}")
                         
-                        import requests
-                        requests.post(
+                        await asyncio.to_thread(requests.post,
                             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                             json={
                                 "chat_id": main_user_id,

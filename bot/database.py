@@ -350,6 +350,15 @@ CREATE TABLE IF NOT EXISTS user_chat_stats (
     last_active_at REAL NOT NULL,
     PRIMARY KEY (user_id, chat_id)
 );
+
+CREATE TABLE IF NOT EXISTS broadcast_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_text TEXT NOT NULL,
+    target_users_json TEXT NOT NULL,
+    processed_users_json TEXT NOT NULL DEFAULT '[]',
+    reporter_id INTEGER,
+    status TEXT DEFAULT 'pending'
+);
 """
 
 class AiosqliteRowMock:
@@ -421,17 +430,8 @@ class AiosqliteConnectionMock:
         # Hindari memecah titik koma di dalam string literal.
         # SQLite membolehkan mengeksekusi banyak statement dalam satu execute di bbrp driver.
         try:
-            # Gunakan sqlite3 API internal jika memungkinkan untuk memisahkan statement secara aman
-            import sqlite3
-            statements = []
-            stmt = ""
-            for line in sql_script.splitlines():
-                stmt += line + "\n"
-                if sqlite3.complete_statement(stmt):
-                    statements.append(stmt.strip())
-                    stmt = ""
-            if stmt.strip():
-                statements.append(stmt.strip())
+            # Gunakan split sederhana (diasumsikan tidak ada semicolon di dalam string literal schema)
+            statements = [s.strip() for s in sql_script.split(";") if s.strip()]
                 
             if hasattr(self.client, "batch"):
                 await self.client.batch(statements)
@@ -442,6 +442,7 @@ class AiosqliteConnectionMock:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error("executescript error: %s", e)
+            raise e
 
     async def commit(self):
         pass
@@ -460,27 +461,28 @@ class Database:
         
         if turso_url and turso_token and libsql_client:
             client = libsql_client.create_client(url=turso_url, auth_token=turso_token)
-            return AiosqliteConnectionMock(client)
-
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = await aiosqlite.connect(self.path)
-        conn.row_factory = aiosqlite.Row
-        
+            conn = AiosqliteConnectionMock(client)
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            conn = await aiosqlite.connect(self.path)
+            conn.row_factory = aiosqlite.Row
+            
         await conn.executescript(SCHEMA)
         try:
             await conn.execute("ALTER TABLE attendance_sessions ADD COLUMN extra_data TEXT")
         except Exception:
             pass
         
-        tagall_path = self.path.parent / "tagall.db"
-        if tagall_path.exists():
-            try:
-                await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
-                await conn.execute("INSERT OR IGNORE INTO group_seen_users SELECT * FROM tagall.group_seen_users")
-                await conn.execute("DETACH DATABASE tagall")
-                tagall_path.rename(tagall_path.parent / "tagall.db.bak")
-            except Exception:
-                pass
+        if not hasattr(conn, "client"):  # Not Turso
+            tagall_path = self.path.parent / "tagall.db"
+            if tagall_path.exists():
+                try:
+                    await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
+                    await conn.execute("INSERT OR IGNORE INTO group_seen_users SELECT * FROM tagall.group_seen_users")
+                    await conn.execute("DETACH DATABASE tagall")
+                    tagall_path.rename(tagall_path.parent / "tagall.db.bak")
+                except Exception:
+                    pass
 
         cur = await conn.execute("PRAGMA table_info(attendance_sessions)")
         cols = {str(r[1]) for r in await cur.fetchall()}
@@ -836,6 +838,33 @@ class Database:
         )
         await conn.commit()
 
+    async def add_agra_cashback_if_first_today(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        target_id: int,
+        amount: int,
+        description: str,
+        start_of_day_utc: float
+    ) -> bool:
+        # Atomic insert only if this user hasn't received this specific cashback today
+        cur = await conn.execute(
+            """
+            INSERT INTO agra_ledger (
+                target_telegram_id, actor_telegram_id, amount, description,
+                chat_id, message_id, created_at
+            )
+            SELECT ?, ?, ?, ?, NULL, NULL, ?
+            WHERE (
+                SELECT COUNT(*) FROM agra_ledger
+                WHERE target_telegram_id = ? AND description = ? AND created_at >= ?
+            ) = 0
+            """,
+            (target_id, target_id, amount, description, time.time(), target_id, description, start_of_day_utc),
+        )
+        await conn.commit()
+        return getattr(cur, "rowcount", 0) > 0 or getattr(cur, "rows_affected", 0) > 0
+
     async def deduct_agra_if_sufficient(
         self,
         conn: aiosqlite.Connection,
@@ -940,7 +969,7 @@ class Database:
     async def get_attendance_session(
         self, conn: aiosqlite.Connection, session_id: int
     ) -> aiosqlite.Row | None:
-        await self._auto_close_stale_sessions(conn)
+        # stale session check handled by cron
         cur = await conn.execute(
             "SELECT * FROM attendance_sessions WHERE id = ?", (session_id,)
         )
@@ -973,7 +1002,7 @@ class Database:
     async def get_open_session_for_class(
         self, conn: aiosqlite.Connection, class_id: str
     ) -> aiosqlite.Row | None:
-        await self._auto_close_stale_sessions(conn)
+        # stale session check handled by cron
         cur = await conn.execute(
             """
             SELECT * FROM attendance_sessions
@@ -987,7 +1016,7 @@ class Database:
     async def get_open_session_for_classes(
         self, conn: aiosqlite.Connection, class_ids: list[str]
     ) -> aiosqlite.Row | None:
-        await self._auto_close_stale_sessions(conn)
+        # stale session check handled by cron
         if not class_ids:
             return None
         placeholders = ",".join("?" * len(class_ids))
@@ -1022,7 +1051,7 @@ class Database:
                 )
                 await conn.commit()
                 return True, ""
-            except Exception:
+            except aiosqlite.IntegrityError:
                 # Jika terjadi race condition dan insert gagal krn constraint UNIQUE, coba update
                 cur = await conn.execute(
                     "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ? AND status != ?",
@@ -1071,7 +1100,7 @@ class Database:
     async def recent_open_sessions(
         self, conn: aiosqlite.Connection, limit: int = 10
     ) -> list[aiosqlite.Row]:
-        await self._auto_close_stale_sessions(conn)
+        # stale session check handled by cron
         cur = await conn.execute(
             """
             SELECT * FROM attendance_sessions WHERE closed_at IS NULL
@@ -1254,10 +1283,11 @@ class Database:
     ) -> list[tuple[int, str]]:
         if chat_type == "group":
             query = "SELECT chat_id, title FROM bot_chats WHERE is_active = 1 AND type IN ('group', 'supergroup')"
+            cur = await conn.execute(query)
         else:
-            query = f"SELECT chat_id, title FROM bot_chats WHERE is_active = 1 AND type = '{chat_type}'"
+            query = "SELECT chat_id, title FROM bot_chats WHERE is_active = 1 AND type = ?"
+            cur = await conn.execute(query, (chat_type,))
             
-        cur = await conn.execute(query)
         rows = await cur.fetchall()
         return [(int(r["chat_id"]), r["title"]) for r in rows]
 
@@ -1312,7 +1342,7 @@ class Database:
         return await cur.fetchall()
 
     async def submit_task(
-        self, conn: aiosqlite.Connection, *, task_id: int, student_id: int, content: str
+        self, conn: aiosqlite.Connection, *, task_id: int, student_id: int, content: str, _retry: bool = False
     ) -> int:
         now = time.time()
         # Upsert: if rejected or already submitted (not accepted), allow resubmit
@@ -1346,10 +1376,12 @@ class Database:
             )
             await conn.commit()
             return cur.lastrowid
-        except Exception:
+        except aiosqlite.IntegrityError as e:
             # Race condition: row inserted by another request between SELECT and INSERT
-            # Retry to let the UPDATE logic handle it
-            return await self.submit_task(conn, task_id=task_id, student_id=student_id, content=content)
+            # Retry to let the UPDATE logic handle it (only once)
+            if not _retry:
+                return await self.submit_task(conn, task_id=task_id, student_id=student_id, content=content, _retry=True)
+            raise e
 
     async def get_submission(
         self, conn: aiosqlite.Connection, submission_id: int
@@ -2308,6 +2340,42 @@ class Database:
     async def get_user_chat_tier(self, conn: aiosqlite.Connection, user_id: int) -> str:
         tiers = await self.get_all_users_chat_tiers(conn)
         return tiers.get(user_id, "C")
+
+    async def add_broadcast_job(
+        self,
+        conn: aiosqlite.Connection,
+        message_text: str,
+        target_users: list[int],
+        reporter_id: int
+    ) -> int:
+        cur = await conn.execute(
+            """
+            INSERT INTO broadcast_jobs (message_text, target_users_json, reporter_id)
+            VALUES (?, ?, ?)
+            """,
+            (message_text, json.dumps(target_users), reporter_id)
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+    async def get_pending_broadcast_job(self, conn: aiosqlite.Connection) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM broadcast_jobs WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
+        )
+        return await cur.fetchone()
+
+    async def update_broadcast_job(
+        self,
+        conn: aiosqlite.Connection,
+        job_id: int,
+        processed_users: list[int],
+        status: str
+    ) -> None:
+        await conn.execute(
+            "UPDATE broadcast_jobs SET processed_users_json = ?, status = ? WHERE id = ?",
+            (json.dumps(processed_users), status, job_id)
+        )
+        await conn.commit()
 
 __all__ = [
     "Database",

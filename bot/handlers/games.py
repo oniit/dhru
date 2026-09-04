@@ -88,7 +88,7 @@ async def cmd_cek_setting(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(f"Belum ada setting yang diatur untuk game '{game_name}'.")
         return
         
-    text = f"⚙️ **Daftar Setting '{game_name}'**:\n"
+    text = f"⚙️ *Daftar Setting '{game_name}'*:\n"
     for s in settings:
         text += f"- `{s}`\n"
         

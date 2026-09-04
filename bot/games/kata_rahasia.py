@@ -49,7 +49,7 @@ async def mulai_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await db.start_game_session(conn, chat_id, "kata_rahasia", setting_name, initial_state)
     
     await update.message.reply_text(
-        f"🎮 **Kata Rahasia** dimulai!\n📍 Setting: {setting_name}\n🔐 Jumlah kata: {len(active_words)}\n\n"
+        f"🎮 *Kata Rahasia* dimulai!\n📍 Setting: {setting_name}\n🔐 Jumlah kata: {len(active_words)}\n\n"
         "Bermainlah secara natural, sebutkan kata-kata rahasia yang tepat untuk mendapatkan poin!",
         parse_mode="Markdown"
     )
@@ -92,6 +92,11 @@ async def proses_pesan_kata_rahasia(update: Update, context: ContextTypes.DEFAUL
         
         # Update state to DB
         await db.update_game_session_state(conn, session["id"], state)
+        
+        # Convert session to mutable dict to avoid TypeError on Row objects
+        if not isinstance(session, dict):
+            session = {k: session[k] for k in session.keys()}
+            
         session["state_json"] = json.dumps(state)
         
         await update.message.reply_text(
@@ -116,13 +121,13 @@ async def status_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE
     players_count = len(scores)
     
     status_text = (
-        f"🎮 **Status Kata Rahasia**\n"
+        f"🎮 *Status Kata Rahasia*\n"
         f"📍 Setting: {session['setting_name']}\n"
         f"🔐 Kata tersisa: {len(active_words)}/{total_words}"
     )
     
     if scores:
-        status_text += "\n\n📊 **Skor Sementara:**\n"
+        status_text += "\n\n📊 *Skor Sementara:*\n"
         sorted_scores = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
         for i, s in enumerate(sorted_scores[:10]):
             status_text += f"{i+1}. {s['name']} — {s['score']} poin\n"
@@ -146,12 +151,12 @@ async def berhenti_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TY
     scores = state.get("scores", {})
     
     if not scores:
-        await update.message.reply_text("🎉 **KATA RAHASIA SELESAI!**\n\nBelum ada poin yang terkumpul.", parse_mode="Markdown")
+        await update.message.reply_text("🎉 *KATA RAHASIA SELESAI!*\n\nBelum ada poin yang terkumpul.", parse_mode="Markdown")
         return
         
     sorted_scores = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
     
-    lines = ["🎉 **KATA RAHASIA SELESAI!**\n", "🏆 **HASIL AKHIR**"]
+    lines = ["🎉 *KATA RAHASIA SELESAI!*\n", "🏆 *HASIL AKHIR*"]
     medals = ["🥇", "🥈", "🥉"]
     
     for i, s in enumerate(sorted_scores):
@@ -172,12 +177,12 @@ async def hasil_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE,
     scores = state.get("scores", {})
     
     if not scores:
-        await update.message.reply_text("📉 **HASIL KATA RAHASIA TERAKHIR**\n\nBelum ada poin yang terkumpul pada sesi tersebut.", parse_mode="Markdown")
+        await update.message.reply_text("📉 *HASIL KATA RAHASIA TERAKHIR*\n\nBelum ada poin yang terkumpul pada sesi tersebut.", parse_mode="Markdown")
         return
         
     sorted_scores = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
     
-    lines = ["📜 **HASIL KATA RAHASIA TERAKHIR**\n"]
+    lines = ["📜 *HASIL KATA RAHASIA TERAKHIR*\n"]
     medals = ["🥇", "🥈", "🥉"]
     
     for i, s in enumerate(sorted_scores):

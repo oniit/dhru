@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import html
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -103,7 +104,7 @@ def _format_presensi_block(
         date_str = dt.strftime("%d %B %Y")
         
         lines = [
-            f"📋 <b>{c_lab}</b> — {date_str}",
+            f"📋 <b>{html.escape(c_lab)}</b> — {date_str}",
         ]
         if closed:
             lines.append("<i>Sesi harian telah ditutup.</i>")
@@ -111,7 +112,7 @@ def _format_presensi_block(
             lines.append("Ketuk tombol <b>Hadir</b> dari pesan Bot (DM) Anda.")
     else:
         lines = [
-            f"📋 <b>Presensi</b> <code>#{sess['id']}</code> — {c_lab}",
+            f"📋 <b>Presensi</b> <code>#{sess['id']}</code> — {html.escape(c_lab)}",
             f"Dibuka: {format_local_time(sess['opened_at'])}",
         ]
         closed_at = sess["closed_at"]
@@ -133,6 +134,7 @@ def _format_presensi_block(
         for r in hadir_records:
             pj = json.loads(r["profile_json"] or "{}")
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+            name = html.escape(name)
             if show_record_times:
                 lines.append(
                     f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
@@ -149,6 +151,7 @@ def _format_presensi_block(
                 for r in izin_records:
                     pj = json.loads(r["profile_json"] or "{}")
                     name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+                    name = html.escape(name)
                     if show_record_times:
                         lines.append(
                             f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"

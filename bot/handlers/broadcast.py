@@ -1,6 +1,7 @@
 import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.error import RetryAfter
 
 from bot.handlers.common import user_row
 
@@ -37,22 +38,5 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("Tidak ada user yang sesuai kriteria.")
         return
         
-    await update.message.reply_text(f"Memulai broadcast ke {len(rows)} user...")
-    
-    context.application.create_task(
-        run_broadcast(context, [r["telegram_id"] for r in rows], message, uid)
-    )
-
-async def run_broadcast(context: ContextTypes.DEFAULT_TYPE, uids: list[int], message: str, reporter_id: int):
-    success = 0
-    fail = 0
-    for i, user_id in enumerate(uids):
-        try:
-            await context.bot.send_message(chat_id=user_id, text=message)
-            success += 1
-        except Exception:
-            fail += 1
-        if i % 20 == 0:
-            await asyncio.sleep(1)
-            
-    await context.bot.send_message(chat_id=reporter_id, text=f"Broadcast selesai:\nBerhasil: {success}\nGagal: {fail}")
+    job_id = await db.add_broadcast_job(conn, message, [r["telegram_id"] for r in rows], uid)
+    await update.message.reply_text(f"✅ Memulai broadcast ke {len(rows)} user (Job ID: {job_id}).\nSistem akan mengirimkan pesan di *background* untuk menghindari spam limit. Anda akan menerima notifikasi jika proses telah selesai.", parse_mode="Markdown")

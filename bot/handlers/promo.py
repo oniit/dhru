@@ -70,8 +70,9 @@ async def lpm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
         
     link = context.args[0]
-    if "t.me/" not in link:
-        await update.message.reply_text("Link tidak valid. Pastikan link berasal dari Telegram (mengandung t.me).")
+    import re
+    if not re.match(r"^https?://t\.me/", link):
+        await update.message.reply_text("Link tidak valid. Pastikan link diawali dengan https://t.me/")
         return
 
     db: Database = context.bot_data["db"]
@@ -127,7 +128,7 @@ async def handle_otp_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         success = await db.add_linked_account(conn, main_user_id, promo_user_id)
         if success:
             await update.message.reply_text(
-                "✅ **Berhasil!** Akun ini sekarang tertaut sebagai Akun Kerja.\n\n"
+                "✅ <b>Berhasil!</b> Akun ini sekarang tertaut sebagai Akun Kerja.\n\n"
                 "Mulai sekarang, semua link promosi yang dikirim oleh akun ini bisa diklaim menggunakan akun utama."
             )
             # Notifikasi ke akun utama
@@ -237,8 +238,9 @@ async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
         
     link = context.args[0]
-    if "t.me/" not in link or "/s/" not in link:
-        await update.message.reply_text("Link tidak valid. Pastikan formatnya benar (contoh: t.me/username/s/15).")
+    import re
+    if not re.match(r"^https?://t\.me/", link) or "/s/" not in link:
+        await update.message.reply_text("Link tidak valid. Pastikan formatnya benar (contoh: https://t.me/username/s/15).")
         return
 
     db: Database = context.bot_data["db"]

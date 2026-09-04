@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from telegram import Update
 from telegram.ext import ContextTypes
+import json
 import time
 import re
 
-from bot.settings import PROFILE_FIELDS, PETINGGI_GID, MABA_GROUP_NAMES
+from bot.settings import PROFILE_FIELDS, PETINGGI_GID, MABA_GROUP_NAMES, MABA_GROUP_GIDS
 
 from .common import (
+    can_approve_profile,
     can_report,
     field_label_for_key,
     missing_required_fields,
@@ -193,7 +195,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await db.update_game_session_state(conn, session_id, state)
             
         await db.set_onboarding_step(conn, uid, None)
-        await update.message.reply_text(f"✅ Berhasil menyetor **{deposit_val}** kantong rempah! Silakan kembali ke grup.", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Berhasil menyetor <b>{deposit_val}</b> kantong rempah! Silakan kembali ke grup.", parse_mode="HTML")
         return
 
     if step == "MABA_NAME":
@@ -204,8 +206,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         from bot.handlers.common import award_lengkapi_agra
         await award_lengkapi_agra(conn, db, uid, "full_name", profile_before, context, update.message.chat_id)
         
+        import html as html_module
         await db.set_onboarding_step(conn, uid, "MABA_REASON")
-        await update.message.reply_text(f"Terima kasih, {name}. Selanjutnya, ketikkan **Alasan Bergabung** Anda:", parse_mode="Markdown")
+        await update.message.reply_text(f"Terima kasih, {html_module.escape(name)}. Selanjutnya, ketikkan <b>Alasan Bergabung</b> Anda:", parse_mode="HTML")
         return
         
     if step == "MABA_REASON":
@@ -219,24 +222,23 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if MABA_CH_IDS:
             text_verify, _ = await build_maba_verification_text(context, uid)
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("Verifikasi Kembali", callback_data="maba:verify")]])
-            await update.message.reply_text(text_verify, reply_markup=kb, parse_mode="Markdown")
+            await update.message.reply_text(text_verify, reply_markup=kb, parse_mode="HTML")
+            await db.set_onboarding_step(conn, uid, "MABA_VERIFY_WAIT")
         else:
             # Skip checking if no channels defined
             await db.set_onboarding_step(conn, uid, "MABA_PROMO_WAIT")
             
             instruction_text = (
                 "✅ Alasan diterima!\n\n"
-                "**Langkah Terakhir:**\n"
-                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal **1x promosi** (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
+                "<b>Langkah Terakhir:</b>\n"
+                "Sebelum kamu mendapatkan link grup OSPEK, silakan lakukan minimal <b>1x promosi</b> (menyebar postingan OPSTUD ke minimal 1 LPM atau share di Telegram Story).\n\n"
                 "Kirimkan buktinya ke sini dengan format:\n"
-                "`/lpm <link_pesan>` atau `/story <link_story>`\n\n"
-                "Jika sistem sudah membalas '*Link berhasil divalidasi*', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
+                "<code>/lpm &lt;link_pesan&gt;</code> atau <code>/story &lt;link_story&gt;</code>\n\n"
+                "Jika sistem sudah membalas '<i>Link berhasil divalidasi</i>', klik tombol di bawah ini untuk mengambil link grup OSPEK-mu."
             )
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎁 Ambil Link OSPEK", callback_data="maba:claim_ospek")]])
-            await update.message.reply_text(instruction_text, reply_markup=kb, parse_mode="Markdown")
+            await update.message.reply_text(instruction_text, reply_markup=kb, parse_mode="HTML")
             
-
-        await db.set_onboarding_step(conn, uid, None)
         return
 
     if step == "INPUT_CODE":
@@ -319,18 +321,17 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         name_str = prof_u.get("full_name", "Tanpa Nama")
                         username_str = f"@{row_u['username']}" if row_u and row_u.get("username") else "-"
                         msg_kelompok = (
-                            f"📣 **Alokasi Kelompok MABA**\n\n"
-                            f"**Nama:** [{name_str}](tg://user?id={uid})\n"
-                            f"**Username:** {username_str}\n"
-                            f"**Kelompok:** {MABA_GROUP_NAMES.get(maba_group, maba_group)}"
+                            f"📣 <b>Alokasi Kelompok MABA</b>\n\n"
+                            f"<b>Nama:</b> <a href=\"tg://user?id={uid}\">{name_str}</a>\n"
+                            f"<b>Username:</b> {username_str}\n"
+                            f"<b>Kelompok:</b> {MABA_GROUP_NAMES.get(maba_group, maba_group)}"
                         )
-                        await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="Markdown")
+                        await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
                     except Exception as e:
                         import logging
                         logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
                 
                 if _is_lengkapi_done(prof_u):
-                    from bot.settings import MABA_GROUP_GIDS
                     link = "(Grup kelompok belum disetel oleh admin)"
                     try:
                         if len(MABA_GROUP_GIDS) >= maba_group:
@@ -440,12 +441,17 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if new_row["role"] == "internal":
                 await update.message.reply_text("✨ Terima kasih. Data awal Anda sudah lengkap. Anda kini dapat mulai beraktivitas, silakan ketik /kontrak untuk membuat ID Card Pegawai Anda.")
             elif new_row["role"] == "maba":
-                from bot.settings import MABA_GROUP_LINKS
-                mg = int(new_profile.get("maba_group", 1))
-                link = MABA_GROUP_LINKS[mg - 1]
-                if not link:
-                    link = "(Link belum disetel oleh admin)"
-                await update.message.reply_text(f"✨ Terima kasih. Data awal Anda sudah lengkap.\n\nAnda dimasukkan ke Kelompok {mg}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}")
+                mg_str = new_profile.get("maba_group", "1")
+                mg = int(mg_str) if str(mg_str).isdigit() else 1
+                link = "(Link belum disetel oleh admin)"
+                if len(MABA_GROUP_GIDS) >= mg:
+                    gid = MABA_GROUP_GIDS[mg - 1]
+                    try:
+                        inv = await context.bot.create_chat_invite_link(gid, member_limit=1)
+                        link = inv.invite_link
+                    except Exception:
+                        pass
+                await update.message.reply_text(f"✨ Terima kasih. Data awal Anda sudah lengkap.\n\nAnda dimasukkan ke Kelompok {MABA_GROUP_NAMES.get(mg, mg)}. Silakan klik link berikut untuk bergabung ke grup kelompok Anda:\n{link}")
             else:
                 await update.message.reply_text("✨ Terima kasih. Data awal Anda sudah lengkap. Anda kini dapat menggunakan seluruh fitur sesuai role Anda.")
         else:
@@ -494,22 +500,32 @@ async def track_group_activity(
     db = _db(context)
     u = update.effective_user
     try:
-        await db.touch_group_seen_user(
-            conn,
-            chat_id=update.effective_chat.id,
-            telegram_id=u.id,
-            username=u.username,
-            first_name=u.first_name,
-            last_name=u.last_name,
-            is_bot=u.is_bot,
-        )
-        await db.upsert_bot_chat(
-            conn=conn,
-            chat_id=update.effective_chat.id,
-            chat_type=update.effective_chat.type,
-            title=update.effective_chat.title or "Tanpa Nama",
-            is_active=True
-        )
+        import time
+        now = time.time()
+        cache = context.bot_data.setdefault("group_activity_cache", {})
+        cache_key = (u.id, update.effective_chat.id)
+        last_seen = cache.get(cache_key, 0)
+        
+        # Debounce seen_user and upsert_bot_chat to once per hour per user/group
+        if now - last_seen > 3600:
+            await db.touch_group_seen_user(
+                conn,
+                chat_id=update.effective_chat.id,
+                telegram_id=u.id,
+                username=u.username,
+                first_name=u.first_name,
+                last_name=u.last_name,
+                is_bot=u.is_bot,
+            )
+            await db.upsert_bot_chat(
+                conn=conn,
+                chat_id=update.effective_chat.id,
+                chat_type=update.effective_chat.type,
+                title=update.effective_chat.title or "Tanpa Nama",
+                is_active=True
+            )
+            cache[cache_key] = now
+            
         if not u.is_bot:
             await db.increment_message_count(
                 conn=conn,
