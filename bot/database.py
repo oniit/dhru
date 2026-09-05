@@ -296,6 +296,13 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS group_game_permissions (
+    chat_id INTEGER NOT NULL,
+    game_name TEXT NOT NULL,
+    is_allowed INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (chat_id, game_name)
+);
+
 CREATE TABLE IF NOT EXISTS menfess_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER NOT NULL,
@@ -2376,6 +2383,36 @@ class Database:
             (json.dumps(processed_users), status, job_id)
         )
         await conn.commit()
+
+    async def get_group_game_permissions(self, conn: aiosqlite.Connection, chat_id: int) -> dict[str, bool]:
+        cur = await conn.execute(
+            "SELECT game_name, is_allowed FROM group_game_permissions WHERE chat_id = ?",
+            (chat_id,)
+        )
+        rows = await cur.fetchall()
+        return {row["game_name"]: bool(row["is_allowed"]) for row in rows}
+
+    async def set_group_game_permission(self, conn: aiosqlite.Connection, chat_id: int, game_name: str, is_allowed: bool) -> None:
+        val = 1 if is_allowed else 0
+        await conn.execute(
+            """
+            INSERT INTO group_game_permissions (chat_id, game_name, is_allowed)
+            VALUES (?, ?, ?)
+            ON CONFLICT(chat_id, game_name) DO UPDATE SET is_allowed = ?
+            """,
+            (chat_id, game_name, val, val)
+        )
+        await conn.commit()
+
+    async def is_game_allowed(self, conn: aiosqlite.Connection, chat_id: int, game_name: str) -> bool:
+        cur = await conn.execute(
+            "SELECT is_allowed FROM group_game_permissions WHERE chat_id = ? AND game_name = ?",
+            (chat_id, game_name)
+        )
+        row = await cur.fetchone()
+        if row:
+            return bool(row["is_allowed"])
+        return False
 
 __all__ = [
     "Database",

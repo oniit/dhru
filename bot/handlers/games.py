@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import bot.games.kata_rahasia as kata_rahasia
 import bot.games.kantong_rempah as kantong_rempah
@@ -15,6 +15,92 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 def _is_admin(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     from bot.settings import ADMIN_IDS, OWNER_ID
     return user_id == OWNER_ID or user_id in ADMIN_IDS
+
+AVAILABLE_GAMES = {
+    "kata_rahasia": "Kata Rahasia",
+    "kantong_rempah": "Kantong Rempah",
+    "tahan_dulu": "Tahan Dulu",
+    "adu_react": "Adu React",
+    "tujuh_pusaka": "Tujuh Pusaka",
+}
+
+async def cmd_settings_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+        
+    if update.effective_chat.type == "private":
+        await update.message.reply_text("Pengaturan game hanya bisa dilakukan di grup.")
+        return
+
+    if not _is_admin(update.effective_user.id, context):
+        await update.message.reply_text("Hanya admin/owner yang bisa mengatur game di grup ini.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+    chat_id = update.effective_chat.id
+
+    permissions = await db.get_group_game_permissions(conn, chat_id)
+    
+    keyboard = []
+    for g_id, g_name in AVAILABLE_GAMES.items():
+        is_allowed = permissions.get(g_id, False)
+        status = "✅" if is_allowed else "❌"
+        text = f"{status} {g_name}"
+        cb_data = f"gamesettings:{chat_id}:{g_id}:{'0' if is_allowed else '1'}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=cb_data)])
+        
+    keyboard.append([InlineKeyboardButton("💾 Simpan & Tutup", callback_data=f"gamesettings:{chat_id}:close:0")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("⚙️ <b>Pengaturan Mini-Games Grup</b>\n\nKlik tombol di bawah untuk mengaktifkan (✅) atau menonaktifkan (❌) game di grup ini.", reply_markup=reply_markup, parse_mode="HTML")
+
+async def on_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data.startswith("gamesettings:"):
+        return
+
+    if not _is_admin(update.effective_user.id, context):
+        await query.answer("Hanya admin/owner yang bisa mengubah pengaturan.", show_alert=True)
+        return
+
+    parts = query.data.split(":")
+    if len(parts) != 4:
+        return
+    
+    chat_id = int(parts[1])
+    g_id = parts[2]
+    new_status = parts[3] == "1"
+
+    if update.effective_chat.id != chat_id:
+        await query.answer("Mismatched chat ID.", show_alert=True)
+        return
+
+    if g_id == "close":
+        await query.message.delete()
+        await query.answer("Pengaturan disimpan.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+
+    await db.set_group_game_permission(conn, chat_id, g_id, new_status)
+    
+    # Rebuild keyboard
+    permissions = await db.get_group_game_permissions(conn, chat_id)
+    keyboard = []
+    for g, g_name in AVAILABLE_GAMES.items():
+        is_allowed = permissions.get(g, False)
+        status = "✅" if is_allowed else "❌"
+        text = f"{status} {g_name}"
+        cb_data = f"gamesettings:{chat_id}:{g}:{'0' if is_allowed else '1'}"
+        keyboard.append([InlineKeyboardButton(text, callback_data=cb_data)])
+
+    keyboard.append([InlineKeyboardButton("💾 Simpan & Tutup", callback_data=f"gamesettings:{chat_id}:close:0")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_reply_markup(reply_markup=reply_markup)
+    await query.answer(f"Status '{AVAILABLE_GAMES.get(g_id, g_id)}' diubah.")
 
 # /atur <game_name> <setting_name> [args...]
 async def cmd_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -123,6 +209,12 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     conn = _conn(context)
     db = _db(context)
     
+    # Check if game is allowed in this group
+    is_allowed = await db.is_game_allowed(conn, update.effective_chat.id, game_name)
+    if not is_allowed and game_name in AVAILABLE_GAMES:
+        await update.message.reply_text("❌ Game ini belum diaktifkan di grup ini oleh admin. Hubungi admin untuk mengaktifkannya lewat /settings_game.")
+        return
+
     if game_name == "kata_rahasia":
         await kata_rahasia.mulai_kata_rahasia(update, context, db, conn, setting_name)
     elif game_name == "kantong_rempah":

@@ -43,6 +43,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.
 
 ## Mini Games
+- `/settings_game` — (Owner/Admin Grup) Membuka menu interaktif untuk mengaktifkan/menonaktifkan game tertentu di grup ini. Game yang dinonaktifkan tidak dapat dimainkan.
 - `/atur <game_name> <setting_name> <args>` — Mengatur konfigurasi game (Create/Update).
 - `/hapus_setting <game_name> <setting_name>` — Menghapus konfigurasi game.
 - `/cek_setting <game_name>` — Menampilkan daftar konfigurasi game yang sudah diatur.

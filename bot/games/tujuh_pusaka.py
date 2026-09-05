@@ -85,6 +85,24 @@ async def job_tujuh_pusaka_reminder(context: ContextTypes.DEFAULT_TYPE):
         
     await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
 
+async def job_tujuh_pusaka_round_reminder(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    chat_id = job.chat_id
+    text = job.data["text"]
+    session_id = job.data["session_id"]
+    round_num = job.data["round"]
+    
+    db = context.application.bot_data["db"]
+    conn = context.application.bot_data["conn"]
+    
+    session = await db.get_active_game_session(conn, chat_id)
+    if not session or session["id"] != session_id: return
+        
+    state = json.loads(session["state_json"])
+    if state["phase"] != PHASE_PLAYING or state["round"] != round_num: return
+        
+    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+
 async def job_tujuh_pusaka_autostart(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     chat_id = job.chat_id
@@ -132,6 +150,9 @@ async def job_tujuh_pusaka_autostart(context: ContextTypes.DEFAULT_TYPE):
         name=f"tujuh_pusaka_timeout_{chat_id}",
         data={"session_id": session_id, "round": 1}
     )
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 60, chat_id=chat_id, name=f"tpr_rem1_{chat_id}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 1 menit lagi! Segera pilih kartu Anda."})
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 90, chat_id=chat_id, name=f"tpr_rem2_{chat_id}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 30 detik lagi!"})
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 105, chat_id=chat_id, name=f"tpr_rem3_{chat_id}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 15 detik lagi!"})
 
 async def ikut_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     session_id = session["id"]
@@ -204,6 +225,9 @@ async def paksa_mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT
         name=f"tujuh_pusaka_timeout_{session['chat_id']}",
         data={"session_id": session_id, "round": 1}
     )
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 60, chat_id=session["chat_id"], name=f"tpr_rem1_{session['chat_id']}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 1 menit lagi! Segera pilih kartu Anda."})
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 90, chat_id=session["chat_id"], name=f"tpr_rem2_{session['chat_id']}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 30 detik lagi!"})
+    context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 105, chat_id=session["chat_id"], name=f"tpr_rem3_{session['chat_id']}", data={"session_id": session_id, "round": 1, "text": "⏳ <b>Ronde 1</b>: 15 detik lagi!"})
 
 async def proses_pesan_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     if not update.message or not update.message.text:
@@ -450,6 +474,9 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
                 name=f"tujuh_pusaka_timeout_{chat_id}",
                 data={"session_id": session_id, "round": state["round"]}
             )
+            context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 60, chat_id=chat_id, name=f"tpr_rem1_{chat_id}", data={"session_id": session_id, "round": state["round"], "text": f"⏳ <b>Ronde {state['round']}</b>: 1 menit lagi! Segera pilih kartu Anda."})
+            context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 90, chat_id=chat_id, name=f"tpr_rem2_{chat_id}", data={"session_id": session_id, "round": state["round"], "text": f"⏳ <b>Ronde {state['round']}</b>: 30 detik lagi!"})
+            context.job_queue.run_once(job_tujuh_pusaka_round_reminder, 105, chat_id=chat_id, name=f"tpr_rem3_{chat_id}", data={"session_id": session_id, "round": state["round"], "text": f"⏳ <b>Ronde {state['round']}</b>: 15 detik lagi!"})
 
 async def status_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     state = json.loads(session["state_json"])

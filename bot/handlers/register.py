@@ -56,6 +56,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("hadir", attendance.cmd_hadir))
     
     # Games
+    application.add_handler(CommandHandler("settings_game", games.cmd_settings_game))
+    application.add_handler(CallbackQueryHandler(games.on_settings_callback, pattern="^gamesettings:"))
     application.add_handler(CommandHandler("atur", games.cmd_atur))
     application.add_handler(CommandHandler("hapus_setting", games.cmd_hapus_setting))
     application.add_handler(CommandHandler("cek_setting", games.cmd_cek_setting))

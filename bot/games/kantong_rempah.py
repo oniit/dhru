@@ -154,7 +154,7 @@ async def job_end_deposit_phase(context: ContextTypes.DEFAULT_TYPE):
     msg = await context.bot.send_message(
         chat_id=chat_id,
         text=f"⏳ <b>Waktu Setor Habis!</b>\n\n"
-             f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>1 bot</b>.\n"
+             f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>👩🏽 Si Cantik</b>.\n"
              f"Sekarang tebak total seluruh rempah yang terkumpul!\n\n"
              f"Ketik <code>/tebak &lt;angka&gt;</code> di grup ini (contoh: <code>/tebak 15</code>).\n\n"
              f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>\n"
@@ -238,7 +238,7 @@ async def job_end_guess_phase(context: ContextTypes.DEFAULT_TYPE):
     bot_diff = abs(bot_guess - total_deposit)
     results.append({
         "uid": "bot",
-        "name": "🤖 Komputer",
+        "name": "👩🏽 Si Cantik",
         "guess": bot_guess,
         "diff": bot_diff
     })
@@ -317,7 +317,7 @@ async def proses_tebakan_grup(update: Update, context: ContextTypes.DEFAULT_TYPE
                 chat_id=session["chat_id"],
                 message_id=state["guess_msg_id"],
                 text=f"⏳ <b>Waktu Setor Habis!</b>\n\n"
-                     f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>1 bot</b>.\n"
+                     f"Rempah berhasil dikumpulkan oleh <b>{players_count} pemain</b> + <b>👩🏽 Si Cantik</b>.\n"
                      f"Sekarang tebak total seluruh rempah yang terkumpul!\n\n"
                      f"Ketik <code>/tebak &lt;angka&gt;</code> di grup ini (contoh: <code>/tebak 15</code>).\n\n"
                      f"⏱ Waktu tebak: <b>{menit_tebak} menit</b>\n"
