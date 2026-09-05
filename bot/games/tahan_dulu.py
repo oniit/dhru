@@ -8,22 +8,43 @@ from telegram.ext import ContextTypes
 # PHASE CONSTANTS
 PHASE_WAITING = "waiting"
 
-# Command: /bermain tahan_dulu [delay_seconds]
+# Command: /bermain tahan_dulu [setting_name] [delay_seconds]
 async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, args_text: str):
     chat_id = update.effective_chat.id
     
-    # Parse delay
+    # Parse delay and setting
     delay_min = None
+    setting_name = None
+    
     if args_text:
         parts = args_text.split()
-        if len(parts) >= 1:
+        if len(parts) >= 2:
+            setting_name = parts[0]
+            try:
+                delay_min = int(parts[1])
+            except ValueError:
+                pass
+        elif len(parts) == 1:
             try:
                 delay_min = int(parts[0])
             except ValueError:
-                pass
+                setting_name = parts[0]
                 
     if not delay_min or delay_min <= 0:
         delay_min = random.randint(8, 15)
+        
+    valid_words = []
+    setting_display = ""
+    if setting_name:
+        setting_data = await db.get_game_setting(conn, "tahan_dulu", setting_name)
+        if setting_data:
+            valid_words = setting_data.get("valid_words", [])
+            if valid_words:
+                words_str = ", ".join(f"'{w}'" for w in valid_words)
+                setting_display = f"\n✅ <b>Kata Valid:</b> {words_str}\n(Pesan di luar kata ini akan diabaikan)\n"
+        else:
+            await update.message.reply_text(f"Setting '{setting_name}' tidak ditemukan untuk Tahan Dulu.")
+            return
     
     # Check if there is an active session
     active = await db.get_active_game_session(conn, chat_id)
@@ -38,12 +59,13 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         "phase": PHASE_WAITING,
         "start_time": start_time,
         "delay_min": delay_min,
+        "valid_words": valid_words,
         "early": {},       # dict {user_id: {"name": "..."}}
         "responses": [],   # list [{"uid": user_id, "name": "...", "diff": float}]
         "scores": {}       # dict {user_id: {"name": "...", "score": int}} (accumulated if needed)
     }
     
-    await db.start_game_session(conn, chat_id, "tahan_dulu", "default", initial_state)
+    await db.start_game_session(conn, chat_id, "tahan_dulu", setting_name or "default", initial_state)
     
     session = await db.get_active_game_session(conn, chat_id)
     if not session:
@@ -53,7 +75,8 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         f"⏳ <b>GAME: Tahan Dulu</b> ⏳\n\n"
         f"Tahan dulu...\n"
         f"Balas pesan apapun SEBELUM <b>{delay_min} detik</b> = penalti (-2).\n"
-        f"Setelah itu, yang merespons paling cepat dapat poin!\n\n"
+        f"Setelah itu, yang merespons paling cepat dapat poin!\n"
+        f"{setting_display}\n"
         f"<i>Waktu dimulai dari sekarang!</i>",
         parse_mode="HTML"
     )
@@ -79,6 +102,18 @@ async def proses_pesan_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_
         state = json.loads(current_session["state_json"])
         if state["phase"] != PHASE_WAITING:
             return
+            
+        msg_text = update.effective_message.text or ""
+        valid_words = state.get("valid_words", [])
+        if valid_words:
+            # Check if message matches any valid word
+            is_valid = False
+            for w in valid_words:
+                if msg_text.strip().lower() == w:
+                    is_valid = True
+                    break
+            if not is_valid:
+                return # Ignore message
             
         user = update.effective_user
         uid_str = str(user.id)
@@ -240,3 +275,24 @@ async def hasil_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         lines.append(f"{i}. {s['name']} — {s['score']}")
         
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+async def atur_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, setting_name: str, args_text: str):
+    if not args_text.strip():
+        await update.message.reply_text(f"Gunakan: /atur tahan_dulu {setting_name} <kata1>, <kata2>, ...")
+        return
+        
+    words = [w.strip().lower() for w in args_text.split(",") if w.strip()]
+    if not words:
+        await update.message.reply_text("Tidak ada kata valid yang terdeteksi.")
+        return
+        
+    data = {"valid_words": words}
+    await db.upsert_game_setting(conn, "tahan_dulu", setting_name, data)
+    
+    words_str = ", ".join(f"'{w}'" for w in words)
+    await update.message.reply_text(
+        f"✅ Setting <b>{setting_name}</b> untuk Tahan Dulu disimpan.\n"
+        f"Kata Valid: {words_str}\n\n"
+        f"Cara main: /bermain tahan_dulu {setting_name} [delay]",
+        parse_mode="HTML"
+    )

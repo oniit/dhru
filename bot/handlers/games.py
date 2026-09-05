@@ -125,6 +125,8 @@ async def cmd_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if game_name == "kata_rahasia":
         await kata_rahasia.atur_kata_rahasia(update, context, db, conn, setting_name, args_text)
+    elif game_name == "tahan_dulu":
+        await tahan_dulu.atur_tahan_dulu(update, context, db, conn, setting_name, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 

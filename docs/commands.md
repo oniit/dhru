@@ -54,7 +54,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/bermain <game_name> <args>` — Memulai sesi game di grup.
   - *Kata Rahasia:* `/bermain kata_rahasia <setting>`
   - *Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]`
-  - *Tahan Dulu:* `/bermain tahan_dulu [detik]`
+  - *Tahan Dulu:* `/bermain tahan_dulu [nama_setting] [delay_detik]`
   - *Adu React:* `/bermain adu_react`
   - *Tujuh Pusaka:* `/bermain tujuh_pusaka`
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
