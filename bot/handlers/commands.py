@@ -4290,17 +4290,16 @@ async def cmd_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if "{username}" in greeting:
             username = f"@{update.effective_user.username}" if update.effective_user.username else update.effective_user.first_name
             greeting_preview = greeting_preview.replace("{username}", username)
-            
         await update.message.reply_text(
             f"ℹ️ Pesan selamat datang yang aktif saat ini:\n\n{greeting_preview}\n\n"
-            f"*(Untuk mengubah ketik /setgreeting)*",
-            parse_mode="Markdown"
+            f"<i>(Untuk mengubah ketik /setgreeting)</i>",
+            parse_mode="HTML"
         )
     else:
         await update.message.reply_text(
             "ℹ️ Belum ada pesan selamat datang yang diatur di grup ini.\n\n"
-            "*(Untuk mengubah ketik /setgreeting <pesan>)*",
-            parse_mode="Markdown"
+            "<i>(Untuk mengubah ketik /setgreeting &lt;pesan&gt;)</i>",
+            parse_mode="HTML"
         )
 
 
