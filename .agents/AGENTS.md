@@ -12,3 +12,13 @@ Setiap kali kamu menyelesaikan sebuah _task_ atau fitur pembaruan kode yang cuku
 2. Cek direktori `tasks/`. Buatlah *file* markdown bernomor urut baru (misal: `003-new-feature.md`) yang merangkum apa saja yang baru kamu kerjakan, mengapa hal itu dikerjakan, dan bagaimana alur kodenya bekerja secara teknis.
 
 Jangan pernah meninggalkan _workspace_ dalam keadaan fitur baru sudah selesai tapi tidak ada catatannya di `tasks/`. Selalu bertindak proaktif.
+
+## Aturan: Penggunaan Database (Turso)
+
+**Deskripsi**: User secara eksklusif menggunakan Turso (remote database) alih-alih file SQLite lokal (`data/bot.db`).
+
+**INSTRUKSI WAJIB BAGI AGEN AI:**
+- Jangan pernah berasumsi bot berjalan dengan file `data/bot.db`.
+- Selalu gunakan library `libsql_client` dan credentials di environment (`TURSO_DB_URL`, `TURSO_AUTH_TOKEN`) jika ingin melakukan eksekusi perintah ke database secara manual dari skrip Python.
+- Jika ada file `data/bot.db`, HAPUS saja karena itu tidak digunakan.
+- Saat melakukan inspeksi skema database, periksa struktur tabel dari `bot/database.py` (di mana DDL statis disimpan) atau query langsung ke Turso.

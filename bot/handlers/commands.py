@@ -4221,3 +4221,168 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception:
         pass
     os.system("sudo systemctl restart botdhru")
+
+async def cmd_set_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+        
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("❌ Perintah ini hanya bisa digunakan di grup.")
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    
+    row = await user_row(conn, db, update.effective_user.id)
+    # Check if admin of bot or admin of the group
+    is_authorized = False
+    if row and row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+        is_authorized = True
+    else:
+        member = await chat.get_member(update.effective_user.id)
+        if member.status in ("creator", "administrator"):
+            is_authorized = True
+            
+    if not is_authorized:
+        await update.message.reply_text("❌ Anda tidak memiliki izin untuk mengatur pesan selamat datang di grup ini.")
+        return
+        
+    args = update.message.text.split(None, 1)
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Gunakan format: /setgreeting <pesan>\n"
+            "Gunakan /setgreeting off untuk mematikan fitur ini.\n\n"
+            "Placeholder yang didukung:\n"
+            "{name} - Nama lengkap anggota baru\n"
+            "{username} - Username (jika tidak ada akan diganti nama)\n"
+            "Contoh:\n"
+            "/setgreeting Halo {name}, selamat datang di grup ini!"
+        )
+        return
+        
+    greeting = args[1].strip()
+    
+    if greeting.lower() == "off":
+        await db.update_greeting_message(conn, chat.id, None)
+        await update.message.reply_text("✅ Pesan selamat datang dimatikan untuk grup ini.")
+    else:
+        await db.update_greeting_message(conn, chat.id, greeting)
+        await update.message.reply_text(f"✅ Pesan selamat datang berhasil diatur menjadi:\n\n{greeting}")
+
+async def cmd_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+        
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("❌ Perintah ini hanya bisa digunakan di grup.")
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    
+    chat_data = await db.get_bot_chat(conn, chat.id)
+    if chat_data and chat_data["greeting_message"]:
+        greeting = chat_data["greeting_message"]
+        # Dummy replace
+        greeting_preview = greeting.replace("{name}", update.effective_user.first_name)
+        if "{username}" in greeting:
+            username = f"@{update.effective_user.username}" if update.effective_user.username else update.effective_user.first_name
+            greeting_preview = greeting_preview.replace("{username}", username)
+            
+        await update.message.reply_text(
+            f"ℹ️ Pesan selamat datang yang aktif saat ini:\n\n{greeting_preview}\n\n"
+            f"*(Untuk mengubah ketik /setgreeting)*",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "ℹ️ Belum ada pesan selamat datang yang diatur di grup ini.\n\n"
+            "*(Untuk mengubah ketik /setgreeting <pesan>)*",
+            parse_mode="Markdown"
+        )
+
+
+async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+        
+    conn = _conn(context)
+    db = _db(context)
+    
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("❌ Tidak diizinkan.")
+        return
+        
+    msg = await update.message.reply_text("Sedang memproses ekspor foto. Mohon tunggu...")
+    
+    import zipfile
+    import tempfile
+    import os
+    
+    try:
+        cur = await conn.execute("SELECT telegram_id, profile_json FROM users")
+        rows = await cur.fetchall()
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+            zip_path = tmp.name
+            
+        count_ktm = 0
+        count_karpeg = 0
+            
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for r in rows:
+                if not r["profile_json"]:
+                    continue
+                try:
+                    prof = json.loads(r["profile_json"])
+                except Exception:
+                    continue
+                    
+                tid = r["telegram_id"]
+                name_clean = (prof.get("full_name") or str(tid)).replace(" ", "_").replace("/", "-")
+                
+                ktm_id = prof.get("ktm_photo_file_id")
+                if ktm_id:
+                    try:
+                        file = await context.bot.get_file(ktm_id)
+                        byte_arr = await file.download_as_bytearray()
+                        zf.writestr(f"KTM/KTM_{tid}_{name_clean}.jpg", bytes(byte_arr))
+                        count_ktm += 1
+                    except Exception as e:
+                        log.error(f"Failed to download KTM for {tid}: {e}")
+                
+                karpeg_id = prof.get("karpeg_photo_file_id")
+                if karpeg_id:
+                    try:
+                        file = await context.bot.get_file(karpeg_id)
+                        byte_arr = await file.download_as_bytearray()
+                        zf.writestr(f"Karpeg/Karpeg_{tid}_{name_clean}.jpg", bytes(byte_arr))
+                        count_karpeg += 1
+                    except Exception as e:
+                        log.error(f"Failed to download Karpeg for {tid}: {e}")
+                        
+        if count_ktm == 0 and count_karpeg == 0:
+            await msg.edit_text("Tidak ada data foto KTM atau Karpeg yang ditemukan.")
+            os.remove(zip_path)
+            return
+            
+        await msg.edit_text(f"Berhasil mengemas {count_ktm} KTM dan {count_karpeg} Karpeg. Sedang mengirim...")
+        
+        with open(zip_path, "rb") as f:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=f,
+                filename="Export_Photos.zip",
+                caption=f"Export Foto\nKTM: {count_ktm}\nKarpeg: {count_karpeg}"
+            )
+            
+        await msg.delete()
+        os.remove(zip_path)
+        
+    except Exception as e:
+        log.error(f"Export photos error: {e}")
+        await msg.edit_text(f"❌ Terjadi kesalahan saat mengekspor: {e}")
+

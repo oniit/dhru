@@ -679,6 +679,48 @@ async def global_profile_tracker(update: Update, context: ContextTypes.DEFAULT_T
         last_name=u.last_name
     )
 
+async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.chat_member:
+        return
+        
+    chat = update.chat_member.chat
+    new_member = update.chat_member.new_chat_member
+    old_member = update.chat_member.old_chat_member
+
+    # Hanya jalankan jika user baru join (bukan leave, atau perubahan status lainnya)
+    if (
+        old_member.status in (ChatMember.LEFT, ChatMember.BANNED, ChatMember.RESTRICTED) 
+        and new_member.status == ChatMember.MEMBER
+    ) or (
+        old_member.status == ChatMember.RESTRICTED
+        and new_member.status == ChatMember.RESTRICTED 
+        and new_member.is_member
+        and not old_member.is_member
+    ):
+        conn = _conn(context)
+        db = _db(context)
+        
+        chat_data = await db.get_bot_chat(conn, chat.id)
+        if chat_data and chat_data["greeting_message"]:
+            greeting = chat_data["greeting_message"]
+            user = new_member.user
+            
+            # Replace placeholder if any
+            greeting = greeting.replace("{name}", user.first_name)
+            if "{username}" in greeting:
+                username = f"@{user.username}" if user.username else user.first_name
+                greeting = greeting.replace("{username}", username)
+                
+            try:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=greeting,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error("Failed to send greeting message in chat %s: %s", chat.id, e)
+
 async def on_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.chat_join_request:
         return

@@ -38,6 +38,9 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/broadcast` — Mengirimkan pesan siaran ke semua saluran, bot _chats_, atau anggota fakultas tertentu.
 - `/trigger` — Memanajemen daftar _auto-reply_ khusus berbasis kata kunci.
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.
+- `/setgreeting [pesan|off]` — (Owner/Admin) Mengatur pesan sambutan khusus grup. Mendukung placeholder `{name}` dan `{username}`.
+- `/greeting` — Menampilkan pesan sambutan yang sedang aktif di grup.
+- `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTM dan Karpeg dalam satu file `.zip`.
 
 ## Ekstra
 - `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.

@@ -234,6 +234,7 @@ CREATE TABLE IF NOT EXISTS bot_chats (
     type TEXT,
     title TEXT,
     is_active INTEGER DEFAULT 1,
+    greeting_message TEXT,
     updated_at REAL
 );
 
@@ -1297,6 +1298,23 @@ class Database:
             
         rows = await cur.fetchall()
         return [(int(r["chat_id"]), r["title"]) for r in rows]
+
+    async def get_bot_chat(
+        self, conn: aiosqlite.Connection, chat_id: int
+    ) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM bot_chats WHERE chat_id = ?", (chat_id,)
+        )
+        return await cur.fetchone()
+
+    async def update_greeting_message(
+        self, conn: aiosqlite.Connection, chat_id: int, greeting_message: str | None
+    ) -> None:
+        await conn.execute(
+            "UPDATE bot_chats SET greeting_message = ?, updated_at = ? WHERE chat_id = ?",
+            (greeting_message, time.time(), chat_id)
+        )
+        await conn.commit()
 
     # ── Task Assignment Methods ──────────────────────────────────────
 

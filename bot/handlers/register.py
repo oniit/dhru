@@ -48,6 +48,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("addtag", commands.cmd_addtag))
     application.add_handler(CommandHandler("users", commands.cmd_users))
     application.add_handler(CommandHandler("reload", commands.cmd_reload))
+    application.add_handler(CommandHandler("export_photos", commands.cmd_export_photos))
     
     # Routers
     application.add_handler(CommandHandler("presensi", attendance.cmd_presensi_router))
@@ -74,6 +75,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("kontrak", kontrak.cmd_kontrak_router))
     application.add_handler(CommandHandler("gencode", commands.cmd_gencode))
     application.add_handler(CommandHandler("gencode_avail", commands.cmd_gencode_avail))
+    application.add_handler(CommandHandler("setgreeting", commands.cmd_set_greeting))
+    application.add_handler(CommandHandler("greeting", commands.cmd_greeting))
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
     application.add_handler(CommandHandler("menfess_read", menfess.cmd_menfess_read))
     application.add_handler(menfess.cmd_menfess_router, group=1)
@@ -83,6 +86,7 @@ def register_all(application: Application, db: Database) -> None:
 
     from telegram.ext import ChatMemberHandler, ChatJoinRequestHandler
     application.add_handler(ChatMemberHandler(messages.on_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
+    application.add_handler(ChatMemberHandler(messages.on_chat_member, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(ChatJoinRequestHandler(messages.on_chat_join_request))
     
     application.add_handler(CommandHandler("kick", commands.cmd_kick))
