@@ -72,6 +72,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 GENERATION_CODE = os.environ.get("GENERATION_CODE", "01").strip()
 
+_api_id = os.environ.get("API_ID", "").strip()
+API_ID = int(_api_id) if _api_id else 0
+API_HASH = os.environ.get("API_HASH", "").strip()
+
 _fg = os.environ.get("PETINGGI_GID", "").strip()
 PETINGGI_GID = int(_fg) if _fg else None
 
@@ -89,6 +93,12 @@ EDITOR_GID = int(_eg) if _eg else None
 
 _mc = os.environ.get("MENFESS_CH_ID", "").strip()
 MENFESS_CH_ID = int(_mc) if _mc else None
+
+_keep_c = os.environ.get("KEEP_CH_ID", "").strip()
+KEEP_CH_ID = int(_keep_c) if _keep_c else None
+
+_post_c = os.environ.get("POST_CH_ID", "").strip()
+POST_CH_ID = int(_post_c) if _post_c else None
 
 _maba_chs = os.environ.get("MABA_CH_IDS", "").strip()
 MABA_CH_IDS = [int(x.strip()) for x in _maba_chs.split(",") if x.strip()] if _maba_chs else []

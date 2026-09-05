@@ -261,6 +261,62 @@ async def process_broadcast_queue(context):
             )
         except Exception: pass
 
+async def daily_keep_to_post(context):
+    from bot.settings import BOT_TOKEN, API_ID, API_HASH, KEEP_CH_ID, POST_CH_ID
+    if not KEEP_CH_ID or not POST_CH_ID or not API_ID or not API_HASH:
+        print("Missing config for KEEP to POST forwarder")
+        return
+
+    from pyrogram import Client
+    import asyncio
+
+    app = Client("keep_forwarder", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH, in_memory=True)
+    
+    try:
+        await app.start()
+    except Exception as e:
+        print(f"Failed to start Pyrogram for keep_to_post: {e}")
+        return
+
+    try:
+        message_ids = []
+        async for msg in app.get_chat_history(KEEP_CH_ID):
+            message_ids.append(msg.id)
+            
+        if not message_ids:
+            return
+            
+        message_ids.reverse()
+
+        try:
+            await app.forward_messages(
+                chat_id=POST_CH_ID,
+                from_chat_id=KEEP_CH_ID,
+                message_ids=message_ids
+            )
+            print(f"Successfully forwarded {len(message_ids)} messages.")
+            try:
+                await context.bot.send_message(
+                    chat_id=KEEP_CH_ID,
+                    text=f"✅ <b>Cek @DhruvaPoster</b>, {len(message_ids)} pesan di atas telah diforward ke sana.",
+                    parse_mode="HTML"
+                )
+            except Exception: pass
+        except Exception as e:
+            print(f"Failed to forward messages: {e}")
+            try:
+                await context.bot.send_message(
+                    chat_id=KEEP_CH_ID,
+                    text=f"❌ <b>Gagal!</b> Terjadi kesalahan saat mem-forward pesan:\n<code>{e}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception: pass
+                
+    except Exception as e:
+        print(f"Error in keep_to_post loop: {e}")
+    finally:
+        await app.stop()
+
 def setup_jobs(application: Application):
     jq = application.job_queue
     if not jq: return
@@ -285,3 +341,7 @@ def setup_jobs(application: Application):
         
         jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=0, second=0, tzinfo=wib))
         jq.run_daily(daily_maba_attendance_close, datetime.time(hour=22, minute=0, second=0, tzinfo=wib))
+
+    from bot.settings import KEEP_CH_ID, POST_CH_ID
+    if KEEP_CH_ID and POST_CH_ID:
+        jq.run_daily(daily_keep_to_post, datetime.time(hour=15, minute=0, second=0, tzinfo=wib))
