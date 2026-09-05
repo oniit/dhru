@@ -522,6 +522,14 @@ class Database:
             await conn.execute(
                 "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"
             )
+            
+        cur = await conn.execute("PRAGMA table_info(bot_chats)")
+        bc_cols = {str(r[1]) for r in await cur.fetchall()}
+        if "greeting_message" not in bc_cols:
+            await conn.execute(
+                "ALTER TABLE bot_chats ADD COLUMN greeting_message TEXT"
+            )
+            
         await conn.commit()
         return conn
 
