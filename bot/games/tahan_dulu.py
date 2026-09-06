@@ -31,7 +31,7 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
                 setting_name = parts[0]
                 
     if not delay_min or delay_min <= 0:
-        delay_min = random.randint(8, 15)
+        delay_min = random.randint(7, 17)
         
     valid_words = []
     setting_display = ""
@@ -40,8 +40,7 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         if setting_data:
             valid_words = setting_data.get("valid_words", [])
             if valid_words:
-                words_str = ", ".join(f"'{w}'" for w in valid_words)
-                setting_display = f"\n✅ <b>Kata Valid:</b> {words_str}\n(Pesan di luar kata ini akan diabaikan)\n"
+                setting_display = f"\n(Hanya kata valid tertentu yang akan diterima)\n"
         else:
             await update.message.reply_text(f"Setting '{setting_name}' tidak ditemukan untuk Tahan Dulu.")
             return
@@ -51,6 +50,16 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
     if active:
         await update.message.reply_text(f"⚠️ Masih ada game {active['game_name']} yang aktif di grup ini. Hentikan dulu dengan /berhenti {active['game_name']}.")
         return
+
+    await update.message.reply_text(
+        f"⏳ <b>GAME: Tahan Dulu</b> ⏳\n\n"
+        f"Tahan dulu...\n"
+        f"Balas pesan apapun SEBELUM <b>{delay_min} detik</b> = penalti (-2).\n"
+        f"Setelah itu, yang merespons paling cepat dapat poin!\n"
+        f"{setting_display}\n"
+        f"<i>Waktu dimulai dari sekarang!</i>",
+        parse_mode="HTML"
+    )
 
     start_time = time.time()
     
@@ -71,20 +80,10 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
     if not session:
         return
         
-    await update.message.reply_text(
-        f"⏳ <b>GAME: Tahan Dulu</b> ⏳\n\n"
-        f"Tahan dulu...\n"
-        f"Balas pesan apapun SEBELUM <b>{delay_min} detik</b> = penalti (-2).\n"
-        f"Setelah itu, yang merespons paling cepat dapat poin!\n"
-        f"{setting_display}\n"
-        f"<i>Waktu dimulai dari sekarang!</i>",
-        parse_mode="HTML"
-    )
-    
-    # Jadwalkan perpindahan ke end round (delay_min + 7 detik)
+    # Jadwalkan perpindahan ke end round (delay_min + 11 detik)
     context.job_queue.run_once(
         job_end_tahan_dulu,
-        delay_min + 7,
+        delay_min + 11,
         chat_id=chat_id,
         name=f"tahan_dulu_{chat_id}",
         data={"session_id": session["id"]}

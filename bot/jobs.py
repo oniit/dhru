@@ -262,20 +262,29 @@ async def process_broadcast_queue(context):
         except Exception: pass
 
 async def daily_keep_to_post(context):
+    import logging
+    log = logging.getLogger(__name__)
+    
     from bot.settings import BOT_TOKEN, API_ID, API_HASH, KEEP_CH_ID, POST_CH_ID
     if not KEEP_CH_ID or not POST_CH_ID or not API_ID or not API_HASH:
-        print("Missing config for KEEP to POST forwarder")
+        log.warning("Missing config for KEEP to POST forwarder")
         return
 
     from pyrogram import Client
     import asyncio
 
-    app = Client("keep_forwarder", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH, in_memory=True)
+    USERBOT_SESSION = os.environ.get("USERBOT_SESSION", "").strip()
+    
+    if USERBOT_SESSION:
+        app = Client("keep_forwarder", session_string=USERBOT_SESSION, api_id=API_ID, api_hash=API_HASH, in_memory=True)
+    else:
+        # Fallback menggunakan file checker.session (rawan database is locked jika checker.py jalan bersamaan)
+        app = Client("checker", api_id=API_ID, api_hash=API_HASH)
     
     try:
         await app.start()
     except Exception as e:
-        print(f"Failed to start Pyrogram for keep_to_post: {e}")
+        log.error(f"Failed to start Pyrogram for keep_to_post: {e}")
         return
 
     try:
@@ -294,7 +303,7 @@ async def daily_keep_to_post(context):
                 from_chat_id=KEEP_CH_ID,
                 message_ids=message_ids
             )
-            print(f"Successfully forwarded {len(message_ids)} messages.")
+            log.info(f"Successfully forwarded {len(message_ids)} messages.")
             try:
                 await context.bot.send_message(
                     chat_id=KEEP_CH_ID,
@@ -303,7 +312,7 @@ async def daily_keep_to_post(context):
                 )
             except Exception: pass
         except Exception as e:
-            print(f"Failed to forward messages: {e}")
+            log.error(f"Failed to forward messages: {e}")
             try:
                 await context.bot.send_message(
                     chat_id=KEEP_CH_ID,
@@ -313,7 +322,8 @@ async def daily_keep_to_post(context):
             except Exception: pass
                 
     except Exception as e:
-        print(f"Error in keep_to_post loop: {e}")
+        import traceback
+        log.error(f"Error in keep_to_post loop: {e}\n{traceback.format_exc()}")
     finally:
         await app.stop()
 
@@ -344,4 +354,4 @@ def setup_jobs(application: Application):
 
     from bot.settings import KEEP_CH_ID, POST_CH_ID
     if KEEP_CH_ID and POST_CH_ID:
-        jq.run_daily(daily_keep_to_post, datetime.time(hour=15, minute=0, second=0, tzinfo=wib))
+        jq.run_daily(daily_keep_to_post, datetime.time(hour=15, minute=1, second=0, tzinfo=wib))

@@ -97,7 +97,7 @@ def _format_presensi_block(
 ) -> str:
     c_lab = _class_label(sess["class_id"])
     
-    if sess["class_id"] == "staff_auto":
+    if sess["class_id"] in ("staff_auto", "maba_auto"):
         from datetime import datetime
         from bot.timefmt import TZ
         dt = datetime.fromtimestamp(float(sess['opened_at']), tz=TZ)
@@ -142,7 +142,7 @@ def _format_presensi_block(
             else:
                 lines.append(f"• {name}")
                     
-        if sess["class_id"] != "staff_auto":
+        if sess["class_id"] not in ("staff_auto", "maba_auto"):
             lines.append("")
             lines.append(f"<b>Izin ({len(izin_records)})</b>")
             if not izin_records:
