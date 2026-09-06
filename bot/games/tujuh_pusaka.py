@@ -13,7 +13,7 @@ CARDS = {
     "dika": {"name": "Dika / Rektor", "base_str": 90, "type": "rektor"},
     "nivia": {"name": "Nivia", "base_str": 75, "type": "wakil_rektor"},
     "nuansa": {"name": "Nuansa", "base_str": 75, "type": "wakil_rektor"},
-    "leony": {"name": "Leony", "base_str": 60, "type": "sekretaris"},
+    "leonie": {"name": "Leonie", "base_str": 60, "type": "sekretaris"},
     "dyah": {"name": "Dyah", "base_str": 60, "type": "sekretaris"},
     "neil": {"name": "Neil", "base_str": 60, "type": "sekretaris"},
     "pusaka": {"name": "Kartu Pusaka", "base_str": 0, "type": "pusaka"},
@@ -23,8 +23,8 @@ CARD_INFO = """
 📜 <b>Tujuh Pusaka</b>
 1. <b>Dika</b> (Str 90) - +15 Str vs Nivia/Nuansa.
 2. <b>Nivia</b> (Str 75) - +20 Str vs kartu Str lebih tinggi, dan target kehilangan bonus Str-nya.
-3. <b>Nuansa</b> (Str 75) - +20 Str vs Leony/Dyah/Neil.
-4. <b>Leony</b> (Str 60) - Menyalin Power lawan, Str tetap 60.
+3. <b>Nuansa</b> (Str 75) - +20 Str vs Leonie/Dyah/Neil.
+4. <b>Leonie</b> (Str 60) - Menyalin Power lawan, Str tetap 60.
 5. <b>Dyah</b> (Str 60) - Membatalkan seluruh bonus Str lawan.
 6. <b>Neil</b> (Str 60) - Jika kalah, Str lawan -20 di ronde berikutnya.
 7. <b>Pusaka</b> (Str -) - Membalikkan hasil duel (Menang jadi Kalah, Kalah jadi Menang). Pusaka vs Pusaka = Draw.
@@ -274,7 +274,7 @@ async def pilih_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, co
             return
             
         if card_choice not in CARDS:
-            await update.message.reply_text(f"⚠️ {card_choice} bukan kartu yang valid. (Pilih: dika, nivia, nuansa, leony, dyah, neil, pusaka)")
+            await update.message.reply_text(f"⚠️ {card_choice} bukan kartu yang valid. (Pilih: dika, nivia, nuansa, leonie, dyah, neil, pusaka)")
             return
             
         player_data = state["players"][uid_str]
@@ -352,11 +352,11 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
     p_cancel_b = False
     b_cancel_p = False
     
-    # Handle Leony
+    # Handle Leonie
     p_virtual_id = p_card_id
     b_virtual_id = b_card_id
-    if p_card_id == "leony": p_virtual_id = b_card_id
-    if b_card_id == "leony": b_virtual_id = p_card_id
+    if p_card_id == "leonie": p_virtual_id = b_card_id
+    if b_card_id == "leonie": b_virtual_id = p_card_id
 
     # Normal effects
     p_bonus, p_cancel_b = get_effective(p_virtual_id, b_virtual_id, p_str, b_str)
