@@ -3,6 +3,7 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import ContextTypes
 import json
+import asyncio
 import time
 import re
 
@@ -163,10 +164,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not session or session["game_name"] != "kantong_rempah":
             await update.message.reply_text("Sesi game Kantong Rempah di grup tersebut sudah tidak aktif atau sudah selesai.")
             await db.set_onboarding_step(conn, uid, None)
-            return
-            
-        import asyncio
-        import json
+            return            
         
         session_id = session["id"]
         lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
