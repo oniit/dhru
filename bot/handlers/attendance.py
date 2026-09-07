@@ -47,6 +47,7 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 
 def _class_label(class_id: str) -> str:
     if class_id == "staff_auto": return "Presensi Harian Staf"
+    if class_id == "maba_auto": return "🔔 Presensi Harian Pravesa"
     if class_id == "staff_manual": return "Presensi Staf"
     items = CHOICES.get("classes", []) + CHOICES.get("clubs", [])
     for item in items:

@@ -140,7 +140,7 @@ async def daily_maba_attendance_open(context):
     sid = await db.open_attendance_session(
         conn,
         class_id="maba_auto",
-        title="Presensi Harian Maba (Ospek)",
+        title="🔔 Presensi Harian Pravesa",
         opened_by=OWNER_ID,
         chat_id=PRESENCE_CH_ID,
     )
