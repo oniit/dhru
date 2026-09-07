@@ -5,6 +5,7 @@ import bot.games.kantong_rempah as kantong_rempah
 import bot.games.tahan_dulu as tahan_dulu
 import bot.games.adu_react as adu_react
 import bot.games.tujuh_pusaka as tujuh_pusaka
+import bot.games.ketik_angka as ketik_angka
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["conn"]
@@ -22,6 +23,7 @@ AVAILABLE_GAMES = {
     "tahan_dulu": "Tahan Dulu",
     "adu_react": "Adu React",
     "tujuh_pusaka": "Tujuh Pusaka",
+    "ketik_angka": "Ketik Angka",
 }
 
 async def cmd_settings_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -200,7 +202,8 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "• <code>/bermain kantong_rempah [menit]</code> — Tebak total rempah (via PC)\n"
             "• <code>/bermain tahan_dulu [detik]</code> — Adu cepat / reflex\n"
             "• <code>/bermain adu_react</code> — Balapan banyak-banyakan react\n"
-            "• <code>/bermain tujuh_pusaka</code> — Card battle vs Bot\n",
+            "• <code>/bermain tujuh_pusaka</code> — Card battle vs Bot\n"
+            "• <code>/bermain ketik_angka</code> — Lomba adu cepat ketik angka/huruf\n",
             parse_mode="HTML"
         )
         return
@@ -231,6 +234,8 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await adu_react.mulai_adu_react(update, context, db, conn, args_text)
     elif game_name == "tujuh_pusaka":
         await tujuh_pusaka.mulai_tujuh_pusaka(update, context, db, conn)
+    elif game_name == "ketik_angka":
+        await ketik_angka.mulai_ketik_angka(update, context, db, conn)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -264,6 +269,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await adu_react.status_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
         await tujuh_pusaka.status_tujuh_pusaka(update, context, db, conn, session)
+    elif game_name == "ketik_angka":
+        await ketik_angka.status_ketik_angka(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -305,6 +312,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await adu_react.berhenti_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
         await tujuh_pusaka.berhenti_tujuh_pusaka(update, context, db, conn, session)
+    elif game_name == "ketik_angka":
+        await ketik_angka.berhenti_ketik_angka(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -338,6 +347,8 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await adu_react.hasil_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
         await tujuh_pusaka.hasil_tujuh_pusaka(update, context, db, conn, session)
+    elif game_name == "ketik_angka":
+        await ketik_angka.hasil_ketik_angka(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -374,6 +385,11 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         # we can process them here. However, typical telegram bots handle commands via CommandHandler.
         # But wait, other games also do it. Let's just process it.
         await tujuh_pusaka.proses_pesan_tujuh_pusaka(update, context, db, conn, session)
+        return False
+    elif game_name == "ketik_angka":
+        text = update.message.text or update.message.caption or ""
+        if text.strip():
+            await ketik_angka.proses_pesan_ketik_angka(update, context, db, conn, session)
         return False
         
     return False

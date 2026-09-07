@@ -10,7 +10,7 @@ PHASE_PLAYING = "playing"
 PHASE_FINISHED = "finished"
 
 CARDS = {
-    "dika": {"name": "Dika / Rektor", "base_str": 90, "type": "rektor"},
+    "dika": {"name": "Dika", "base_str": 90, "type": "rektor"},
     "nivia": {"name": "Nivia", "base_str": 75, "type": "wakil_rektor"},
     "nuansa": {"name": "Nuansa", "base_str": 75, "type": "wakil_rektor"},
     "leonie": {"name": "Leonie", "base_str": 60, "type": "sekretaris"},

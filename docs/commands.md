@@ -57,6 +57,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
   - *Tahan Dulu:* `/bermain tahan_dulu [nama_setting] [delay_detik]`
   - *Adu React:* `/bermain adu_react`
   - *Tujuh Pusaka:* `/bermain tujuh_pusaka`
+  - *Ketik Angka:* `/bermain ketik_angka`
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
 - `/ikut` — Bergabung ke dalam game (contoh: Tujuh Pusaka).
 - `/mulai_game` — (Admin/Pemulai) Memulai ronde 1 pada game (contoh: Tujuh Pusaka).
