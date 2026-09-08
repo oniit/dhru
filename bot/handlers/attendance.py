@@ -225,11 +225,15 @@ async def refresh_maba_presensi_announcement(context, db, conn, session_id: int)
     # 1. Update Global Master Message (if exists)
     if sess["announce_message_id"] and sess["chat_id"]:
         text_global = _format_presensi_block(sess, records, closed=closed, show_record_times=False)
+        kb_global = None
+        if not closed:
+            kb_global = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{session_id}")]])
         try:
             await context.bot.edit_message_text(
                 chat_id=sess["chat_id"],
                 message_id=sess["announce_message_id"],
                 text=text_global[:4000],
+                reply_markup=kb_global,
             )
         except Exception as e:
             log.debug("edit global maba presensi: %s", e)

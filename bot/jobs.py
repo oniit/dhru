@@ -134,32 +134,33 @@ async def daily_maba_attendance_open(context):
     if ospek_mode != "on":
         return
 
-    from bot.settings import OWNER_ID, MABA_GROUP_GIDS, PRESENCE_CH_ID
-    if not PRESENCE_CH_ID: return
+    from bot.settings import OWNER_ID, MABA_GROUP_GIDS, OSPEK_GID
+    if not OSPEK_GID: return
 
     sid = await db.open_attendance_session(
         conn,
         class_id="maba_auto",
         title="🔔 Presensi Harian Pravesa",
         opened_by=OWNER_ID,
-        chat_id=PRESENCE_CH_ID,
+        chat_id=OSPEK_GID,
     )
     
     import asyncio
     msg = None
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{sid}")]])
+    
     for attempt in range(3):
         try:
             msg = await context.bot.send_message(
-                chat_id=PRESENCE_CH_ID,
+                chat_id=OSPEK_GID,
                 text="Membuka sesi presensi otomatis maba...",
+                reply_markup=kb,
             )
             await db.set_attendance_announce_message(conn, sid, msg.message_id)
             break
         except Exception as e:
             if attempt < 2:
                 await asyncio.sleep(5)
-    
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{sid}")]])
     
     extra_data = {}
     for i, gid in enumerate(MABA_GROUP_GIDS):

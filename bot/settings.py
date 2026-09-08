@@ -109,6 +109,9 @@ PENDAFTAR_CH_ID = int(_pendaftar_ch) if _pendaftar_ch else None
 _kelompok_gid = os.environ.get("KELOMPOK_GID", "").strip()
 KELOMPOK_GID = int(_kelompok_gid) if _kelompok_gid else None
 
+_ospek_gid = os.environ.get("OSPEK_GID", "").strip()
+OSPEK_GID = int(_ospek_gid) if _ospek_gid else None
+
 MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
 
 # Agra Rewards Configuration
