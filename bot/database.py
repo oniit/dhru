@@ -691,6 +691,9 @@ class Database:
         current = await _apply_generated_profile_fields(
             conn, telegram_id, role, current
         )
+        from bot.handlers.common import missing_required_fields
+        if missing_required_fields(current, role):
+            current.pop("__lengkapi_done", None)
         now = time.time()
         await conn.execute(
             "UPDATE users SET role = ?, profile_json = ?, updated_at = ? WHERE telegram_id = ?",
