@@ -245,6 +245,12 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         code_row = await cur.fetchone()
         if code_row:
             target_role = code_row["target_role"] if "target_role" in code_row.keys() else "student"
+            
+            if row["role"] == target_role:
+                await db.set_onboarding_step(conn, uid, None)
+                await update.message.reply_text(f"Gagal, ini adalah kode {target_role}, peranmu sebelumnya {row['role']}")
+                return
+                
             await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ?", (uid, time.time(), code))
             await db.set_role(conn, uid, target_role)
             await db.set_onboarding_step(conn, uid, None)
