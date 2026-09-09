@@ -256,12 +256,14 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await db.set_onboarding_step(conn, uid, None)
             await conn.commit()
             
-            from bot.settings import OWNER_ID
+            from bot.settings import OWNER_ID, BACKUP_CH_ID
+
+            u = update.effective_user
+            username_str = f"@{u.username}" if u.username else "Tanpa Username"
+            name_str = u.first_name
+            if u.last_name: name_str += f" {u.last_name}"
+
             if OWNER_ID and str(OWNER_ID) != "0":
-                u = update.effective_user
-                username_str = f"@{u.username}" if u.username else "Tanpa Username"
-                name_str = u.first_name
-                if u.last_name: name_str += f" {u.last_name}"
                 try:
                     await context.bot.send_message(
                         chat_id=OWNER_ID,
@@ -269,6 +271,17 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                              f"<b>Oleh:</b> {name_str} ({username_str})\n"
                              f"<b>ID:</b> <code>{u.id}</code>\n"
                              f"<b>Role:</b> <code>{target_role}</code>\n"
+                             f"<b>Kode:</b> <code>{code}</code>"
+                    )
+                except Exception:
+                    pass
+
+            if target_role == "maba" and BACKUP_CH_ID:
+                try:
+                    await context.bot.send_message(
+                        chat_id=BACKUP_CH_ID,
+                        text=f"🔑 <b>Kode Akses Digunakan</b>\n"
+                             f"<b>Oleh:</b> {name_str} ({username_str})\n"
                              f"<b>Kode:</b> <code>{code}</code>"
                     )
                 except Exception:

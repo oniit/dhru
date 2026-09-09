@@ -5,7 +5,7 @@ import logging
 import re
 import os
 from dotenv import load_dotenv
-from pyrogram import Client, errors
+from pyrogram import Client, errors, filters
 
 from bot.database import Database
 
@@ -27,6 +27,35 @@ if not API_ID or not API_HASH:
 
 # Initialize Pyrogram Client
 app = Client("checker", api_id=API_ID, api_hash=API_HASH)
+
+BACKUP_CH_ID = os.getenv("BACKUP_CH_ID", "")
+BACKUP_CH_ID = int(BACKUP_CH_ID) if BACKUP_CH_ID.strip() else 0
+
+if BACKUP_CH_ID:
+    @app.on_message(filters.chat(BACKUP_CH_ID))
+    async def on_code_claimed_notification(client, message):
+        text = message.text or message.caption or ""
+        if "Kode Akses Digunakan" in text and "Kode:" in text:
+            match = re.search(r"Kode:\s*(\S+)", text)
+            if match:
+                code = match.group(1)
+                log.info(f"Detected code claimed: {code}")
+                # Cari post manual untuk menandai telah diklaim
+                async for m in client.search_messages(BACKUP_CH_ID, query=code):
+                    if m.id != message.id:
+                        msg_text = m.text or m.caption or ""
+                        if msg_text and code in msg_text:
+                            if "telah diklaim" not in msg_text.split(code, 1)[-1][:20]:
+                                new_text = re.sub(rf"({re.escape(code)})(?!\s*\(telah diklaim\))", r"\1 (telah diklaim)", msg_text)
+                                if new_text != msg_text:
+                                    try:
+                                        if m.text:
+                                            await m.edit_text(new_text)
+                                        else:
+                                            await m.edit_caption(new_text)
+                                        log.info(f"Marked code {code} as claimed in message {m.id}")
+                                    except Exception as e:
+                                        log.error(f"Failed to edit message {m.id}: {e}")
 
 async def process_userbot_requests(conn):
     try:
