@@ -2764,7 +2764,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not context.args:
         await update.message.reply_text(
             "<b>Menu Daftar Pengguna:</b>\n"
-            "<code>/daftar sisya</code> — Mahasiswa & BEM\n"
+            "<code>/daftar shishya</code> — Mahasiswa & BEM\n"
             "<code>/daftar charya</code> — Staf, Admin, Owner\n"
             "<code>/daftar pravesi</code> — MABA\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
@@ -2832,8 +2832,8 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             push_row(r, p)
-    elif kind == "sisya":
-        title = "Daftar Sisya"
+    elif kind == "shishya":
+        title = "Daftar Shishya"
         for r in all_rows:
             if r["role"] in (ROLE_STUDENT, ROLE_BEM):
                 p = json.loads(r["profile_json"] or "{}")
@@ -3352,7 +3352,7 @@ async def cmd_all_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         "<b>Menu Mention Grup (/tagall)</b>\n"
         "<code>/all [pesan]</code> — Mention semua anggota grup\n"
-        "<code>/all &lt;role&gt; [pesan]</code> — Filter role (contoh: sisya, pravesi, charya, publik)\n"
+        "<code>/all &lt;role&gt; [pesan]</code> — Filter role (contoh: shishya, pravesi, charya, publik)\n"
         "<code>/all fakultas &lt;id&gt; [pesan]</code> — Filter fakultas\n"
         "<code>/all jurusan &lt;id&gt; [pesan]</code> — Filter jurusan\n"
         "<code>/all kelas &lt;id&gt; [pesan]</code> — Filter kelas\n"
@@ -3455,7 +3455,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await update.message.reply_text(f"Nilai {possible_type} belum ditentukan.")
                 return
-        elif possible_type in ("umum", "publik", "pravesi", "sisya", "charya"):
+        elif possible_type in ("umum", "publik", "pravesi", "shishya", "charya"):
             filter_type = possible_type
             if len(parts) > 2:
                 custom_body = raw_text.split(maxsplit=2)[2]
@@ -3479,7 +3479,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 match = True
             elif filter_type == "pravesi" and u_role == "maba":
                 match = True
-            elif filter_type == "sisya" and u_role in ("student", "bem"):
+            elif filter_type == "shishya" and u_role in ("student", "bem"):
                 match = True
             elif filter_type == "charya" and u_role in ("internal", "admin", "owner"):
                 match = True
@@ -3571,9 +3571,9 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     if context.args:
         sub = context.args[0].lower()
-        if sub == "sisya":
+        if sub == "shishya":
             where_clause = "WHERE u.role IN ('student', 'bem')"
-            title_suffix = " (Sisya)"
+            title_suffix = " (Shishya)"
         elif sub == "charya":
             where_clause = "WHERE u.role IN ('internal', 'admin', 'owner')"
             title_suffix = " (Charya)"
@@ -3629,7 +3629,7 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lines = [
             "<b>Menu Agra</b>",
             "<code>/agra top</code> — Lihat peringkat Agra (17 besar)",
-            "<code>/agra top sisya</code> — Top 17 (Student & BEM)",
+            "<code>/agra top shishya</code> — Top 17 (Student & BEM)",
             "<code>/agra top charya</code> — Top 17 (Staf/Petinggi)",
             "<code>/agra top pravesi</code> — Top 17 (MABA)",
             "<code>/agra top publik</code> — Top 17 (Eksternal)",
@@ -4112,7 +4112,7 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Hanya admin, owner, dekan, atau dosen/coach.")
         return
     if not context.args:
-        await update.message.reply_text("Gunakan format seperti /daftar, contoh: /detail all, /detail sisya, /detail charya")
+        await update.message.reply_text("Gunakan format seperti /daftar, contoh: /detail all, /detail shishya, /detail charya")
         return
 
     kind = context.args[0].lower()
@@ -4145,7 +4145,7 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif kind == "all":
         for r in all_rows:
             push_row(r, json.loads(r["profile_json"] or "{}"))
-    elif kind == "sisya":
+    elif kind == "shishya":
         for r in all_rows:
             if r["role"] in (ROLE_STUDENT, ROLE_BEM):
                 push_row(r, json.loads(r["profile_json"] or "{}"))
@@ -4165,7 +4165,7 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs or "d_coach" in p_jabs:
                     push_row(r, p)
     else:
-        await update.message.reply_text("Format tidak dikenali. Ketik /detail all, sisya, charya, pravesi, atau publik.")
+        await update.message.reply_text("Format tidak dikenali. Ketik /detail all, shishya, charya, pravesi, atau publik.")
         return
 
     is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
