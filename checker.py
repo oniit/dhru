@@ -43,7 +43,7 @@ if BACKUP_CH_ID:
                 # Cari post manual untuk menandai telah diklaim
                 async for m in client.search_messages(BACKUP_CH_ID, query=code):
                     if m.id != message.id:
-                        msg_text = m.text or m.caption or ""
+                        msg_text = m.text.markdown if m.text else (m.caption.markdown if m.caption else "")
                         if msg_text and code in msg_text:
                             if "telah diklaim" not in msg_text.split(code, 1)[-1][:20]:
                                 new_text = re.sub(rf"({re.escape(code)})(?!\s*\(telah diklaim\))", r"\1 (telah diklaim)", msg_text)
