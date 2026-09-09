@@ -4222,6 +4222,30 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pass
     os.system("sudo systemctl restart botdhru")
 
+async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+
+    import subprocess
+    msg = await update.message.reply_text("Sedang menarik pembaruan...")
+    try:
+        result = subprocess.run(["git", "pull"], capture_output=True, text=True, check=True)
+        output = result.stdout.strip()
+        if not output:
+            output = "Berhasil, namun tidak ada output."
+        await msg.edit_text(f"<pre>{output}</pre>", parse_mode="HTML")
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.strip() or e.stdout.strip() or "Terjadi kesalahan yang tidak diketahui."
+        await msg.edit_text(f"Gagal melakukan git pull:\n<pre>{error_output}</pre>", parse_mode="HTML")
+    except Exception as e:
+        await msg.edit_text(f"Terjadi kesalahan sistem:\n<pre>{str(e)}</pre>", parse_mode="HTML")
+
 async def cmd_set_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.effective_chat:
         return

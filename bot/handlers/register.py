@@ -48,6 +48,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("addtag", commands.cmd_addtag))
     application.add_handler(CommandHandler("users", commands.cmd_users))
     application.add_handler(CommandHandler("reload", commands.cmd_reload))
+    application.add_handler(CommandHandler("pull", commands.cmd_pull))
     application.add_handler(CommandHandler("export_photos", commands.cmd_export_photos))
     
     # Routers

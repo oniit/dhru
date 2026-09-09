@@ -32,6 +32,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/orreset_user <id> <tipe>`: (Owner) Reset data profil user (onboarding, rank, dll).
 - `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
+- `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
 - `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_.
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
