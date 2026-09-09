@@ -250,8 +250,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         
     if role == ROLE_PUBLIC:
         buttons = []
-        if not _is_lengkapi_done(profile):
-            buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
+        # if not _is_lengkapi_done(profile):
+        #     buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
             
         buttons.extend([
             [InlineKeyboardButton("👤 Daftar Akun Publik", callback_data="openlt:full_name")],
@@ -882,8 +882,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             row_u = await user_row(conn, db, q.from_user.id)
             profile_u = profile_from_row(row_u) if row_u else {}
             buttons = []
-            if not _is_lengkapi_done(profile_u):
-                buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
+            # if not _is_lengkapi_done(profile_u):
+            #     buttons.append([InlineKeyboardButton("🎓 Daftar Akun Mahasiswa Baru", callback_data="maba:start")])
             
             buttons.extend([
                 [InlineKeyboardButton("👤 Daftar Akun Publik", callback_data="openlt:full_name")],
