@@ -3568,21 +3568,31 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     where_clause = ""
     title_suffix = ""
+    is_all = False
     
     if context.args:
-        sub = context.args[0].lower()
-        if sub == "shishya":
-            where_clause = "WHERE u.role IN ('student', 'bem')"
-            title_suffix = " (Shishya)"
-        elif sub == "charya":
-            where_clause = "WHERE u.role IN ('internal', 'admin', 'owner')"
-            title_suffix = " (Charya)"
-        elif sub == "publik":
-            where_clause = "WHERE u.role = 'public'"
-            title_suffix = " (Publik)"
-        elif sub == "pravesi":
-            where_clause = "WHERE u.role = 'maba'"
-            title_suffix = " (Pravesi)"
+        args_lower = [a.lower() for a in context.args]
+        if "all" in args_lower:
+            is_all = True
+            args_lower.remove("all")
+            
+        if args_lower:
+            sub = args_lower[0]
+            if sub == "shishya":
+                where_clause = "WHERE u.role IN ('student', 'bem')"
+                title_suffix = " (Shishya)"
+            elif sub == "charya":
+                where_clause = "WHERE u.role IN ('internal', 'admin', 'owner')"
+                title_suffix = " (Charya)"
+            elif sub == "publik":
+                where_clause = "WHERE u.role = 'public'"
+                title_suffix = " (Publik)"
+            elif sub == "pravesi":
+                where_clause = "WHERE u.role = 'maba'"
+                title_suffix = " (Pravesi)"
+                
+    limit_clause = "" if is_all else "LIMIT 17"
+    
     cur = await conn.execute(
         f"""
         SELECT t.target_telegram_id, t.total, u.profile_json, u.first_name, u.username
@@ -3594,11 +3604,13 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         JOIN users u ON u.telegram_id = t.target_telegram_id
         {where_clause}
         ORDER BY t.total DESC
-        LIMIT 17
+        {limit_clause}
         """
     )
     rows = await cur.fetchall()
-    lines = [f"Top 17 Agra{title_suffix}"]
+    title = f"Daftar Semua Agra{title_suffix}" if is_all else f"Top 17 Agra{title_suffix}"
+    
+    lines = []
     if not rows:
         lines.append("Belum ada data.")
     else:
@@ -3612,7 +3624,8 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             total_s = f"{r['total']:,}"
             lines.append(f"{idx}. {total_s} - {name}")
-    await update.message.reply_text("\n".join(lines))
+            
+    await _reply_daftar_chunks(update, title, lines)
 
 
 async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3633,6 +3646,7 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "<code>/agra top charya</code> — Top 17 (Staf/Petinggi)",
             "<code>/agra top pravesi</code> — Top 17 (MABA)",
             "<code>/agra top publik</code> — Top 17 (Eksternal)",
+            "<i>(tambahkan kata 'all' untuk melihat semua. Contoh: /agra top charya all)</i>",
             "<code>/agra log</code> — Lihat riwayat Agra pribadi"
         ]
         

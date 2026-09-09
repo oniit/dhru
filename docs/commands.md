@@ -14,7 +14,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi mahasiswa).
 
 ## Sosial & Gamifikasi (Agra)
-- `/leaderboard` — Menampilkan peringkat Agra mahasiswa teratas.
+- `/leaderboard` atau `/agra top [role] [all]` — Menampilkan peringkat Agra teratas. Gunakan argumen `all` untuk melihat keseluruhan tanpa batas Top 17 (contoh: `/agra top charya all`).
 - `/transfer <jumlah> <@username>` — Mentransfer poin Agra ke pengguna lain.
 - `/pay` — Mengurangi saldo Agra (opsional untuk pembayaran _virtual_).
 - `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
