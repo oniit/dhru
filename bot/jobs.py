@@ -159,7 +159,9 @@ async def daily_maba_attendance_open(context):
             await db.set_attendance_announce_message(conn, sid, msg.message_id)
             break
         except Exception as e:
+            print(f"Gagal mengirim presensi general ke OSPEK_GID {OSPEK_GID} (percobaan {attempt+1}): {e}")
             if attempt < 2:
+                import asyncio
                 await asyncio.sleep(5)
     
     extra_data = {}
@@ -350,7 +352,7 @@ def setup_jobs(application: Application):
         # Tutup presensi jam 23:59 WIB
         jq.run_daily(daily_staff_attendance_close, datetime.time(hour=23, minute=59, second=0, tzinfo=wib))
         
-        jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=0, second=0, tzinfo=wib))
+        jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=30, second=0, tzinfo=wib))
         jq.run_daily(daily_maba_attendance_close, datetime.time(hour=22, minute=0, second=0, tzinfo=wib))
 
     from bot.settings import KEEP_CH_ID, POST_CH_ID
