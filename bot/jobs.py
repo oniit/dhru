@@ -352,7 +352,7 @@ def setup_jobs(application: Application):
         # Tutup presensi jam 23:59 WIB
         jq.run_daily(daily_staff_attendance_close, datetime.time(hour=23, minute=59, second=0, tzinfo=wib))
         
-        jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=30, second=0, tzinfo=wib))
+        jq.run_daily(daily_maba_attendance_open, datetime.time(hour=15, minute=40, second=0, tzinfo=wib))
         jq.run_daily(daily_maba_attendance_close, datetime.time(hour=22, minute=0, second=0, tzinfo=wib))
 
     from bot.settings import KEEP_CH_ID, POST_CH_ID
