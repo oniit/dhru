@@ -2768,7 +2768,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "<code>/daftar charya</code> — Staf, Admin, Owner\n"
             "<code>/daftar pravesi</code> — MABA\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
-            "<code>/daftar kelompok &lt;nama_kelompok&gt;</code>\n"
+            "<code>/daftar kelompok &lt;nama_kelompok&gt;</code> (Bisa pakai nama kelompok, atau 'belum')\n"
             "<code>/daftar fakultas &lt;id&gt;</code>\n"
             "<code>/daftar jurusan &lt;id&gt;</code>\n"
             "<code>/daftar kelas &lt;id&gt;</code>\n"
@@ -2868,20 +2868,28 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif kind == "kelompok" and len(parts) > kind_idx + 1:
         g_name_input = parts[kind_idx + 1].lower()
         from bot.settings import MABA_GROUP_NAMES
-        target_mg = None
-        for mg_id, mg_name in MABA_GROUP_NAMES.items():
-            if mg_name.lower() == g_name_input:
-                target_mg = mg_id
-                break
-        if not target_mg:
-            await update.message.reply_text(f"Kelompok '{g_name_input}' tidak ditemukan.")
-            return
-        title = f"Daftar — Kelompok {MABA_GROUP_NAMES[target_mg]}"
-        for r in all_rows:
-            if r["role"] == "maba":
-                p = json.loads(r["profile_json"] or "{}")
-                if str(p.get("maba_group", "")) == str(target_mg):
-                    push_row(r, p)
+        if g_name_input == "belum":
+            title = "Daftar — Belum Dapat Kelompok"
+            for r in all_rows:
+                if r["role"] == "maba":
+                    p = json.loads(r["profile_json"] or "{}")
+                    if not p.get("maba_group"):
+                        push_row(r, p)
+        else:
+            target_mg = None
+            for mg_id, mg_name in MABA_GROUP_NAMES.items():
+                if mg_name.lower() == g_name_input:
+                    target_mg = mg_id
+                    break
+            if not target_mg:
+                await update.message.reply_text(f"Kelompok '{g_name_input}' tidak ditemukan. (Gunakan argumen 'belum' untuk maba yang belum diplot)")
+                return
+            title = f"Daftar — Kelompok {MABA_GROUP_NAMES[target_mg]}"
+            for r in all_rows:
+                if r["role"] == "maba":
+                    p = json.loads(r["profile_json"] or "{}")
+                    if str(p.get("maba_group", "")) == str(target_mg):
+                        push_row(r, p)
     elif kind == "fakultas" and len(parts) > kind_idx + 1:
         fid = parts[kind_idx + 1].lower()
         title = f"Daftar — fakultas {fid}"
