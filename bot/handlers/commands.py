@@ -3617,7 +3617,7 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 where_clause = "WHERE u.role = 'maba'"
                 title_suffix = " (Pravesi)"
                 
-    limit_clause = "" if is_all else "LIMIT 17"
+    limit_clause = "" if is_all else "LIMIT 7"
     
     cur = await conn.execute(
         f"""
@@ -3634,7 +3634,7 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         """
     )
     rows = await cur.fetchall()
-    title = f"Daftar Semua Agra{title_suffix}" if is_all else f"Top 17 Agra{title_suffix}"
+    title = f"Daftar Semua Agra{title_suffix}" if is_all else f"7 Agra Tertinggi{title_suffix}"
     
     lines = []
     if not rows:
@@ -3667,11 +3667,11 @@ async def cmd_agra_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not context.args:
         lines = [
             "<b>Menu Agra</b>",
-            "<code>/agra top</code> — Lihat peringkat Agra (17 besar)",
-            "<code>/agra top shishya</code> — Top 17 (Student & BEM)",
-            "<code>/agra top charya</code> — Top 17 (Staf/Petinggi)",
-            "<code>/agra top pravesi</code> — Top 17 (MABA)",
-            "<code>/agra top publik</code> — Top 17 (Eksternal)",
+            "<code>/agra top</code> — Lihat peringkat Agra (7 besar)",
+            "<code>/agra top shishya</code> — Top 7 (Student & BEM)",
+            "<code>/agra top charya</code> — Top 7 (Staf/Petinggi)",
+            "<code>/agra top pravesi</code> — Top 7 (MABA)",
+            "<code>/agra top publik</code> — Top 7 (Eksternal)",
             "<i>(tambahkan kata 'all' untuk melihat semua. Contoh: /agra top charya all)</i>",
             "<code>/agra log</code> — Lihat riwayat Agra pribadi"
         ]
