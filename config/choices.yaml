@@ -17,8 +17,8 @@ majors:
   - id: sm
     label: Seni Musik
     faculty: fib
-  - id: st
-    label: Seni Teater
+  - id: sf
+    label: Fotografi
     faculty: fib
 
 classes:
@@ -60,13 +60,13 @@ classes:
     majors: sm
     sks: 3
 
-  # FIB - Teater
-  - id: dt
-    label: Dasar Teater
+  # FIB - Fotografi
+  - id: df
+    label: Dasar Fotografi
     majors: st
     sks: 3
-  - id: tp
-    label: Teknik Pementasan
+  - id: tf
+    label: Teknik Fotografi
     majors: st
     sks: 3
 
