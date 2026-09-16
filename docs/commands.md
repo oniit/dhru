@@ -44,7 +44,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTM dan Karpeg dalam satu file `.zip`.
 
 ## Ekstra
-- `/ktm` & `/karpeg` — Menghasilkan gambar kartu ID Mahasiswa atau Pegawai berdasarkan _template_.
+- `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTM/Karpeg) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.
 
 ## Mini Games
 - `/settings_game` — (Owner/Admin Grup) Membuka menu interaktif untuk mengaktifkan/menonaktifkan game tertentu di grup ini. Game yang dinonaktifkan tidak dapat dimainkan.

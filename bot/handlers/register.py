@@ -7,7 +7,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from bot.database import Database
 
-from . import attendance, commands, ktm, karpeg, kontrak, messages, triggers, broadcast, tugas, menfess, games
+from . import attendance, commands, kartu, kontrak, messages, triggers, broadcast, tugas, menfess, games
 
 
 
@@ -22,10 +22,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("lengkapi", commands.cmd_lengkapi))
     application.add_handler(CommandHandler("kode", commands.cmd_kode))
     application.add_handler(CommandHandler("tugas", tugas.cmd_tugas_router))
-    application.add_handler(CommandHandler("ktm", ktm.cmd_ktm))
-    application.add_handler(CommandHandler("ktm_foto", ktm.cmd_ktm_foto))
-    application.add_handler(CommandHandler("karpeg", karpeg.cmd_karpeg))
-    application.add_handler(CommandHandler("karpeg_foto", karpeg.cmd_karpeg_foto))
+    application.add_handler(CommandHandler("kartu", kartu.cmd_kartu))
+    application.add_handler(CommandHandler("foto", kartu.cmd_foto))
     application.add_handler(CommandHandler("ubah", commands.cmd_ubah))
     application.add_handler(CommandHandler("add", commands.cmd_add))
     application.add_handler(CommandHandler("transfer", commands.cmd_transfer))

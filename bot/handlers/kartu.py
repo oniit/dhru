@@ -1,4 +1,4 @@
-"""Perintah /karpeg, /karpeg_foto — gambar Kartu Pegawai (hanya chat privat)."""
+"""Perintah /kartu, /foto — gambar ID Card KTM/Karpeg (hanya chat privat)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ import logging
 from io import BytesIO
 
 from telegram import Update
-from telegram.ext import ContextTypes, filters
+from telegram.ext import ContextTypes, filters, CommandHandler, MessageHandler
 
-from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL
+from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_BEM, ROLE_INTERNAL
+from bot.ktm_card import render_ktm_png_bytes
 from bot.karpeg_card import render_karpeg_png_bytes
 
 from .common import profile_from_row, user_row
@@ -16,7 +17,7 @@ from .common import profile_from_row, user_row
 log = logging.getLogger(__name__)
 
 # Step onboarding: tunggu satu foto dari user.
-STEP_KARPEG_PHOTO = "KARPEG_PHOTO"
+STEP_KARTU_PHOTO = "KARTU_PHOTO"
 
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
@@ -39,11 +40,11 @@ async def _download_telegram_photo(context: ContextTypes.DEFAULT_TYPE, file_id: 
         await tg_file.download_to_memory(buf)
         return buf.getvalue()
     except Exception:
-        log.warning("Unduh foto Karpeg gagal file_id=%s", file_id[:20], exc_info=True)
+        log.warning("Unduh foto gagal file_id=%s", file_id[:20], exc_info=True)
         return None
 
 
-async def cmd_karpeg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     uid = update.effective_user.id
@@ -53,54 +54,62 @@ async def cmd_karpeg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not row:
         await update.message.reply_text("Ketik /start dulu.")
         return
-    if row["role"] == ROLE_PUBLIC:
-        await update.message.reply_text("Selesaikan pendaftaran dulu (kode akses).")
-        return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
-        await update.message.reply_text("Kartu Pegawai hanya untuk staf/dosen/founder.")
+    
+    role = row["role"]
+    if role == ROLE_PUBLIC:
+        await update.message.reply_text("Selesaikan pendaftaran dulu (kode akses / profil).")
         return
 
     profile = profile_from_row(row)
     agra = await db.agra_total(conn, uid)
     photo_bytes: bytes | None = None
-    fid = (profile.get("karpeg_photo_file_id") or "").strip()
+    fid = (profile.get("photo_file_id") or "").strip()
     if fid:
         photo_bytes = await _download_telegram_photo(context, fid)
 
     try:
-        png = render_karpeg_png_bytes(
-            telegram_id=uid,
-            profile=profile,
-            agra=agra,
-            role=row["role"],
-            use_cache=True,
-            photo_bytes=photo_bytes,
-        )
+        if role in (ROLE_INTERNAL, "admin", "owner"):
+            png = render_karpeg_png_bytes(
+                telegram_id=uid,
+                profile=profile,
+                agra=agra,
+                role=role,
+                use_cache=True,
+                photo_bytes=photo_bytes,
+            )
+        else:
+            png = render_ktm_png_bytes(
+                telegram_id=uid,
+                profile=profile,
+                agra=agra,
+                use_cache=True,
+                photo_bytes=photo_bytes,
+            )
     except FileNotFoundError as e:
-        await update.message.reply_text(f"Template Karpeg belum siap: {e}")
+        await update.message.reply_text(f"Template Kartu belum siap: {e}")
         return
     except Exception:
-        log.exception("render Karpeg gagal uid=%s", uid)
-        await update.message.reply_text("Gagal membuat gambar Kartu Pegawai. Coba lagi nanti.")
+        log.exception("render Kartu gagal uid=%s", uid)
+        await update.message.reply_text("Gagal membuat gambar Kartu. Coba lagi nanti.")
         return
 
-    cap = "Kirim /karpeg_foto untuk mengganti foto."
+    cap = "Kirim /foto untuk mengatur atau mengganti foto."
     if fid and photo_bytes is None:
-        cap += " (Foto tidak bisa diunduh lagi — kirim ulang dengan /karpeg_foto.)"
+        cap += " (Foto lama tidak bisa diunduh — kirim ulang dengan /foto.)"
 
     await update.message.reply_photo(
         photo=BytesIO(png),
-        filename="karpeg.png",
+        filename="kartu.png",
         caption=cap,
     )
 
 
-async def cmd_karpeg_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     if not _private_only_reply(update):
         await update.message.reply_text(
-            "/karpeg_foto hanya di chat privat dengan bot."
+            "/foto hanya bisa digunakan di chat privat dengan bot."
         )
         return
 
@@ -114,19 +123,16 @@ async def cmd_karpeg_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if row["role"] == ROLE_PUBLIC:
         await update.message.reply_text("Selesaikan pendaftaran dulu.")
         return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
-        await update.message.reply_text("Hanya staf/dosen/founder yang bisa mengatur foto Karpeg.")
-        return
 
-    await db.set_onboarding_step(conn, uid, STEP_KARPEG_PHOTO)
+    await db.set_onboarding_step(conn, uid, STEP_KARTU_PHOTO)
     await update.message.reply_text(
-        "Kirim <b>satu foto</b> (wajah) di chat ini. Foto akan dipotong memenuhi kotak di Kartu Pegawai.\n\n"
-        "Setelah tersimpan, ketik /karpeg untuk melihat kartu.\n"
-        "Kirim foto baru lagi kapan saja dengan <code>/karpeg_foto</code> untuk mengganti."
+        "Kirim <b>satu foto</b> (wajah) di chat ini. Foto akan dipotong secara otomatis.\n\n"
+        "Setelah tersimpan, ketik /kartu untuk melihat hasilnya.\n"
+        "Anda dapat mengirim foto baru lagi kapan saja dengan <code>/foto</code> untuk mengganti."
     )
 
 
-async def on_karpeg_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def on_foto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.photo:
         return
     if not _private_only_reply(update):
@@ -139,9 +145,9 @@ async def on_karpeg_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not row:
         return
     step = (row["onboarding_step"] or "").strip()
-    if step != STEP_KARPEG_PHOTO:
+    if step != STEP_KARTU_PHOTO:
         return
-    if row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+    if row["role"] == ROLE_PUBLIC:
         await db.set_onboarding_step(conn, uid, None)
         return
 
@@ -149,12 +155,11 @@ async def on_karpeg_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     largest = photos[-1]
     file_id = largest.file_id
 
-    await db.set_profile_partial(conn, uid, {"karpeg_photo_file_id": file_id})
+    await db.set_profile_partial(conn, uid, {"photo_file_id": file_id})
     await db.set_onboarding_step(conn, uid, None)
     await update.message.reply_text(
-        "✅ Foto Karpeg tersimpan. Ketik /karpeg untuk melihat kartu."
+        "✅ Foto tersimpan. Ketik /kartu untuk melihat hasilnya."
     )
 
-
 # Filter untuk registrasi handler (chat privat saja).
-KARPEG_PRIVATE = filters.ChatType.PRIVATE
+KARTU_PRIVATE = filters.ChatType.PRIVATE

@@ -21,24 +21,26 @@ FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 # Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
 TEXT_COLOR = (18, 28, 48)
-CARD_W, CARD_H = 1050, 600
+CARD_W, CARD_H = 1080, 1080
 # Awal kolom nilai (sejajar setelah titik dua pada label cetak template).
-VALUE_X = 540
-# Baris pertama (Nama) — sesuaikan vertikal dengan baris "Nama :" di PNG.
-NAME_Y = 218
-# Jarak vertikal antar baris isian (Nama → NIM → Jurusan → UKM → Agra).
-LINE_STEP = 47
-NAME_SIZE = 30
-NIM_SIZE = 28
-CLUB_SIZE = 24
+VALUE_X = 520
+# Posisi vertikal masing-masing baris
+NAME_Y = 493
+PADVI_Y = 537
+JABATAN_Y = 579
+CLASSES_Y = 617
+AGRA_Y = 640
+NAME_SIZE = 34
+NIM_SIZE = 30
+CLUB_SIZE = 26
 CLUB_MAX_LINES = 4
-AGRA_SIZE = 36
-# Kotak tempel foto (x, y, w, h) relatif ke template 1050×600 — area putih kiri.
-PHOTO_SLOT = (103, 145, 275, 367)
-PHOTO_CORNER_RADIUS_FRAC = 0.11  # relatif ke min(w,h) slot
+AGRA_SIZE = 40
+# Kotak tempel foto (x, y, w, h) relatif ke template 1080x1080
+PHOTO_SLOT = (79, 380, 251, 325)
+PHOTO_CORNER_RADIUS_FRAC = 0.05
 
 # Bump jika layout teks / foto diubah (cache lama tidak dipakai lagi).
-_LAYOUT_VERSION = 4
+_LAYOUT_VERSION = 6
 
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 128
@@ -146,7 +148,7 @@ def cache_payload_for_profile(profile: dict, agra: int, role: str) -> dict:
         "club_enrolled": sorted(_normalize_multi_choice(profile.get("club_enrolled"))),
         "role": role,
         "agra": int(agra),
-        "karpeg_photo_file_id": (profile.get("karpeg_photo_file_id") or "").strip(),
+        "photo_file_id": (profile.get("photo_file_id") or "").strip(),
         "contract_end": (profile.get("contract_end") or "").strip(),
     }
 
@@ -176,11 +178,11 @@ def _paste_photo_slot(
         log.warning("KTM: file foto tidak bisa dibuka sebagai gambar")
         return
     fitted = _cover_resize(ph, (slot_w, slot_h))
-    mask = Image.new("L", (slot_w, slot_h), 0)
-    mdraw = ImageDraw.Draw(mask)
-    r = max(4, int(min(slot_w, slot_h) * PHOTO_CORNER_RADIUS_FRAC))
-    mdraw.rounded_rectangle((0, 0, slot_w, slot_h), radius=r, fill=255)
-    base.paste(fitted, (slot_x, slot_y), mask)
+    # mask = Image.new("L", (slot_w, slot_h), 0)
+    # mdraw = ImageDraw.Draw(mask)
+    # r = max(4, int(min(slot_w, slot_h) * PHOTO_CORNER_RADIUS_FRAC))
+    # mdraw.rounded_rectangle((0, 0, slot_w, slot_h), radius=r, fill=255)
+    base.paste(fitted, (slot_x, slot_y))
 
 
 def render_karpeg_png_bytes(
@@ -211,12 +213,13 @@ def render_karpeg_png_bytes(
     # Skala jika template diganti ukuran (proporsional).
     sx = W / CARD_W
     sy = H / CARD_H
+    
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if photo_bytes:
-        _paste_photo_slot(im, photo_bytes, sx, sy)
-    draw = ImageDraw.Draw(im)
+        _paste_photo_slot(overlay, photo_bytes, sx, sy)
+    draw = ImageDraw.Draw(overlay)
+    
     value_x = int(VALUE_X * sx)
-    name_y0 = int(NAME_Y * sy)
-    line_step = int(LINE_STEP * sy)
     margin_r = int(48 * sx)
     club_max_w = max(120, W - value_x - margin_r)
 
@@ -241,11 +244,11 @@ def render_karpeg_png_bytes(
         name = (name + "…") if name else "—"
 
     # Nama
-    y = name_y0
+    y = int(NAME_Y * sy)
     draw.text((value_x, y), name, font=font_name, fill=TEXT_COLOR)
-    y += line_step
     
     # Baris 2: Jabatan Sansekerta (Padavi)
+    y = int(PADVI_Y * sy)
     position_raw = payload.get("position")
 
     if not position_raw:
@@ -273,36 +276,41 @@ def render_karpeg_png_bytes(
         position_label = (position_label + "…") if position_label else "—"
 
     draw.text((value_x, y), position_label, font=font_body, fill=TEXT_COLOR)
-    y += line_step
     
     # Baris 3: Detail Jabatan (menggantikan Role)
+    y = int(JABATAN_Y * sy)
     if _text_width(draw, detail_text, font_body) > max_name_w:
         while detail_text and _text_width(draw, detail_text + "…", font_body) > max_name_w:
             detail_text = detail_text[:-1]
         detail_text = (detail_text + "…") if detail_text else "—"
     draw.text((value_x, y), detail_text, font=font_body, fill=TEXT_COLOR)
-    y += line_step
     
     # Baris 4: Detail Tambahan (Kelas / UKM)
+    y = int(CLASSES_Y * sy)
     classes = multi_choice_labels("classes", payload.get("teaching_classes")) if payload.get("teaching_classes") else ""
     clubs = multi_choice_labels("clubs", payload.get("club_enrolled")) if payload.get("club_enrolled") else ""
     extra_detail = ", ".join(filter(None, [classes.replace("—", ""), clubs.replace("—", "")])) or ""
     
-    if _text_width(draw, extra_detail, font_small) > club_max_w:
-        while extra_detail and _text_width(draw, extra_detail + "…", font_small) > club_max_w:
-            extra_detail = extra_detail[:-1]
-        extra_detail = (extra_detail + "…") if extra_detail else "—"
-    draw.text((value_x, y), extra_detail, font=font_small, fill=TEXT_COLOR)
-    y += max(int(CLUB_SIZE * sy * 1.25), int(20 * sy))
-    y += int(6 * sy)
+    if extra_detail:
+        if _text_width(draw, extra_detail, font_small) > club_max_w:
+            while extra_detail and _text_width(draw, extra_detail + "…", font_small) > club_max_w:
+                extra_detail = extra_detail[:-1]
+            extra_detail = (extra_detail + "…") if extra_detail else "—"
+        draw.text((value_x, y), extra_detail, font=font_small, fill=TEXT_COLOR)
     
+    # Baris 5: Agra
+    y = int(AGRA_Y * sy)
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)
 
     # Berlaku Sampai (Contract End) di footer
     contract_end = payload.get("contract_end") or "—"
-    footer_x = int(875 * sx)
-    footer_y = int(557 * sy) # asalnya 567, dinaikkan sedikit
+    footer_x = int(825 * sx)
+    footer_y = int(725 * sy)
     draw.text((footer_x, footer_y), contract_end, font=font_footer, fill=(255, 255, 255))
+
+    # Terapkan rotasi pada overlay teks & foto untuk menyesuaikan kemiringan template
+    overlay = overlay.rotate(3.7, resample=Image.BICUBIC, center=(W//2, H//2))
+    im.alpha_composite(overlay)
 
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)

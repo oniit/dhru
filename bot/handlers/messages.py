@@ -17,8 +17,7 @@ from .common import (
     profile_from_row,
     user_row,
 )
-from .ktm import STEP_KTM_PHOTO, on_ktm_photo
-from .karpeg import STEP_KARPEG_PHOTO, on_karpeg_photo
+from .kartu import STEP_KARTU_PHOTO, on_foto
 
 ADMIN_PROFILE_TARGET_UD = "admin_profile_target"
 LENGKAPI_DONE_KEY = "__lengkapi_done"
@@ -60,10 +59,8 @@ async def on_private_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     from .kontrak import STEP_KONTRAK_TTD, on_kontrak_ttd
     
-    if step == STEP_KTM_PHOTO:
-        await on_ktm_photo(update, context)
-    elif step == STEP_KARPEG_PHOTO:
-        await on_karpeg_photo(update, context)
+    if step == STEP_KARTU_PHOTO:
+        await on_foto(update, context)
     elif step == STEP_KONTRAK_TTD:
         await on_kontrak_ttd(update, context)
 

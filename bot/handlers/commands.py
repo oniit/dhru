@@ -405,13 +405,15 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         lines.append(
             "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
             "/tugas — Menu & Dashboard Tugas\n"
-            "/ktm — Kartu tanda mahasiswa\n"
+            "/kartu — Kartu Tanda Mahasiswa (KTM)\n"
+            "/foto — Ganti pas foto KTM\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
             "<b>Staf / Pengajar</b>\n"
             "/tugas — Menu Buka/Kelola Tugas\n"
-            "/karpeg — Kartu Pegawai\n"
+            "/kartu — Kartu Pegawai\n"
+            "/foto — Ganti pas foto Pegawai\n"
             "/kontrak — Kontrak Kerja\n"
         )
     if can_report(role, prof) or can_open_presensi:
@@ -4386,14 +4388,13 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     import os
     
     try:
-        cur = await conn.execute("SELECT telegram_id, profile_json FROM users")
+        cur = await conn.execute("SELECT telegram_id, profile_json, role FROM users")
         rows = await cur.fetchall()
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
             zip_path = tmp.name
             
-        count_ktm = 0
-        count_karpeg = 0
+        count_photos = 0
             
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for r in rows:
@@ -4407,39 +4408,31 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 tid = r["telegram_id"]
                 name_clean = (prof.get("full_name") or str(tid)).replace(" ", "_").replace("/", "-")
                 
-                ktm_id = prof.get("ktm_photo_file_id")
-                if ktm_id:
+                photo_id = prof.get("photo_file_id")
+                if photo_id:
                     try:
-                        file = await context.bot.get_file(ktm_id)
+                        file = await context.bot.get_file(photo_id)
                         byte_arr = await file.download_as_bytearray()
-                        zf.writestr(f"KTM/KTM_{tid}_{name_clean}.jpg", bytes(byte_arr))
-                        count_ktm += 1
+                        role = r["role"]
+                        folder = "Karpeg" if role in ("owner", "admin", "internal") else "KTM"
+                        zf.writestr(f"{folder}/{folder}_{tid}_{name_clean}.jpg", bytes(byte_arr))
+                        count_photos += 1
                     except Exception as e:
-                        log.error(f"Failed to download KTM for {tid}: {e}")
-                
-                karpeg_id = prof.get("karpeg_photo_file_id")
-                if karpeg_id:
-                    try:
-                        file = await context.bot.get_file(karpeg_id)
-                        byte_arr = await file.download_as_bytearray()
-                        zf.writestr(f"Karpeg/Karpeg_{tid}_{name_clean}.jpg", bytes(byte_arr))
-                        count_karpeg += 1
-                    except Exception as e:
-                        log.error(f"Failed to download Karpeg for {tid}: {e}")
+                        log.error(f"Failed to download photo for {tid}: {e}")
                         
-        if count_ktm == 0 and count_karpeg == 0:
-            await msg.edit_text("Tidak ada data foto KTM atau Karpeg yang ditemukan.")
+        if count_photos == 0:
+            await msg.edit_text("Tidak ada data foto yang ditemukan.")
             os.remove(zip_path)
             return
             
-        await msg.edit_text(f"Berhasil mengemas {count_ktm} KTM dan {count_karpeg} Karpeg. Sedang mengirim...")
+        await msg.edit_text(f"Berhasil mengemas {count_photos} foto. Sedang mengirim...")
         
         with open(zip_path, "rb") as f:
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename="Export_Photos.zip",
-                caption=f"Export Foto\nKTM: {count_ktm}\nKarpeg: {count_karpeg}"
+                caption=f"Export Foto\nTotal: {count_photos}"
             )
             
         await msg.delete()

@@ -22,25 +22,27 @@ FONT_LIGHT_PATH = ROOT / "assets" / "Mukta/Mukta-Light.ttf"
 # Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
 TEXT_COLOR = (18, 28, 48)
-CARD_W, CARD_H = 1050, 600
+CARD_W, CARD_H = 1080, 1080
 # Awal kolom nilai (sejajar setelah titik dua pada label cetak template).
-VALUE_X = 540
-# Baris pertama (Nama) — sesuaikan vertikal dengan baris "Nama :" di PNG.
-NAME_Y = 218
-# Jarak vertikal antar baris isian (Nama → NIM → Jurusan → UKM → Agra).
-LINE_STEP = 48
-NAME_SIZE = 30
-NIM_SIZE = 28
+VALUE_X = 520
+# Posisi vertikal masing-masing baris
+NAME_Y = 463
+NIM_Y = 504
+MAJOR_Y = 539
+CLUB_Y = 580
+AGRA_Y = 603
+NAME_SIZE = 34
+NIM_SIZE = 30
 CLUB_SIZE = 24
 CLUB_MAX_LINES = 4
-AGRA_SIZE = 36
-BEM_SIZE = 20
-# Kotak tempel foto (x, y, w, h) relatif ke template 1050×600 — area putih kiri.
-PHOTO_SLOT = (103, 145, 275, 367)
-PHOTO_CORNER_RADIUS_FRAC = 0.11  # relatif ke min(w,h) slot
+AGRA_SIZE = 40
+BEM_SIZE = 22
+# Kotak tempel foto (x, y, w, h) relatif ke template 1080x1080
+PHOTO_SLOT = (79, 380, 251, 325)
+PHOTO_CORNER_RADIUS_FRAC = 0.05
 
 # Bump jika layout teks / foto diubah (cache lama tidak dipakai lagi).
-_LAYOUT_VERSION = 3
+_LAYOUT_VERSION = 5
 
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 128
@@ -149,7 +151,7 @@ def cache_payload_for_profile(profile: dict, agra: int) -> dict:
         "club_ids": club_ids,
         "agra": int(agra),
         "bem_position": (profile.get("bem_position") or "").strip(),
-        "ktm_photo_file_id": (profile.get("ktm_photo_file_id") or "").strip(),
+        "photo_file_id": (profile.get("photo_file_id") or "").strip(),
     }
 
 
@@ -178,11 +180,7 @@ def _paste_photo_slot(
         log.warning("KTM: file foto tidak bisa dibuka sebagai gambar")
         return
     fitted = _cover_resize(ph, (slot_w, slot_h))
-    mask = Image.new("L", (slot_w, slot_h), 0)
-    mdraw = ImageDraw.Draw(mask)
-    r = max(4, int(min(slot_w, slot_h) * PHOTO_CORNER_RADIUS_FRAC))
-    mdraw.rounded_rectangle((0, 0, slot_w, slot_h), radius=r, fill=255)
-    base.paste(fitted, (slot_x, slot_y), mask)
+    base.paste(fitted, (slot_x, slot_y))
 
 
 def render_ktm_png_bytes(
@@ -208,12 +206,13 @@ def render_ktm_png_bytes(
     # Skala jika template diganti ukuran (proporsional).
     sx = W / CARD_W
     sy = H / CARD_H
+    
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     if photo_bytes:
-        _paste_photo_slot(im, photo_bytes, sx, sy)
-    draw = ImageDraw.Draw(im)
+        _paste_photo_slot(overlay, photo_bytes, sx, sy)
+    draw = ImageDraw.Draw(overlay)
+    
     value_x = int(VALUE_X * sx)
-    name_y0 = int(NAME_Y * sy)
-    line_step = int(LINE_STEP * sy)
     margin_r = int(48 * sx)
     club_max_w = max(120, W - value_x - margin_r)
 
@@ -235,20 +234,28 @@ def render_ktm_png_bytes(
             name = name[:-1]
         name = (name + "…") if name else "—"
 
-    y = name_y0
+    # Nama
+    y = int(NAME_Y * sy)
     draw.text((value_x, y), name, font=font_name, fill=TEXT_COLOR)
-    y += line_step
+    
+    # NIM
+    y = int(NIM_Y * sy)
     draw.text((value_x, y), nim, font=font_body, fill=TEXT_COLOR)
-    y += line_step
+    
+    # Major
+    y = int(MAJOR_Y * sy)
     draw.text((value_x, y), major_label, font=font_body, fill=TEXT_COLOR)
-    y += line_step
-
+    
+    # Club
+    y = int(CLUB_Y * sy)
     club_lines = _wrap_lines(draw, club_text, font_small, club_max_w, CLUB_MAX_LINES)
     line_h = max(int(CLUB_SIZE * sy * 1.25), int(20 * sy))
     for line in club_lines:
         draw.text((value_x, y), line, font=font_small, fill=TEXT_COLOR)
         y += line_h
-    y += int(6 * sy)
+        
+    # Agra
+    y = int(AGRA_Y * sy)
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)
 
     bem_pos_id = payload.get("bem_position")
@@ -258,11 +265,16 @@ def render_ktm_png_bytes(
         if bem_pos_item:
             b_label = str(bem_pos_item.get("label", ""))
             b_detail = str(bem_pos_item.get("detail", ""))
-            b_y = int(555 * sy)
-            b_x = int(PHOTO_SLOT[0] * sx)
+            b_y = int(660 * sy)
+            b_x = int(380 * sx)  # Lebih ke kiri dari value (VALUE_X=520)
             if b_label:
+                # Kita gunakan font utama atau font light terserah, dengan warna teks gelap
                 font_light = _load_font(int(BEM_SIZE * sy), font_path=FONT_LIGHT_PATH)
-                draw.text((b_x, b_y), f"{b_label} — {b_detail}", font=font_light, fill=(255, 255, 255))
+                draw.text((b_x, b_y), f"{b_label} — {b_detail}", font=font_light, fill=TEXT_COLOR)
+                
+    # Terapkan rotasi pada overlay teks & foto
+    overlay = overlay.rotate(3.6, resample=Image.BICUBIC, center=(W//2, H//2))
+    im.alpha_composite(overlay)
 
     buf = BytesIO()
     im.save(buf, format="PNG", optimize=True)
