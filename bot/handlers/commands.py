@@ -4136,6 +4136,93 @@ async def on_kick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.edit_message_text("Memproses...")
     await _do_kick(update, context, chat_id, target_id, t_name, is_group=False)
 
+async def cmd_kicknot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+    
+    if update.effective_chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("/kicknot hanya bisa dipakai di grup.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+    actor = update.effective_user.id
+    
+    row = await user_row(conn, db, actor)
+    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+        await update.message.reply_text("⛔ Hanya Owner dan Admin yang bisa menggunakan perintah ini.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Gunakan format: /kicknot <role1> <role2>... (contoh: /kicknot internal student)")
+        return
+        
+    allowed_roles = [r.lower() for r in context.args]
+    # Always protect owner and admin
+    if ROLE_OWNER not in allowed_roles:
+        allowed_roles.append(ROLE_OWNER)
+    if ROLE_ADMIN not in allowed_roles:
+        allowed_roles.append(ROLE_ADMIN)
+
+    chat_id = update.effective_chat.id
+    chat_id_str = str(chat_id)
+    
+    wait_msg = await update.message.reply_text("⏳ Mengambil daftar member dari userbot...")
+    
+    userbot_ids = []
+    success = False
+    try:
+        req_id = await db.create_userbot_request(conn, chat_id_str, "GET_MEMBERS")
+        
+        for _ in range(10):
+            await asyncio.sleep(1)
+            req_row = await db.get_userbot_request(conn, req_id)
+            if req_row and req_row["status"] == "DONE":
+                try:
+                    userbot_ids = json.loads(req_row["result"])
+                    success = True
+                except Exception:
+                    pass
+                break
+            elif req_row and req_row["status"] == "ERROR":
+                break
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Userbot request failed in kicknot: {e}")
+        
+    if not success or not userbot_ids:
+        await wait_msg.edit_text("❌ Gagal mengambil daftar member dari grup. Pastikan userbot aktif.")
+        return
+        
+    await wait_msg.edit_text(f"⏳ Mengecek {len(userbot_ids)} member... Jangan mengirim pesan lain agar tidak rate limit.")
+    
+    kicked_count = 0
+    failed_count = 0
+    
+    for uid in userbot_ids:
+        # Don't kick the bot itself
+        if uid == context.bot.id:
+            continue
+            
+        # Get user role from db
+        u_row = await user_row(conn, db, uid)
+        u_role = u_row["role"] if u_row else "unknown"
+        
+        if u_role not in allowed_roles:
+            try:
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=uid)
+                await context.bot.unban_chat_member(chat_id=chat_id, user_id=uid)
+                kicked_count += 1
+                await asyncio.sleep(0.5) # Avoid rate limits
+            except Exception as e:
+                failed_count += 1
+                
+    result_text = f"✅ <b>Rekap /kicknot:</b>\n"
+    result_text += f"- Berhasil dikeluarkan: {kicked_count} orang\n"
+    result_text += f"- Gagal (atau sudah keluar/admin grup): {failed_count} orang\n"
+    result_text += f"- Pengecualian Role: {', '.join(allowed_roles)}"
+    
+    await wait_msg.edit_text(result_text, parse_mode="HTML")
 
 
 async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

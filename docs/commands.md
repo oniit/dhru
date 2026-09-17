@@ -27,6 +27,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
+- `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
 - `/admin_data <username>` — Membuka menu pengeditan paksa terhadap profil pengguna (Bypass persetujuan).
 - `/orreset_user <id> <tipe>`: (Owner) Reset data profil user (onboarding, rank, dll).

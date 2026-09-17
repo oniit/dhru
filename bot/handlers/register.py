@@ -89,6 +89,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(ChatJoinRequestHandler(messages.on_chat_join_request))
     
     application.add_handler(CommandHandler("kick", commands.cmd_kick))
+    application.add_handler(CommandHandler("kicknot", commands.cmd_kicknot))
     application.add_handler(CallbackQueryHandler(commands.on_kick_callback, pattern="^kick:"))
     
     application.add_handler(CallbackQueryHandler(commands.on_callback))

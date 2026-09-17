@@ -5,7 +5,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock
 from telegram import Update, Message, Chat, User
 from bot.database import Database
-from bot.handlers import commands, menfess, attendance, triggers, tugas, ktm, karpeg, kontrak, broadcast
+from bot.handlers import commands, menfess, attendance, triggers, tugas, kartu, kontrak, broadcast
 
 logging.basicConfig(level=logging.ERROR)
 
