@@ -4198,6 +4198,7 @@ async def cmd_kicknot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     kicked_count = 0
     failed_count = 0
+    last_error = ""
     
     for uid in userbot_ids:
         # Don't kick the bot itself
@@ -4216,11 +4217,15 @@ async def cmd_kicknot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await asyncio.sleep(0.5) # Avoid rate limits
             except Exception as e:
                 failed_count += 1
+                last_error = str(e)
                 
     result_text = f"✅ <b>Rekap /kicknot:</b>\n"
     result_text += f"- Berhasil dikeluarkan: {kicked_count} orang\n"
-    result_text += f"- Gagal (atau sudah keluar/admin grup): {failed_count} orang\n"
+    result_text += f"- Gagal (atau admin grup): {failed_count} orang\n"
     result_text += f"- Pengecualian Role: {', '.join(allowed_roles)}"
+    
+    if failed_count > 0 and last_error:
+        result_text += f"\n\n<i>⚠️ Error Terakhir: {html.escape(last_error)}</i>"
     
     await wait_msg.edit_text(result_text, parse_mode="HTML")
 

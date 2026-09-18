@@ -70,6 +70,7 @@ PROFILE_FIELDS, PROFILE_DISPLAY_KEYS = load_profile_fields()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
+TESTER_ID = int(os.environ.get("TESTER_ID", "0") or 0)
 GENERATION_CODE = os.environ.get("GENERATION_CODE", "01").strip()
 
 _api_id = os.environ.get("API_ID", "").strip()

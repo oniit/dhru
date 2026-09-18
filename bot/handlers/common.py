@@ -240,7 +240,7 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
         ids.extend(classes_for_staff_faculty(dean_faculty_id(p)))
     if "d_sekre" in jabatans:
         has_access = True
-        ids.append("staff_auto")
+        ids.extend(["staff_auto", "staff_manual"])
         
     if has_access:
         return list(dict.fromkeys(ids))

@@ -307,7 +307,7 @@ def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeybo
         lab = str(item.get("label", cid))
         rows.append([InlineKeyboardButton(lab, callback_data=f"o:{cid}"[:64])])
         
-    if allowed_set is None:
+    if allowed_set is None or "staff_manual" in allowed_set:
         rows.append([InlineKeyboardButton("👥 Staf", callback_data="o:staff_manual")])
         
     rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
