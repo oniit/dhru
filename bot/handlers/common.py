@@ -242,6 +242,14 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
         has_access = True
         ids.extend(["staff_auto", "staff_manual"])
         
+    if role == ROLE_BEM:
+        has_access = True
+        ids.append("bem_manual")
+        
+    if role != ROLE_PUBLIC:
+        has_access = True
+        ids.append("event_bebas")
+        
     if has_access:
         return list(dict.fromkeys(ids))
     return []

@@ -46,9 +46,11 @@ def _db(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _class_label(class_id: str) -> str:
-    if class_id == "staff_auto": return "Presensi Harian Staf"
+    if class_id == "staff_auto": return "Presensi Harian Charya"
     if class_id == "maba_auto": return "🔔 Presensi Harian Pravesa"
-    if class_id == "staff_manual": return "Presensi Staf"
+    if class_id == "staff_manual": return "Presensi Charya"
+    if class_id == "bem_manual": return "Presensi Yaksa"
+    if class_id == "event_bebas": return "Presensi Umum"
     items = CHOICES.get("classes", []) + CHOICES.get("clubs", [])
     for item in items:
         if item.get("id") == class_id:
@@ -308,7 +310,13 @@ def _classes_keyboard(allowed_class_ids: list[str] | None = None) -> InlineKeybo
         rows.append([InlineKeyboardButton(lab, callback_data=f"o:{cid}"[:64])])
         
     if allowed_set is None or "staff_manual" in allowed_set:
-        rows.append([InlineKeyboardButton("👥 Staf", callback_data="o:staff_manual")])
+        rows.append([InlineKeyboardButton("Charya", callback_data="o:staff_manual")])
+        
+    if allowed_set is None or "bem_manual" in allowed_set:
+        rows.append([InlineKeyboardButton("Yaksa", callback_data="o:bem_manual")])
+        
+    if allowed_set is None or "event_bebas" in allowed_set:
+        rows.append([InlineKeyboardButton("Umum", callback_data="o:event_bebas")])
         
     rows.append([InlineKeyboardButton("⬅️ Batal", callback_data="cancel_action")])
     return InlineKeyboardMarkup(rows)
@@ -323,17 +331,17 @@ async def cmd_buka_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     profile = profile_from_row(row) if row else {}
     if not row or not _can_act_on_presensi(row, profile):
         await update.message.reply_text(
-            "Hanya dosen/admin/owner/cofounder, atau dekan staf (dengan fakultas lingkup), yang bisa membuka presensi."
+            "Akun kamu belum diizinkan atau belum terdaftar untuk membuka presensi."
         )
         return
     allowed_class_ids = presence_allowed_class_ids(row["role"], profile)
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
-            "Isi <b>Kelas yang diampu</b> dan/atau <b>Fakultas</b> di /lengkapi agar ada matkul untuk presensi.",
+            "Lengkapi profil kamu di /lengkapi agar memiliki akses untuk presensi.",
         )
         return
     await update.message.reply_text(
-        "Pilih kelas untuk sesi presensi:",
+        "Pilih jenis sesi presensi:",
         reply_markup=_classes_keyboard(allowed_class_ids),
     )
 
@@ -359,7 +367,7 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is not None and sess["class_id"] not in allowed:
         await update.message.reply_text(
-            "Sesi ini untuk kelas di luar lingkup presensi kamu.",
+            "Sesi ini di luar lingkup presensi kamu.",
         )
         return
         
@@ -401,6 +409,8 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         elif sess["class_id"] == "maba_auto":
             from bot.settings import AGRA_REWARD_MABA_AUTO
             notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{AGRA_REWARD_MABA_AUTO} Agra</b> (Status: {status_label})."
+        elif sess["class_id"] == "event_bebas":
+            notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup."
         else:
             amt = AGRA_REWARD_CLASS_HADIR if status == "hadir" else AGRA_REWARD_CLASS_IZIN
             notif = f"Sesi presensi <b>{c_lab}</b> telah ditutup.\nKamu mendapatkan <b>{amt} Agra</b> (Status: {status_label})."
@@ -430,17 +440,21 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
+    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+        user_classes.append("bem_manual")
+    if row["role"] != "public":
+        user_classes.append("event_bebas")
         # NOTE: staff_auto is specifically excluded here to enforce button click
         
     if not user_classes:
         await update.message.reply_text(
-            "Lengkapi kelas di profil (/lengkapi) — mahasiswa: kelas diikuti; dosen: kelas diampu."
+            "Lengkapi profil kamu (/lengkapi) agar bisa melakukan presensi."
         )
         return
     sess = await db.get_open_session_for_classes(conn, user_classes)
     if not sess:
         await update.message.reply_text(
-            "Tidak ada sesi presensi aktif untuk kelas yang relevan."
+            "Tidak ada sesi presensi aktif yang relevan."
         )
         return
     ok, msg, added = await _record_hadir(
@@ -461,13 +475,13 @@ async def _record_hadir(
     sess = await cur.fetchone()
     if not sess or sess["closed_at"] is not None:
         return False, "Sesi tidak valid atau sudah ditutup.", False
-    if sess["opened_by"] == uid:
+    if sess["opened_by"] == uid and sess["class_id"] != "staff_manual":
         return False, "Anda tidak perlu mengisi presensi untuk sesi yang Anda buka sendiri.", False
     if (
         sess["class_id"] not in user_classes
         and role not in (ROLE_OWNER, ROLE_ADMIN)
     ):
-        return False, "Sesi ini untuk kelas lain.", False
+        return False, "Sesi ini di luar akses presensi kamu.", False
     changed, old_status = await db.record_attendance(conn, session_id, uid, status)
     status_label = "Hadir" if status == "hadir" else "Izin"
     
@@ -479,6 +493,8 @@ async def _record_hadir(
         elif sess["class_id"] == "maba_auto":
             from bot.settings import AGRA_REWARD_MABA_AUTO
             diff = AGRA_REWARD_MABA_AUTO if status == "hadir" else 0
+        elif sess["class_id"] == "event_bebas":
+            diff = 0
         else:
             if status == "hadir":
                 diff = AGRA_REWARD_CLASS_HADIR if not old_status else (AGRA_REWARD_CLASS_HADIR - AGRA_REWARD_CLASS_IZIN)
@@ -487,7 +503,7 @@ async def _record_hadir(
             
         if diff != 0:
             c_lab = _class_label(sess["class_id"])
-            desc = f"Presensi otomatis {status_label} kelas {c_lab}"
+            desc = f"Presensi otomatis {status_label} sesi {c_lab}"
             await db.add_agra(
                 conn,
                 target_id=uid,
@@ -498,11 +514,11 @@ async def _record_hadir(
                 message_id=None
             )
 
-        agra_text = f" (+{diff} Agra)" if sess["class_id"] in ("staff_auto", "maba_auto") else ""
+        agra_text = f" (+{diff} Agra)" if sess["class_id"] not in ("event_bebas",) and diff > 0 else ""
         if old_status:
-            return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk kelas {_class_label(sess['class_id'])}.{agra_text}", True
-        return True, f"✅ Presensi kelas {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.{agra_text}", True
-    return True, f"Status kamu tetap {status_label} di sesi ini. Kelas: {_class_label(sess['class_id'])}.", False
+            return True, f"✅ Status diubah dari {old_status.title()} menjadi {status_label} untuk sesi {_class_label(sess['class_id'])}.{agra_text}", True
+        return True, f"✅ Presensi sesi {_class_label(sess['class_id'])} tercatat sebagai {status_label}. Terima kasih.{agra_text}", True
+    return True, f"Status kamu tetap {status_label} di sesi ini: {_class_label(sess['class_id'])}.", False
 
 
 async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -522,7 +538,7 @@ async def cmd_sesi_aktif(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is not None and not allowed:
         await update.message.reply_text(
-            "Isi <b>Kelas yang diampu</b> dan/atau <b>Fakultas</b> di /lengkapi untuk melihat sesi relevan.",
+            "Lengkapi profil kamu di /lengkapi untuk melihat sesi relevan.",
         )
         return
 
@@ -570,7 +586,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
     if allowed_class_ids is not None and not allowed_class_ids:
         await update.message.reply_text(
-            "Belum ada lingkup kelas di profil untuk rekap (dosen: kelas diampu; dekan: fakultas lingkup di /lengkapi).",
+            "Belum ada lingkup presensi di profil kamu untuk direkap.",
         )
         return
 
@@ -690,10 +706,14 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     can_rekap = can_rekap_hadir_session(row, profile, sess["class_id"])
     if sess["class_id"] in ("staff_manual", "staff_auto") and row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         can_rekap = True
+    if sess["class_id"] == "bem_manual" and row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+        can_rekap = True
+    if sess["class_id"] == "event_bebas" and row["role"] != "public":
+        can_rekap = True
         
     if not can_rekap:
         await update.message.reply_text(
-            "Kamu tidak punya akses rekap untuk sesi ini (bukan admin/owner atau bukan dosen kelas tersebut)."
+            "Kamu tidak punya akses rekap untuk sesi ini."
         )
         return
     hadir_records = [r for r in records if dict(r).get("status", "hadir") == "hadir"]
@@ -701,7 +721,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     lines = [
         f"<b>Rekap presensi</b> sesi <code>{sid}</code>",
-        f"Kelas: {_class_label(sess['class_id'])}",
+        f"Sesi: {_class_label(sess['class_id'])}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
         f"Ditutup: {format_local_time(sess['closed_at']) if sess['closed_at'] else '— (aktif)'}",
         "",
@@ -740,7 +760,7 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     allowed = presence_allowed_class_ids(row["role"], profile)
     if allowed is not None and class_id not in allowed:
-        await q.edit_message_text("Kelas ini di luar lingkup presensi kamu.")
+        await q.edit_message_text("Pilihan ini di luar lingkup presensi kamu.")
         return
     sid = await db.open_attendance_session(
         conn,
@@ -852,9 +872,13 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
     # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
+    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+        user_classes.append("bem_manual")
+    if row["role"] != "public":
+        user_classes.append("event_bebas")
         
     if not user_classes:
-        await q.answer("Lengkapi kelas di profil.", show_alert=True)
+        await q.answer("Lengkapi profil kamu.", show_alert=True)
         return
     status = "hadir" if action in ("h", "sh") else "izin"
     ok, msg, _ = await _record_hadir(
@@ -895,7 +919,7 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if can_report(role, prof) or can_open_presensi:
             if can_open_presensi:
-                lines.append("<code>/presensi buka</code> — Buka sesi kelas")
+                lines.append("<code>/presensi buka</code> — Buka sesi presensi")
                 lines.append("<code>/presensi tutup [id_sesi]</code> — Tutup sesi")
             
             if role in (ROLE_OWNER, ROLE_ADMIN):
@@ -907,7 +931,7 @@ async def cmd_presensi_router(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             p_jabs = prof.get("position_detail", [])
             if "d_dosen" in p_jabs or "d_guru_besar" in p_jabs:
-                lines.append("\n<i>Catatan Dosen/Guru Besar: pastikan mengisi Kelas yang diampu di /lengkapi.</i>")
+                lines.append("\n<i>Catatan: pastikan profil kamu sudah lengkap di /lengkapi.</i>")
             elif "d_dekan" in prof.get("position_detail", []):
                 lines.append("\n<i>Catatan Dekan: data presensi otomatis terfilter ke fakultas lingkup.</i>")
         else:

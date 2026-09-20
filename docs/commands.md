@@ -10,7 +10,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
 
 ## Akademik & Kelas
-- `/presensi` — (Bagi mahasiswa) Merekam kehadiran. (Bagi Dosen/Dekan) Menu membuka/menutup presensi.
+- `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu.
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi mahasiswa).
 
 ## Sosial & Gamifikasi (Agra)
