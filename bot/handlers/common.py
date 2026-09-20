@@ -246,7 +246,7 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
         has_access = True
         ids.append("bem_manual")
         
-    if role != ROLE_PUBLIC:
+    if role != "public":
         has_access = True
         ids.append("event_bebas")
         
