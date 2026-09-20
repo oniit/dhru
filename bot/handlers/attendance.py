@@ -14,6 +14,7 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STUDENT,
     ROLE_INTERNAL,
+    ROLE_BEM,
 )
 from bot.settings import (
     CHOICES,
@@ -475,7 +476,7 @@ async def _record_hadir(
     sess = await cur.fetchone()
     if not sess or sess["closed_at"] is not None:
         return False, "Sesi tidak valid atau sudah ditutup.", False
-    if sess["opened_by"] == uid and sess["class_id"] != "staff_manual":
+    if sess["opened_by"] == uid and sess["class_id"] not in ("staff_manual", "bem_manual", "event_bebas"):
         return False, "Anda tidak perlu mengisi presensi untuk sesi yang Anda buka sendiri.", False
     if (
         sess["class_id"] not in user_classes
