@@ -1,11 +1,11 @@
 # 059 - Export Photos Command
 
 ## Apa yang Dikerjakan
-Menambahkan fitur bagi Owner/Admin untuk mengekspor semua data foto profil (KTM dan Karpeg) ke dalam satu buah file ZIP. 
+Menambahkan fitur bagi Owner/Admin untuk mengekspor semua data foto profil (KTS dan KIC) ke dalam satu buah file ZIP. 
 
 ## Mengapa Dikerjakan
-- Permintaan langsung untuk mempermudah ekspor dan pendataan foto KTM dan Karpeg dalam satu *command*.
-- Menggunakan satu file `.zip` agar lebih efisien (terhindar dari limit Telegram), tidak *spam* di riwayat chat admin, dan file diformat rapi per folder `KTM/` dan `Karpeg/`.
+- Permintaan langsung untuk mempermudah ekspor dan pendataan foto KTS dan KIC dalam satu *command*.
+- Menggunakan satu file `.zip` agar lebih efisien (terhindar dari limit Telegram), tidak *spam* di riwayat chat admin, dan file diformat rapi per folder `KTS/` dan `KIC/`.
 
 ## Bagaimana Secara Teknis
 1. Menambahkan fungsi `cmd_export_photos` di dalam `bot/handlers/commands.py`.

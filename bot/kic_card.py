@@ -1,4 +1,4 @@
-"""Render KTM (PNG) dari template + cache LRU di memori."""
+"""Render KTS (PNG) dari template + cache LRU di memori."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from bot.settings import ROOT, choice_label, multi_choice_labels, CHOICES
 
 log = logging.getLogger(__name__)
 
-TEMPLATE_PATH = ROOT / "assets" / "karpeg.png"
+TEMPLATE_PATH = ROOT / "assets" / "kic.png"
 FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 
-# Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
+# Warna & posisi untuk template 1050×600 (`assets/kts.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
 TEXT_COLOR = (18, 28, 48)
 CARD_W, CARD_H = 1080, 1080
@@ -72,7 +72,7 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     try:
         return ImageFont.truetype(str(FONT_PATH), size=size)
     except OSError:
-        log.warning("Font KTM tidak ditemukan, pakai default: %s", FONT_PATH)
+        log.warning("Font KTS tidak ditemukan, pakai default: %s", FONT_PATH)
         try:
             return ImageFont.truetype("arial.ttf", size=size)
         except OSError:
@@ -175,7 +175,7 @@ def _paste_photo_slot(
     try:
         ph = Image.open(BytesIO(photo_bytes)).convert("RGBA")
     except OSError:
-        log.warning("KTM: file foto tidak bisa dibuka sebagai gambar")
+        log.warning("KTS: file foto tidak bisa dibuka sebagai gambar")
         return
     fitted = _cover_resize(ph, (slot_w, slot_h))
     # mask = Image.new("L", (slot_w, slot_h), 0)
@@ -185,7 +185,7 @@ def _paste_photo_slot(
     base.paste(fitted, (slot_x, slot_y))
 
 
-def render_karpeg_png_bytes(
+def render_kic_png_bytes(
     *,
     telegram_id: int,
     profile: dict,
@@ -202,10 +202,10 @@ def render_karpeg_png_bytes(
             return hit
 
     if not TEMPLATE_PATH.is_file():
-        # Fallback to ktm.png if karpeg.png is somehow missing
-        fallback = ROOT / "assets" / "ktm.png"
+        # Fallback to kts.png if kic.png is somehow missing
+        fallback = ROOT / "assets" / "kts.png"
         if not fallback.is_file():
-            raise FileNotFoundError(f"Template Karpeg tidak ada: {TEMPLATE_PATH}")
+            raise FileNotFoundError(f"Template KIC tidak ada: {TEMPLATE_PATH}")
         im = Image.open(fallback).convert("RGBA")
     else:
         im = Image.open(TEMPLATE_PATH).convert("RGBA")
@@ -313,7 +313,7 @@ def render_karpeg_png_bytes(
     im.alpha_composite(overlay)
 
     buf = BytesIO()
-    im.save(buf, format="PNG", optimize=True)
+    im.save(buf, format="PNG")
     out = buf.getvalue()
     if use_cache:
         _cache_put(key, out)

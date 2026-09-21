@@ -21,9 +21,9 @@ bot/
     ├── broadcast.py  # Fitur pengiriman pesan massal.
     ├── commands.py   # Perintah inti (/start, /profil, /admin_data, /owner_reset).
     ├── common.py     # Fungsi utilitas (role checking, keyboard builders).
-    ├── karpeg.py     # Generator ID Card Pegawai.
+    ├── kic.py     # Generator ID Card Pegawai.
     ├── kontrak.py    # Pembuatan dan manajemen kontrak.
-    ├── ktm.py        # Generator Kartu Tanda Mahasiswa (KTM).
+    ├── kts.py        # Generator Kartu Tanda Shisya (KTS).
     ├── messages.py   # Tracker grup, pemantau username, penangkap teks fallback.
     ├── triggers.py   # Logika auto-reply kustom.
     └── tugas.py      # Pengumpulan dan review tugas.

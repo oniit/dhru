@@ -190,6 +190,8 @@ async def _revalidate_filtered_choice_fields(
         if not field_applies_to_role(f, role, prof):
             if f.key == "bem_position" and role == ROLE_STUDENT:
                 continue
+            if f.key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA):
+                continue
             if f.key in prof:
                 to_remove.append(f.key)
         else:
@@ -403,10 +405,10 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
     ]
     if role in (ROLE_STUDENT, ROLE_BEM):
         lines.append(
-            "<b>Mahasiswa</b>\n/hadir — Presensi ke sesi yang dibuka\n"
+            "<b>Shishya</b>\n/hadir — Presensi ke sesi yang dibuka\n"
             "/tugas — Menu & Dashboard Tugas\n"
-            "/kartu — Kartu Tanda Mahasiswa (KTM)\n"
-            "/foto — Ganti pas foto KTM\n"
+            "/kartu — Kartu Tanda Shishya (KTS)\n"
+            "/foto — Ganti pas foto KTS\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
@@ -1758,6 +1760,22 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if _is_lengkapi_done(profile_u):
             await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
             return
+        if field_key == "major":
+            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == "faculty"), None)
+            if fac_fdef:
+                opts = CHOICES.get(fac_fdef.choices_key, [])
+                await q.edit_message_text(
+                    f"Pilih <b>{fac_fdef.label}</b> terlebih dahulu:",
+                    reply_markup=keyboard_for_choices(
+                        "faculty",
+                        fac_fdef.choices_key,
+                        prefix="lc_fac_for_maj",
+                        options=opts,
+                    ),
+                )
+                await db.set_onboarding_step(conn, uid, "PICK_LC_FAC_FOR_MAJ")
+                return
+
         opts = filtered_choice_items(fdef, profile_u)
         if not opts:
             hint = (
@@ -1815,6 +1833,22 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
+        if field_key == "major":
+            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == "faculty"), None)
+            if fac_fdef:
+                opts = CHOICES.get(fac_fdef.choices_key, [])
+                await q.edit_message_text(
+                    f"Pilih <b>{fac_fdef.label}</b> terlebih dahulu:",
+                    reply_markup=keyboard_for_choices(
+                        "faculty",
+                        fac_fdef.choices_key,
+                        prefix="ec_fac_for_maj",
+                        options=opts,
+                    ),
+                )
+                await db.set_onboarding_step(conn, uid, "PICK_EC_FAC_FOR_MAJ")
+                return
+
         opts = filtered_choice_items(fdef, profile_u)
         if not opts:
             hint = (
@@ -1834,6 +1868,59 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             ),
         )
         await db.set_onboarding_step(conn, uid, f"PICK_EC:{field_key}")
+        return
+
+    if data.startswith("lc_fac_for_maj:"):
+        await q.answer()
+        _, _, choice_id = data.split(":", 2)
+        step_row = await user_row(conn, db, uid)
+        step = (step_row["onboarding_step"] or "") if step_row else ""
+        if step != "PICK_LC_FAC_FOR_MAJ":
+            await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None)
+            return
+            
+        await db.set_profile_partial(conn, uid, {"faculty": choice_id})
+        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == "major"), None)
+        row_u = await user_row(conn, db, uid)
+        profile_u = profile_from_row(row_u) if row_u else {}
+        opts = filtered_choice_items(maj_fdef, profile_u)
+        await q.edit_message_text(
+            f"Fakultas disimpan sementara.\nSekarang pilih <b>{maj_fdef.label}</b>:",
+            reply_markup=keyboard_for_choices(
+                "major",
+                maj_fdef.choices_key,
+                prefix="lc",
+                options=opts,
+            ),
+        )
+        await db.set_onboarding_step(conn, uid, "PICK_LC:major")
+        return
+
+    if data.startswith("ec_fac_for_maj:"):
+        await q.answer()
+        _, _, choice_id = data.split(":", 2)
+        step_row = await user_row(conn, db, uid)
+        step = (step_row["onboarding_step"] or "") if step_row else ""
+        if step != "PICK_EC_FAC_FOR_MAJ":
+            await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None)
+            return
+            
+        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == "major"), None)
+        row_u = await user_row(conn, db, uid)
+        profile_u = profile_from_row(row_u) if row_u else {}
+        profile_u["faculty"] = choice_id
+        opts = filtered_choice_items(maj_fdef, profile_u)
+        await q.edit_message_text(
+            f"Fakultas dipilih.\nSekarang pilih <b>{maj_fdef.label}</b>:",
+            reply_markup=keyboard_for_choices(
+                "major",
+                maj_fdef.choices_key,
+                prefix="ec",
+                options=opts,
+            ),
+        )
+        await db.set_onboarding_step(conn, uid, "PICK_EC:major")
+        context.user_data["temp_ec_faculty"] = choice_id
         return
 
     if data.startswith("openet:"):
@@ -2190,6 +2277,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         fdef = next((x for x in PROFILE_FIELDS if x.key == field_key), None)
         prof_before = profile_from_row(step_row) if step_row else {}
+        if field_key == "major" and "temp_ec_faculty" in context.user_data:
+            prof_before["faculty"] = context.user_data["temp_ec_faculty"]
+
         if fdef and fdef.filter_by_field and not is_choice_allowed_for_profile(
             fdef, prof_before, choice_id
         ):
@@ -2199,6 +2289,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             return
         req_dict = {field_key: choice_id}
+        if field_key == "major" and "temp_ec_faculty" in context.user_data:
+            req_dict["faculty"] = context.user_data.pop("temp_ec_faculty")
+
         if field_key == "position_detail":
             pos_id = None
             for item in CHOICES.get("position_details", []):
@@ -2766,7 +2859,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not context.args:
         await update.message.reply_text(
             "<b>Menu Daftar Pengguna:</b>\n"
-            "<code>/daftar shishya</code> — Mahasiswa & BEM\n"
+            "<code>/daftar shishya</code> — Shishya & Yaksa\n"
             "<code>/daftar charya</code> — Staf, Admin, Owner\n"
             "<code>/daftar pravesi</code> — MABA\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
@@ -4506,7 +4599,7 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         file = await context.bot.get_file(photo_id)
                         byte_arr = await file.download_as_bytearray()
                         role = r["role"]
-                        folder = "Karpeg" if role in ("owner", "admin", "internal") else "KTM"
+                        folder = "KIC" if role in ("owner", "admin", "internal") else "KTS"
                         zf.writestr(f"{folder}/{folder}_{tid}_{name_clean}.jpg", bytes(byte_arr))
                         count_photos += 1
                     except Exception as e:

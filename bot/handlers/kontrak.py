@@ -162,7 +162,7 @@ async def _generate_and_send_kontrak(
     # Ambil detail nama dan jabatan
     name = (profile.get("full_name") or row["first_name"] or "Tanpa Nama").strip()
     
-    # Detail jabatan (mirip dengan Karpeg)
+    # Detail jabatan (mirip dengan KIC)
     pd_raw = profile.get("position_detail")
     role_detail = multi_choice_labels("position_details", pd_raw if isinstance(pd_raw, list) else [pd_raw] if pd_raw else []) or "—"
     

@@ -40,8 +40,8 @@ def role_display(role: str) -> str:
         ROLE_ADMIN: "Sekretaris",
         ROLE_INTERNAL: "Internal",
         ROLE_BEM: "BEM",
-        ROLE_STUDENT: "Mahasiswa",
-        ROLE_MABA: "Mahasiswa Baru",
+        ROLE_STUDENT: "Shishya",
+        ROLE_MABA: "Pravesi",
     }.get(role, role)
 
 
@@ -309,6 +309,8 @@ def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
         if fd:
             if field_applies_to_role(fd, role, profile):
                 out.append(key)
+            elif key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM):
+                out.append(key)
         else:
             if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM):
                 continue
@@ -423,6 +425,8 @@ def format_profile_card(
             for item in CHOICES.get("classes", []):
                 cid = item.get("id")
                 if str(cid).startswith("umum_"):
+                    continue
+                if cid == "ospek_maba" and row["role"] != ROLE_MABA:
                     continue
                 m = item.get("majors")
                 if not m or m == major:

@@ -1,4 +1,4 @@
-"""Handler untuk fitur /tugas — Manajemen Tugas Dosen-Mahasiswa."""
+"""Handler untuk fitur /tugas — Manajemen Tugas Dosen-Shishya."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from bot.database import (
     ROLE_BEM,
     ROLE_OWNER,
     ROLE_STUDENT,
+    ROLE_MABA,
 )
 from bot.settings import (
     AGRA_REWARD_TUGAS,
@@ -67,12 +68,17 @@ def _task_class_ids_for_lecturer(profile: dict) -> list[str]:
     return lecturer_class_ids(profile)
 
 
-def _student_enrolled_class_ids(profile: dict) -> list[str]:
-    """Semua kelas yang diikuti mahasiswa (otomatis dari jurusan + manual)."""
+def _student_enrolled_class_ids(profile: dict, role: str) -> list[str]:
+    """Semua kelas yang diikuti Shishya (otomatis dari jurusan + manual)."""
     major = profile.get("major")
     auto = []
     for item in CHOICES.get("classes", []):
         cid = item.get("id")
+        
+        # Sembunyikan ospek_maba jika role bukan maba
+        if cid == "ospek_maba" and role != ROLE_MABA:
+            continue
+            
         m = item.get("majors")
         if not m or m == major:
             auto.append(str(cid))
@@ -200,14 +206,14 @@ async def cmd_tugas_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not context.args:
         # Show role-appropriate menu
         is_lecturer = _can_manage_tasks(role, prof)
-        is_student = role in (ROLE_STUDENT, ROLE_BEM)
+        is_student = role in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA)
 
         if is_lecturer:
             await _show_lecturer_dashboard(update, context, db, conn, row, prof)
         elif is_student:
             await _show_student_dashboard(update, context, db, conn, row, prof)
         else:
-            await update.message.reply_text("Fitur /tugas hanya untuk dosen/guru besar/coach dan mahasiswa.")
+            await update.message.reply_text("Fitur /tugas hanya untuk dosen/guru besar/pelatih dan shishya.")
         return
 
     subcmd = context.args[0].lower()
@@ -221,13 +227,13 @@ async def cmd_tugas_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         elif subcmd == "lihat":
             # same as no-arg dashboard
             is_lecturer = _can_manage_tasks(role, prof)
-            is_student = role in (ROLE_STUDENT, ROLE_BEM)
+            is_student = role in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA)
             if is_lecturer:
                 await _show_lecturer_dashboard(update, context, db, conn, row, prof)
             elif is_student:
                 await _show_student_dashboard(update, context, db, conn, row, prof)
             else:
-                await update.message.reply_text("Fitur /tugas hanya untuk dosen/guru besar/coach dan mahasiswa.")
+                await update.message.reply_text("Fitur /tugas hanya untuk dosen/guru besar/pelatih dan shishya.")
         else:
             await update.message.reply_text(
                 "Sub-command tidak ditemukan. Ketik /tugas untuk panduan."
@@ -284,10 +290,10 @@ async def _show_lecturer_dashboard(update, context, db, conn, row, prof):
 
 async def _show_student_dashboard(update, context, db, conn, row, prof):
     uid = update.effective_user.id
-    class_ids = _student_enrolled_class_ids(prof)
+    class_ids = _student_enrolled_class_ids(prof, row["role"])
     tasks = await db.list_tasks_for_classes(conn, class_ids, only_open=True)
 
-    lines = ["📋 <b>Dashboard Tugas (Mahasiswa)</b>\n"]
+    lines = ["📋 <b>Dashboard Tugas (Shishya)</b>\n"]
 
     if not tasks:
         lines.append("<i>Tidak ada tugas aktif saat ini.</i>")
@@ -475,8 +481,8 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await q.answer()
         task_id = int(data.split(":", 1)[1])
         row = await user_row(conn, db, uid)
-        if not row or row["role"] not in (ROLE_STUDENT, ROLE_BEM):
-            await q.edit_message_text("Hanya mahasiswa yang bisa mengerjakan tugas.")
+        if not row or row["role"] not in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA):
+            await q.edit_message_text("Hanya shishya atau pravesi yang bisa mengerjakan tugas.")
             return
 
         task = await db.get_task(conn, task_id)
@@ -852,5 +858,5 @@ async def handle_tugas_tolak(
     await update.message.reply_text(
         f"❌ Submission dari <b>{sname}</b> untuk tugas <b>{task_title}</b> ditolak.\n"
         f"Alasan: {reason}\n"
-        f"Mahasiswa telah dinotifikasi untuk kirim ulang."
+        f"Shishya telah dinotifikasi untuk kirim ulang."
     )

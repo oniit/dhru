@@ -11,7 +11,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Akademik & Kelas
 - `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu.
-- `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi mahasiswa).
+- `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 
 ## Sosial & Gamifikasi (Agra)
 - `/leaderboard` atau `/agra top [role] [all]` — Menampilkan peringkat Agra teratas. Gunakan argumen `all` untuk melihat keseluruhan tanpa batas Top 17 (contoh: `/agra top charya all`).
@@ -42,10 +42,10 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.
 - `/setgreeting [pesan|off]` — (Owner/Admin) Mengatur pesan sambutan khusus grup. Mendukung placeholder `{name}` dan `{username}`.
 - `/greeting` — Menampilkan pesan sambutan yang sedang aktif di grup.
-- `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTM dan Karpeg dalam satu file `.zip`.
+- `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTS dan KIC dalam satu file `.zip`.
 
 ## Ekstra
-- `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTM/Karpeg) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.
+- `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTS/KIC) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.
 
 ## Mini Games
 - `/settings_game` — (Owner/Admin Grup) Membuka menu interaktif untuk mengaktifkan/menonaktifkan game tertentu di grup ini. Game yang dinonaktifkan tidak dapat dimainkan.

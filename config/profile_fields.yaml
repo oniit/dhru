@@ -24,7 +24,7 @@ fields:
     label: Fakultas
     type: choice
     choices_key: faculties
-    roles: [student, bem]
+    roles: ['_hidden']
     required: true
 
   - key: major

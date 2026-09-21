@@ -77,7 +77,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if update.message.photo and step:
         from .kontrak import STEP_KONTRAK_TTD
-        if step in (STEP_KTM_PHOTO, STEP_KARPEG_PHOTO, STEP_KONTRAK_TTD):
+        if step in (STEP_KARTU_PHOTO, STEP_KONTRAK_TTD):
             await on_private_photo(update, context)
             return
             
@@ -373,7 +373,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
         return
 
-    if step == STEP_KTM_PHOTO:
+    if step == STEP_KARTU_PHOTO:
         await update.message.reply_text(
             "Sekarang bot menunggu <b>foto</b> (bukan teks). Kirim satu foto wajah di chat ini.\n"
             "Atau ketik /start untuk membatalkan."

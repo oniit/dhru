@@ -1,4 +1,4 @@
-"""Render KTM (PNG) dari template + cache LRU di memori."""
+"""Render KTS (PNG) dari template + cache LRU di memori."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ from bot.settings import ROOT, choice_label, multi_choice_labels
 
 log = logging.getLogger(__name__)
 
-TEMPLATE_PATH = ROOT / "assets" / "ktm.png"
+TEMPLATE_PATH = ROOT / "assets" / "kts.png"
 FONT_PATH = ROOT / "assets" / "Mukta/Mukta-Regular.ttf"
 FONT_LIGHT_PATH = ROOT / "assets" / "Mukta/Mukta-Light.ttf"
 
-# Warna & posisi untuk template 1050×600 (`assets/ktm.png`).
+# Warna & posisi untuk template 1050×600 (`assets/kts.png`).
 # Template sudah berisi label "Nama :", "NIM :", … — di sini hanya nilai, di kolom kanan (setelah foto).
 TEXT_COLOR = (18, 28, 48)
 CARD_W, CARD_H = 1080, 1080
@@ -75,7 +75,7 @@ def _load_font(size: int, font_path: Path | str | None = None) -> ImageFont.Free
     try:
         return ImageFont.truetype(str(fp), size=size)
     except OSError:
-        log.warning("Font KTM tidak ditemukan, pakai fallback: %s", fp)
+        log.warning("Font KTS tidak ditemukan, pakai fallback: %s", fp)
         try:
             return ImageFont.truetype("arial.ttf", size=size)
         except OSError:
@@ -177,13 +177,13 @@ def _paste_photo_slot(
     try:
         ph = Image.open(BytesIO(photo_bytes)).convert("RGBA")
     except OSError:
-        log.warning("KTM: file foto tidak bisa dibuka sebagai gambar")
+        log.warning("KTS: file foto tidak bisa dibuka sebagai gambar")
         return
     fitted = _cover_resize(ph, (slot_w, slot_h))
     base.paste(fitted, (slot_x, slot_y))
 
 
-def render_ktm_png_bytes(
+def render_kts_png_bytes(
     *,
     telegram_id: int,
     profile: dict,
@@ -199,7 +199,7 @@ def render_ktm_png_bytes(
             return hit
 
     if not TEMPLATE_PATH.is_file():
-        raise FileNotFoundError(f"Template KTM tidak ada: {TEMPLATE_PATH}")
+        raise FileNotFoundError(f"Template KTS tidak ada: {TEMPLATE_PATH}")
 
     im = Image.open(TEMPLATE_PATH).convert("RGBA")
     W, H = im.size
@@ -277,7 +277,7 @@ def render_ktm_png_bytes(
     im.alpha_composite(overlay)
 
     buf = BytesIO()
-    im.save(buf, format="PNG", optimize=True)
+    im.save(buf, format="PNG")
     out = buf.getvalue()
     if use_cache:
         _cache_put(key, out)

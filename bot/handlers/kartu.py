@@ -1,4 +1,4 @@
-"""Perintah /kartu, /foto — gambar ID Card KTM/Karpeg (hanya chat privat)."""
+"""Perintah /kartu, /foto — gambar ID Card KTS/KIC (hanya chat privat)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from telegram import Update
 from telegram.ext import ContextTypes, filters, CommandHandler, MessageHandler
 
 from bot.database import ROLE_PUBLIC, ROLE_STUDENT, ROLE_BEM, ROLE_INTERNAL
-from bot.ktm_card import render_ktm_png_bytes
-from bot.karpeg_card import render_karpeg_png_bytes
+from bot.kts_card import render_kts_png_bytes
+from bot.kic_card import render_kic_png_bytes
 
 from .common import profile_from_row, user_row
 
@@ -69,7 +69,7 @@ async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         if role in (ROLE_INTERNAL, "admin", "owner"):
-            png = render_karpeg_png_bytes(
+            png = render_kic_png_bytes(
                 telegram_id=uid,
                 profile=profile,
                 agra=agra,
@@ -78,7 +78,7 @@ async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 photo_bytes=photo_bytes,
             )
         else:
-            png = render_ktm_png_bytes(
+            png = render_kts_png_bytes(
                 telegram_id=uid,
                 profile=profile,
                 agra=agra,
@@ -101,6 +101,8 @@ async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         photo=BytesIO(png),
         filename="kartu.png",
         caption=cap,
+        read_timeout=60,
+        write_timeout=60,
     )
 
 
