@@ -63,11 +63,11 @@ classes:
   # FIB - Fotografi
   - id: df
     label: Dasar Fotografi
-    majors: st
+    majors: sf
     sks: 3
   - id: tf
     label: Teknik Fotografi
-    majors: st
+    majors: sf
     sks: 3
 
   # Khusus Ospek
