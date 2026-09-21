@@ -43,6 +43,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/setgreeting [pesan|off]` — (Owner/Admin) Mengatur pesan sambutan khusus grup. Mendukung placeholder `{name}` dan `{username}`.
 - `/greeting` — Menampilkan pesan sambutan yang sedang aktif di grup.
 - `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTS dan KIC dalam satu file `.zip`.
+- `/fix` — (Owner/Admin) Menjalankan validasi massal dan rekapitulasi ulang terhadap semua data profil *user* di *database* secara asinkron.
 
 ## Ekstra
 - `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTS/KIC) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.

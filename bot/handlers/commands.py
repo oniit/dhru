@@ -3367,6 +3367,33 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
 
 
+async def cmd_fix_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    u = update.effective_user
+    conn = _conn(context)
+    db = _db(context)
+    row = await user_row(conn, db, u.id)
+    if not row or not is_owner(u.id):
+        await update.message.reply_text("Perintah ini hanya untuk Owner.")
+        return
+
+    msg = await update.message.reply_text("⏳ Sedang memvalidasi dan merekapitulasi ulang seluruh profil user...\nMohon tunggu, ini bisa memakan waktu beberapa saat.")
+    try:
+        cur = await conn.execute("SELECT telegram_id, role, profile_json FROM users")
+        rows = await cur.fetchall()
+        count = 0
+        for r in rows:
+            uid = r["telegram_id"]
+            prof = json.loads(r["profile_json"] or "{}")
+            await db.set_profile_partial(conn, uid, prof)
+            count += 1
+        await conn.commit()
+        await msg.edit_text(f"✅ Berhasil memvalidasi ulang dan memperbarui data untuk {count} profil.")
+    except Exception as e:
+        await msg.edit_text(f"❌ Error saat memproses: {e}")
+
+
 async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return

@@ -37,6 +37,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("admin_data", commands.cmd_admin_data))
     application.add_handler(CommandHandler("pending", commands.cmd_pending))
     application.add_handler(CommandHandler("log", commands.cmd_log))
+    application.add_handler(CommandHandler("fix", commands.cmd_fix_data))
     application.add_handler(CommandHandler("tagall", commands.cmd_tagall))
     application.add_handler(CommandHandler("all", commands.cmd_all))
     application.add_handler(CommandHandler("pindah_data", commands.cmd_pindah_data))
