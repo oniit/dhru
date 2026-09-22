@@ -9,13 +9,13 @@ faculties:
 
 majors:
   - id: ik
-    label: Ilmu Kimia
+    label: Kimia
     faculty: fmipa
   - id: if
-    label: Ilmu Fisika
+    label: Fisika
     faculty: fmipa
   - id: sm
-    label: Seni Musik
+    label: Musik
     faculty: fib
   - id: sf
     label: Fotografi

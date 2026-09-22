@@ -29,6 +29,7 @@ from bot.settings import (
     ADMIN_IDS,
     OWNER_ID,
     PROFILE_FIELDS,
+    choice_label,
     field_applies_to_role,
     filtered_choice_items,
     is_choice_allowed_for_profile,
@@ -2857,6 +2858,11 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         return
     if not context.args:
+        # Build dynamic help lines showing available IDs with labels
+        fac_opts = ", ".join(f"{x['id']} ({x['label']})" for x in CHOICES.get("faculties", []))
+        maj_opts = ", ".join(f"{x['id']} ({x['label']})" for x in CHOICES.get("majors", []))
+        cls_opts = ", ".join(f"{x['id']} ({x['label']})" for x in CHOICES.get("classes", []))
+        ukm_opts = ", ".join(f"{x['id']} ({x['label']})" for x in CHOICES.get("clubs", []))
         await update.message.reply_text(
             "<b>Menu Daftar Pengguna:</b>\n"
             "<code>/daftar shishya</code> — Shishya & Yaksa\n"
@@ -2864,10 +2870,10 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "<code>/daftar pravesi</code> — MABA\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
             "<code>/daftar kelompok &lt;nama_kelompok&gt;</code> (Bisa pakai nama kelompok, atau 'belum')\n"
-            "<code>/daftar fakultas &lt;id&gt;</code>\n"
-            "<code>/daftar jurusan &lt;id&gt;</code>\n"
-            "<code>/daftar kelas &lt;id&gt;</code>\n"
-            "<code>/daftar ukm &lt;id&gt;</code>\n"
+            f"<code>/daftar fakultas &lt;id&gt;</code> — {html.escape(fac_opts)}\n"
+            f"<code>/daftar jurusan &lt;id&gt;</code> — {html.escape(maj_opts)}\n"
+            f"<code>/daftar kelas &lt;id&gt;</code> — {html.escape(cls_opts)}\n"
+            f"<code>/daftar ukm &lt;id&gt;</code> — {html.escape(ukm_opts)}\n"
             "<code>/daftar all_staf</code>\n\n"
             "<b>Info Data Server (Admin/Owner):</b>\n"
             "<code>/daftar grup</code> — Lihat daftar grup yang diikuti bot\n"
@@ -2987,21 +2993,21 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                         push_row(r, p)
     elif kind == "fakultas" and len(parts) > kind_idx + 1:
         fid = parts[kind_idx + 1].lower()
-        title = f"Daftar — fakultas {fid}"
+        title = f"Daftar — {choice_label('faculties', fid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             if p.get("faculty") == fid:
                 push_row(r, p)
     elif kind == "jurusan" and len(parts) > kind_idx + 1:
         mid = parts[kind_idx + 1].lower()
-        title = f"Daftar — jurusan {mid}"
+        title = f"Daftar — Jurusan {choice_label('majors', mid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             if p.get("major") == mid:
                 push_row(r, p)
     elif kind == "kelas" and len(parts) > kind_idx + 1:
         cid = parts[kind_idx + 1].lower()
-        title = f"Daftar — kelas {cid}"
+        title = f"Daftar — Kelas {choice_label('classes', cid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             enrolled = normalize_multi_choice_value(p.get("class_enrolled"))
@@ -3010,7 +3016,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 push_row(r, p)
     elif kind == "ukm" and len(parts) > kind_idx + 1:
         uid = parts[kind_idx + 1].lower()
-        title = f"Daftar — UKM {uid}"
+        title = f"Daftar — UKM {choice_label('clubs', uid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
             enrolled = normalize_multi_choice_value(p.get("club_enrolled"))

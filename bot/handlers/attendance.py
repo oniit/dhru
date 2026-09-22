@@ -145,23 +145,23 @@ def _format_presensi_block(
                 )
             else:
                 lines.append(f"• {name}")
-                    
-        if sess["class_id"] not in ("staff_auto", "maba_auto"):
-            lines.append("")
-            lines.append(f"<b>Izin ({len(izin_records)})</b>")
-            if not izin_records:
-                lines.append("<i>Belum ada.</i>")
-            else:
-                for r in izin_records:
-                    pj = json.loads(r["profile_json"] or "{}")
-                    name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
-                    name = html.escape(name)
-                    if show_record_times:
-                        lines.append(
-                            f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
-                        )
-                    else:
-                        lines.append(f"• {name}")
+
+    if sess["class_id"] not in ("staff_auto", "maba_auto"):
+        lines.append("")
+        lines.append(f"<b>Izin ({len(izin_records)})</b>")
+        if not izin_records:
+            lines.append("<i>Belum ada.</i>")
+        else:
+            for r in izin_records:
+                pj = json.loads(r["profile_json"] or "{}")
+                name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+                name = html.escape(name)
+                if show_record_times:
+                    lines.append(
+                        f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
+                    )
+                else:
+                    lines.append(f"• {name}")
     return "\n".join(lines)
 
 
