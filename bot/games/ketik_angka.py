@@ -23,7 +23,7 @@ def clean_text(text: str) -> str:
     return re.sub(r'\s+', ' ', text.strip().lower())
 
 # Command: /bermain ketik_angka
-async def mulai_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn):
+async def mulai_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, args_text: str = ""):
     chat_id = update.effective_chat.id
     
     # Check if there is an active session
@@ -55,12 +55,19 @@ async def mulai_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         mode_name = "Huruf ke Angka"
         instruction = "Ketik angka dari ejaan di atas dengan cepat!"
 
+    max_winners = 1
+    if args_text.strip().isdigit():
+        parsed = int(args_text.strip())
+        if parsed > 0:
+            max_winners = min(parsed, 10) # limit max winners to 10
+            
     initial_state = {
         "question": question,
         "expected_answer": expected_answer,
         "mode_name": mode_name,
         "mode_type": mode_type,
         "winners": [], # Format: [{"id": 123, "name": "Budi", "points": 3}]
+        "max_winners": max_winners,
         "started_by": update.effective_user.id
     }
     
@@ -71,7 +78,7 @@ async def mulai_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         f"📍 Mode: {mode_name}\n\n"
         f"📝 Soal:\n*{question}*\n\n"
         f"_{instruction}_\n"
-        f"(Dicari 3 pemenang tercepat!)",
+        f"(Dicari {max_winners} pemenang tercepat!)",
         parse_mode="Markdown"
     )
 
@@ -82,8 +89,9 @@ async def proses_pesan_ketik_angka(update: Update, context: ContextTypes.DEFAULT
     state = json.loads(session["state_json"])
     expected_answer = state.get("expected_answer", "")
     winners = state.get("winners", [])
+    max_winners = state.get("max_winners", 3)
     
-    if len(winners) >= 3:
+    if len(winners) >= max_winners:
         return # Should not happen if game is ended properly, but just in case
         
     # Periksa apakah user sudah menang
@@ -94,7 +102,12 @@ async def proses_pesan_ketik_angka(update: Update, context: ContextTypes.DEFAULT
     if text_clean == expected_answer:
         # User menjawab dengan benar
         rank = len(winners) + 1
-        points = 4 - rank # Peringkat 1 = 3 poin, 2 = 2 poin, 3 = 1 poin
+        points = max(1, (max_winners + 1) - rank) if max_winners > 1 else 3 # Default 3 points if only 1 winner, else scale
+        # Adjust points mapping to original logic if it was 3 winners, 1st = 3, 2nd = 2, 3rd = 1
+        if max_winners == 3:
+            points = 4 - rank
+        elif max_winners == 1:
+            points = 3 # 3 points for the single winner
         
         user = update.effective_user
         name = user.first_name or user.username or uid_str
@@ -122,9 +135,9 @@ async def proses_pesan_ketik_angka(update: Update, context: ContextTypes.DEFAULT
             reply_to_message_id=update.message.message_id
         )
         
-        if len(winners) >= 3:
+        if len(winners) >= max_winners:
             # End game auto
-            await update.message.reply_text("🎉 Sudah ada 3 pemenang tercepat!")
+            await update.message.reply_text(f"🎉 Sudah ada {max_winners} pemenang tercepat!")
             await berhenti_ketik_angka(update, context, db, conn, session)
 
 async def status_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
@@ -132,6 +145,8 @@ async def status_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE,
     question = state.get("question", "")
     mode_name = state.get("mode_name", "")
     winners = state.get("winners", [])
+    
+    max_winners = state.get("max_winners", 3)
     
     status_text = (
         f"🎮 *Status Ketik Angka*\n"
@@ -144,7 +159,7 @@ async def status_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE,
         for i, w in enumerate(winners):
             status_text += f"{i+1}. {w['name']} — +{w['points']} poin\n"
             
-    status_text += f"\nMasih mencari {3 - len(winners)} pemenang lagi!"
+    status_text += f"\nMasih mencari {max_winners - len(winners)} pemenang lagi!"
             
     await update.message.reply_text(
         status_text,

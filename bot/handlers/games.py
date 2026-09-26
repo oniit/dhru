@@ -235,7 +235,8 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif game_name == "tujuh_pusaka":
         await tujuh_pusaka.mulai_tujuh_pusaka(update, context, db, conn)
     elif game_name == "ketik_angka":
-        await ketik_angka.mulai_ketik_angka(update, context, db, conn)
+        args_text = " ".join(args[2:])
+        await ketik_angka.mulai_ketik_angka(update, context, db, conn, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 

@@ -4135,11 +4135,12 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     pos = prof.get("position_detail")
     
     from bot.settings import is_admin_elevated
-    if not (is_admin_elevated(uid) or pos == "d_sekre"):
+    is_sekre = "d_sekre" in pos if isinstance(pos, list) else pos == "d_sekre"
+    if not (is_admin_elevated(uid) or is_sekre):
         await update.message.reply_text("⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.")
         return
         
-    text = update.message.text.strip()
+    text = (update.message.text or update.message.caption or "").strip()
     parts = text.split(maxsplit=1)
     
     target_id = None
