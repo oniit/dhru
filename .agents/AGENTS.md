@@ -31,3 +31,15 @@ Jangan pernah meninggalkan _workspace_ dalam keadaan fitur baru sudah selesai ta
 - **JANGAN PERNAH** mengirim pesan pengujian (test message), _broadcast_, pengumuman, atau notifikasi langsung ke sembarang _user_ atau grup saat sedang melakukan QA, baik menjalankan kode uji coba maupun melalui _endpoint_ notifikasi bot.
 - Segala bentuk QA yang membutuhkan interaksi dengan bot harus dilakukan melalui akun khusus _tester_/_owner_ saja, menggunakan lingkungan replika (local mock), atau disimulasikan menggunakan skrip yang tidak benar-benar mengirim _request_ (send message) ke API Telegram untuk pengguna nyata. **Jika kamu sangat membutuhkan interaksi ke user nyata saat testing bot, maka kirimlah SATU-SATUNYA HANYA ke ID yang ada pada variabel `TESTER_ID` di dalam environment**.
 - Evaluasi _logic_ harus mengandalkan skrip tes (misalnya menggunakan pytest / _local sqlite_ seperti `test_logic.py`) tanpa mengeksekusi fungsi _broadcast_/_send message_ ke _user_ yang ada di database *production*.
+
+## Aturan: Pemanfaatan Userbot (IPC)
+
+**Deskripsi**: Workspace ini memiliki *userbot* (menggunakan Pyrogram) yang berjalan secara paralel di skrip `checker.py` dan tersinkronisasi dengan bot utama melalui tabel `userbot_requests` (IPC - Inter-Process Communication). 
+
+**INSTRUKSI WAJIB BAGI AGEN AI:**
+- Jika kamu mengembangkan fitur yang memerlukan data Telegram global (seperti mengubah `@username` menjadi ID) untuk *user* asing yang belum pernah berinteraksi dengan bot utama, kamu **HARUS** memanfaatkan jalur komunikasi IPC ke *userbot* alih-alih melempar error.
+- **Cara Kerja IPC:** 
+  1. Insert request ke tabel `userbot_requests` dengan format *action* tertentu (contoh: `RESOLVE:@username1,@username2`).
+  2. Lakukan *polling* (menunggu) dengan `asyncio.sleep()` maksimal 5-10 detik sampai status kolom tersebut berubah menjadi `DONE` atau `ERROR`.
+  3. Baca hasil `result` berformat JSON.
+- Metode ini dirancang sebagai *fallback* sekunder setelah pencarian *database lokal* gagal, agar tidak memboroskan kuota API Telegram secara berlebihan (*FloodWait*).

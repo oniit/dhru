@@ -179,6 +179,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("Dibatalkan.")
         return ConversationHandler.END
         
+    if len(text) > 4000:
+        await update.message.reply_text(
+            "⚠️ Pesan terlalu panjang (maksimal 4000 karakter).\n"
+            "Silakan ketik ulang dengan lebih singkat, atau /cancel untuk membatalkan."
+        )
+        return MESSAGE
+        
     context.user_data["menfess_message"] = text
     context.user_data["menfess_gift"] = 0
     
