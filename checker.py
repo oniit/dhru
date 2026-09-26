@@ -88,6 +88,29 @@ async def process_userbot_requests(conn):
                     log.error(f"Error fetching members for chat {chat_id}: {e}")
                     await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
                     await conn.commit()
+            elif action.startswith("RESOLVE:"):
+                usernames_str = action.split(":", 1)[1]
+                usernames = [u.strip() for u in usernames_str.split(",") if u.strip()]
+                log.info(f"Resolving {len(usernames)} usernames via userbot")
+                try:
+                    result_data = {}
+                    if usernames:
+                        users = await app.get_users(usernames)
+                        # get_users can return a single User or a list of Users
+                        if not isinstance(users, list):
+                            users = [users]
+                        for u in users:
+                            if u and u.username:
+                                result_data[u.username.lower()] = u.id
+                    import json
+                    result_json = json.dumps(result_data)
+                    await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                    await conn.commit()
+                    log.info(f"Resolved {len(result_data)} usernames via userbot")
+                except Exception as e:
+                    log.error(f"Error resolving usernames via userbot: {e}")
+                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.commit()
     except Exception as e:
         log.error(f"Error in process_userbot_requests: {e}")
 

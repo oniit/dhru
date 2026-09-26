@@ -4148,7 +4148,8 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         target_ids.append((update.message.reply_to_message.from_user.id, "Reply"))
     elif len(parts) > 1:
-        target_args = parts[1].split()
+        clean_args = parts[1].replace(",", " ")
+        target_args = clean_args.split()
         for arg in target_args:
             arg = arg.strip()
             if not arg: continue
@@ -4159,11 +4160,50 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             elif arg.isdigit():
                 target_ids.append((int(arg), arg))
             else:
-                target_ids.append((None, arg))
+                # Coba cari di group_seen_users
+                if arg.startswith("@"):
+                    username = arg.lstrip("@").lower()
+                    cur = await conn.execute(
+                        "SELECT telegram_id FROM group_seen_users WHERE lower(username) = ?",
+                        (username,)
+                    )
+                    seen_row = await cur.fetchone()
+                    if seen_row:
+                        target_ids.append((seen_row["telegram_id"], arg))
+                    else:
+                        target_ids.append((None, arg))
+                else:
+                    target_ids.append((None, arg))
     
     if not target_ids:
         await update.message.reply_text("❌ Target tidak ditemukan. Gunakan: /kick @username, ID Telegram, atau reply pesannya.")
         return
+        
+    unresolved_usernames = [arg for tid, arg in target_ids if not tid and arg and arg.startswith("@")]
+    if unresolved_usernames:
+        action_payload = "RESOLVE:" + ",".join([u.lstrip("@") for u in unresolved_usernames])
+        try:
+            req_id = await db.create_userbot_request(conn, "0", action_payload)
+            import asyncio, json
+            resolved_dict = {}
+            for _ in range(10): # wait max 5 seconds
+                await asyncio.sleep(0.5)
+                req_row = await db.get_userbot_request(conn, req_id)
+                if req_row and req_row["status"] == "DONE":
+                    resolved_dict = json.loads(req_row["result"])
+                    break
+                elif req_row and req_row["status"] == "ERROR":
+                    break
+            
+            if resolved_dict:
+                for i in range(len(target_ids)):
+                    tid, arg = target_ids[i]
+                    if not tid and arg and arg.startswith("@"):
+                        username = arg.lstrip("@").lower()
+                        if username in resolved_dict:
+                            target_ids[i] = (resolved_dict[username], arg)
+        except Exception:
+            pass
         
     valid_targets = []
     not_found = []
@@ -4176,7 +4216,7 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             
         t_row = await user_row(conn, db, tid)
         if not t_row:
-            t_name = f"User {tid}"
+            t_name = arg if arg else f"User {tid}"
             t_role = "unknown"
         else:
             t_name = t_row["first_name"]
