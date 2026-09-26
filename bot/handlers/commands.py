@@ -4143,90 +4143,144 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (update.message.text or update.message.caption or "").strip()
     parts = text.split(maxsplit=1)
     
-    target_id = None
-    target_username_or_id = None
+    target_ids = []
     
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
-        target_id = update.message.reply_to_message.from_user.id
-        target_username_or_id = str(target_id)
+        target_ids.append((update.message.reply_to_message.from_user.id, "Reply"))
     elif len(parts) > 1:
-        target_username_or_id = parts[1].strip()
-        t_row = await db.get_user_by_username_or_id(conn, target_username_or_id)
-        if t_row:
-            target_id = t_row["telegram_id"]
-        elif target_username_or_id.isdigit():
-            target_id = int(target_username_or_id)
+        target_args = parts[1].split()
+        for arg in target_args:
+            arg = arg.strip()
+            if not arg: continue
+            
+            t_row = await db.get_user_by_username_or_id(conn, arg)
+            if t_row:
+                target_ids.append((t_row["telegram_id"], arg))
+            elif arg.isdigit():
+                target_ids.append((int(arg), arg))
+            else:
+                target_ids.append((None, arg))
     
-    if not target_id:
+    if not target_ids:
         await update.message.reply_text("❌ Target tidak ditemukan. Gunakan: /kick @username, ID Telegram, atau reply pesannya.")
         return
         
-    t_row = await user_row(conn, db, target_id)
-    if not t_row:
-        t_name = f"User {target_id}"
-        t_role = "unknown"
-    else:
-        t_name = t_row["first_name"]
-        t_role = t_row["role"]
+    valid_targets = []
+    not_found = []
+    admin_targets = []
     
-    if is_admin_elevated(target_id) or t_role == ROLE_OWNER:
-        await update.message.reply_text("⛔ Tidak bisa men-kick Owner/Admin.")
-        return
-
+    for tid, arg in target_ids:
+        if not tid:
+            not_found.append(arg)
+            continue
+            
+        t_row = await user_row(conn, db, tid)
+        if not t_row:
+            t_name = f"User {tid}"
+            t_role = "unknown"
+        else:
+            t_name = t_row["first_name"]
+            t_role = t_row["role"]
+            
+        if is_admin_elevated(tid) or t_role == ROLE_OWNER:
+            admin_targets.append(t_name)
+            continue
+            
+        valid_targets.append({"id": tid, "name": t_name})
+        
+    total_requested = len(valid_targets) + len(not_found) + len(admin_targets)
     is_group = update.effective_chat.type in ("group", "supergroup")
     
-    if is_group:
-        chat_id = update.effective_chat.id
-        await _do_kick(update, context, chat_id, target_id, t_name, is_group)
-    else:
+    groups = []
+    if not is_group:
         groups = await db.list_active_bot_chats(conn)
         if not groups:
             await update.message.reply_text("⚠️ Bot belum dimasukkan ke grup manapun.")
             return
-            
-        if len(groups) == 1:
-            chat_id = groups[0][0]
-            await _do_kick(update, context, chat_id, target_id, t_name, is_group)
-        else:
-            keyboard = []
-            for c_id, c_title in groups:
-                keyboard.append([InlineKeyboardButton(c_title, callback_data=f"kick:{c_id}:{target_id}")])
-            keyboard.append([InlineKeyboardButton("Batal", callback_data="kick:cancel:0")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                f"Pilih grup tempat kamu ingin mengeluarkan <b>{html.escape(t_name)}</b>:",
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
 
-async def _do_kick(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, target_id: int, target_name: str, is_group: bool) -> None:
+    if is_group or len(groups) == 1:
+        chat_id = update.effective_chat.id if is_group else groups[0][0]
+        
+        if total_requested == 1 and len(valid_targets) == 1:
+            await _do_kick(update, context, chat_id, valid_targets[0]["id"], valid_targets[0]["name"], is_group)
+        else:
+            if not valid_targets:
+                summary = "❌ Tidak ada target yang valid untuk dikeluarkan.\n"
+            else:
+                summary = "📋 <b>Rekap /kick:</b>\n"
+                
+            success = []
+            failed = []
+            for target in valid_targets:
+                res = await _do_kick(update, context, chat_id, target["id"], target["name"], is_group, silent=True)
+                if res:
+                    success.append(target["name"])
+                else:
+                    failed.append(target["name"])
+                    
+            if success:
+                summary += f"✅ Berhasil ({len(success)}): {', '.join(success)}\n"
+            if failed:
+                summary += f"❌ Gagal ({len(failed)}): {', '.join(failed)}\n"
+            if not_found:
+                summary += f"❓ Tidak Ditemukan ({len(not_found)}): {', '.join(not_found)}\n"
+            if admin_targets:
+                summary += f"⛔ Ditolak (Admin): {', '.join(admin_targets)}\n"
+                
+            if is_group:
+                await context.bot.send_message(chat_id=chat_id, text=summary, parse_mode="HTML")
+            else:
+                await update.effective_message.reply_text(summary, parse_mode="HTML")
+    else:
+        # Multi-group PM case
+        if len(valid_targets) > 1 or total_requested > 1:
+            await update.message.reply_text("⛔ Fitur multi-kick lewat PM untuk multi-grup tidak didukung. Tolong gunakan perintah ini langsung di dalam grup.")
+            return
+            
+        target = valid_targets[0]
+        keyboard = []
+        for c_id, c_title in groups:
+            keyboard.append([InlineKeyboardButton(c_title, callback_data=f"kick:{c_id}:{target['id']}")])
+        keyboard.append([InlineKeyboardButton("Batal", callback_data="kick:cancel:0")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"Pilih grup tempat kamu ingin mengeluarkan <b>{html.escape(target['name'])}</b>:",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+
+async def _do_kick(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int, target_id: int, target_name: str, is_group: bool, silent: bool = False) -> bool:
     try:
         await context.bot.ban_chat_member(chat_id=chat_id, user_id=target_id)
         await context.bot.unban_chat_member(chat_id=chat_id, user_id=target_id)
         
         caller_name = update.effective_user.first_name
         
-        if is_group:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🚨 <b>{html.escape(target_name)}</b> telah dikeluarkan dari grup oleh <b>{html.escape(caller_name)}</b>.",
-                parse_mode="HTML"
-            )
-        else:
-            await update.effective_message.reply_text(f"✅ Berhasil mengeluarkan <b>{html.escape(target_name)}</b> dari grup.", parse_mode="HTML")
-            from bot.settings import OWNER_ID
-            if OWNER_ID and OWNER_ID != update.effective_user.id:
-                try:
-                    await context.bot.send_message(
-                        chat_id=OWNER_ID,
-                        text=f"ℹ️ <b>{html.escape(caller_name)}</b> telah mengeluarkan <b>{html.escape(target_name)}</b> dari grup melalui PM.",
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
+        if not silent:
+            if is_group:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"🚨 <b>{html.escape(target_name)}</b> telah dikeluarkan dari grup oleh <b>{html.escape(caller_name)}</b>.",
+                    parse_mode="HTML"
+                )
+            else:
+                await update.effective_message.reply_text(f"✅ Berhasil mengeluarkan <b>{html.escape(target_name)}</b> dari grup.", parse_mode="HTML")
+                from bot.settings import OWNER_ID
+                if OWNER_ID and OWNER_ID != update.effective_user.id:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=OWNER_ID,
+                            text=f"ℹ️ <b>{html.escape(caller_name)}</b> telah mengeluarkan <b>{html.escape(target_name)}</b> dari grup melalui PM.",
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+        return True
     except Exception as e:
-        await update.effective_message.reply_text(f"❌ Gagal mengeluarkan target. Bot mungkin bukan admin di grup tersebut.\n\nError: {e}")
+        if not silent:
+            await update.effective_message.reply_text(f"❌ Gagal mengeluarkan target. Bot mungkin bukan admin di grup tersebut.\n\nError: {e}")
+        return False
 
 async def on_kick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query

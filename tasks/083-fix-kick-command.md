@@ -9,3 +9,4 @@ Pengguna melaporkan bahwa command `/kick` terkadang "tidak terbaca" atau tidak m
 - **`bot/handlers/commands.py`**:
   - Mengubah cara membaca pesan di `cmd_kick` dari `update.message.text.strip()` menjadi `(update.message.text or update.message.caption or "").strip()` agar dapat menangani pesan berupa media ber-caption.
   - Memperbarui mekanisme pemeriksaan `d_sekre` menggunakan operator `in` jika tipe datanya berupa `list`, sehingga meskipun user mempunyai banyak jabatan, aksesnya tetap diizinkan.
+  - Menambahkan dukungan multi-target (beberapa username/ID yang dipisahkan spasi) pada command `/kick` sekaligus membuat laporan rekapitulasinya.
