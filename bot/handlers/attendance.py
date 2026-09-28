@@ -75,7 +75,8 @@ def get_automatic_classes(profile: dict) -> list[str]:
 def classes_for_presensi(profile: dict) -> list[str]:
     enrolled = get_automatic_classes(profile)
     teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
-    return list(dict.fromkeys(enrolled + teaching))
+    clubs = normalize_multi_choice_value(profile.get("club_enrolled"))
+    return list(dict.fromkeys(enrolled + teaching + clubs))
 
 
 def can_rekap_hadir_session(row, profile: dict, session_class_id: str) -> bool:
@@ -439,10 +440,7 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
     
-    from bot.handlers.common import get_user_jabatans
-    jabs = get_user_jabatans(profile)
-    
-    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) or "d_sekre" in jabs:
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
     if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("bem_manual")
@@ -860,12 +858,9 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
     
-    from bot.handlers.common import get_user_jabatans
-    jabs = get_user_jabatans(profile)
-    
     if action == "sh":
         if sess["class_id"] == "staff_auto":
-            if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) and "d_sekre" not in jabs:
+            if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
                 await q.answer("Hanya untuk staf.", show_alert=True)
                 return
             user_classes.append("staff_auto")
@@ -876,8 +871,7 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
             user_classes.append("maba_auto")
             
-    # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER, atau punya jabatan d_sekre
-    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) or "d_sekre" in jabs:
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
     if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("bem_manual")
