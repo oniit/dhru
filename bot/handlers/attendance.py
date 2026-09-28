@@ -439,7 +439,10 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
     
-    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+    from bot.handlers.common import get_user_jabatans
+    jabs = get_user_jabatans(profile)
+    
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) or "d_sekre" in jabs:
         user_classes.append("staff_manual")
     if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("bem_manual")
@@ -857,9 +860,12 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
     profile = profile_from_row(row)
     user_classes = classes_for_presensi(profile)
     
+    from bot.handlers.common import get_user_jabatans
+    jabs = get_user_jabatans(profile)
+    
     if action == "sh":
         if sess["class_id"] == "staff_auto":
-            if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+            if row["role"] not in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) and "d_sekre" not in jabs:
                 await q.answer("Hanya untuk staf.", show_alert=True)
                 return
             user_classes.append("staff_auto")
@@ -870,8 +876,8 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
             user_classes.append("maba_auto")
             
-    # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER
-    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
+    # Khusus staff_manual, valid jika role == ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER, atau punya jabatan d_sekre
+    if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER) or "d_sekre" in jabs:
         user_classes.append("staff_manual")
     if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("bem_manual")
