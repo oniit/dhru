@@ -30,7 +30,7 @@ Jangan pernah meninggalkan _workspace_ dalam keadaan fitur baru sudah selesai ta
 **INSTRUKSI WAJIB BAGI AGEN AI:**
 - **JANGAN PERNAH** mengirim pesan pengujian (test message), _broadcast_, pengumuman, atau notifikasi langsung ke sembarang _user_ atau grup saat sedang melakukan QA, baik menjalankan kode uji coba maupun melalui _endpoint_ notifikasi bot.
 - Segala bentuk QA yang membutuhkan interaksi dengan bot harus dilakukan melalui akun khusus _tester_/_owner_ saja, menggunakan lingkungan replika (local mock), atau disimulasikan menggunakan skrip yang tidak benar-benar mengirim _request_ (send message) ke API Telegram untuk pengguna nyata. **Jika kamu sangat membutuhkan interaksi ke user nyata saat testing bot, maka kirimlah SATU-SATUNYA HANYA ke ID yang ada pada variabel `TESTER_ID` di dalam environment**.
-- Evaluasi _logic_ harus mengandalkan skrip tes (misalnya menggunakan pytest / _local sqlite_ seperti `test_logic.py`) tanpa mengeksekusi fungsi _broadcast_/_send message_ ke _user_ yang ada di database *production*.
+- Evaluasi _logic_ harus mengandalkan skrip tes (misalnya menggunakan pytest dengan Turso dev DB di environment seperti `test_logic.py`) tanpa mengeksekusi fungsi _broadcast_/_send message_ ke _user_ yang ada di database *production*.
 
 ## Aturan: Pemanfaatan Userbot (IPC)
 
@@ -43,3 +43,13 @@ Jangan pernah meninggalkan _workspace_ dalam keadaan fitur baru sudah selesai ta
   2. Lakukan *polling* (menunggu) dengan `asyncio.sleep()` maksimal 5-10 detik sampai status kolom tersebut berubah menjadi `DONE` atau `ERROR`.
   3. Baca hasil `result` berformat JSON.
 - Metode ini dirancang sebagai *fallback* sekunder setelah pencarian *database lokal* gagal, agar tidak memboroskan kuota API Telegram secara berlebihan (*FloodWait*).
+
+## Aturan: Analisis Menyeluruh (Holistic Debugging) & Hindari Asumsi
+
+**Deskripsi**: Agen AI tidak boleh langsung mengambil kesimpulan (jumping to conclusions) berdasarkan asumsi dari "perubahan terbaru" (recent changes) ketika *user* melaporkan *bug*. AI wajib menganalisis masalah secara menyeluruh (holistik), melihat batasan arsitektur/konfigurasi, dan memastikan skenario *user* dipahami sebelum mengedit kode.
+
+**INSTRUKSI WAJIB BAGI AGEN AI:**
+- Saat menangani laporan *bug*, telusuri secara lengkap mulai dari mana data berasal (hulu), siapa yang berhak memiliki data tersebut berdasarkan skema/konfigurasi, hingga di mana data itu dieksekusi (hilir). Jangan memotong langkah inspeksi.
+- Selalu tinjau file konfigurasi skema (seperti `profile_fields.yaml` atau `choices.yaml`) untuk memastikan perbaikanmu secara logika selaras dengan aturan bisnis aplikasi (contoh: jangan membuat *bypass* akses untuk *Student* jika *Student* tidak diizinkan memiliki akses tersebut sejak dari skema awal).
+- Jika laporan dari *user* ambigu atau kurang spesifik (misalnya: "Saya tidak bisa hadir"), **JANGAN** langsung berasumsi bahwa itu disebabkan oleh pekerjaan/ *task* mu sebelumnya. Selidiki konteksnya (contoh: "Di jenis sesi apa kamu tidak bisa hadir?") atau uji *semua* tipe sesi (kelas utama, UKM, staf, event) sebelum menyimpulkan letak masalah.
+- Validasi dahulu apakah error tersebut *benar-benar* *bug* atau memang merupakan batasan sistem (*intended behavior*). Jangan membuat perbaikan/modifikasi pada *core file* jika sistem ternyata sudah berjalan benar.

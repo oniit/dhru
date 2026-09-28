@@ -276,15 +276,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     db = _db(context)
     conn = _conn(context)
     
-    agra_total = await db.agra_total(conn, sender_id)
-    if agra_total < total_deduct:
-        msg = f"❌ Saldo Agra Anda tidak mencukupi. Butuh {total_deduct} Agra."
-        if is_message:
-            await update.message.reply_text(msg)
-        else:
-            await update.callback_query.message.edit_text(msg)
-        return ConversationHandler.END
-        
+
     # Get receiver name for channel message
     target_row = await db.get_user(conn, target_id)
     target_name = "Pengguna"

@@ -1,24 +1,13 @@
 import asyncio
 import os
-os.environ["TURSO_DB_URL"] = ""
-os.environ["TURSO_AUTH_TOKEN"] = ""
-import time
+import pytest
 from bot.database import Database
 
-async def run_tests():
+@pytest.mark.asyncio
+async def test_logic_all():
     print("=== Memulai Tes Logika & Fungsi Inti ===")
-    os.environ["TURSO_DATABASE_URL"] = "file:test_logic_88.sqlite3"
-    
-    for ext in ["", "-wal", "-shm"]:
-        f = "test_logic_88.sqlite3" + ext
-        if os.path.exists(f):
-            try: os.remove(f)
-            except: pass
-        
-    from pathlib import Path
-    db = Database(path=Path("test_logic_88.sqlite3"))
+    db = Database()
     conn = await db.connect()
-    print(f"DEBUG: db.path is {db.path}")
     
     try:
         # 1. User Creation
@@ -105,4 +94,4 @@ async def run_tests():
         # Biarkan file db agar bisa diinspeksi
 
 if __name__ == "__main__":
-    asyncio.run(run_tests())
+    asyncio.run(test_logic_all())

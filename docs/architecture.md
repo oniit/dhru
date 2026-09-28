@@ -1,13 +1,13 @@
 # System Architecture
 
 ## Gambaran Umum
-Sistem bot ini dibangun di atas bahasa Python menggunakan **`python-telegram-bot` (versi 20+)** dengan pendekatan asynchronous murni (`asyncio`). Sistem menggunakan **SQLite** (melalui library `aiosqlite`) sebagai basis datanya, memastikan performa tinggi dengan sumber daya server yang sangat ringan.
+Sistem bot ini dibangun di atas bahasa Python menggunakan **`python-telegram-bot` (versi 20+)** dengan pendekatan asynchronous murni (`asyncio`). Sistem menggunakan **Turso** (remote database via `libsql_client`) sebagai basis datanya.
 
 ## Tech Stack
 - **Bahasa**: Python 3.10+
 - **Framework Bot**: `python-telegram-bot` (v20+)
-- **Database**: SQLite3 (`aiosqlite`)
-- **Konfigurasi**: YAML (untuk data master/choices) dan `.env` (untuk _credentials_).
+- **Database**: Turso DB (`libsql_client` / `aiosqlite`)
+- **Konfigurasi**: YAML (untuk data master/choices) dan `.env` (untuk _credentials_ `TURSO_DB_URL` & `TURSO_AUTH_TOKEN`).
 
 ## Struktur Direktori
 

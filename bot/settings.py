@@ -143,8 +143,12 @@ def _parse_id_list(s: str | None) -> set[int]:
     out: set[int] = set()
     for part in s.replace(";", ",").split(","):
         part = part.strip()
-        if part.isdigit():
+        if not part:
+            continue
+        try:
             out.add(int(part))
+        except ValueError:
+            pass
     return out
 
 

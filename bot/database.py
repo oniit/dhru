@@ -400,7 +400,10 @@ class AiosqliteCursorMock:
         self.rs = result_set
         self._idx = 0
         self.lastrowid = getattr(result_set, 'last_insert_rowid', None)
-        self.rowcount = getattr(result_set, 'rows_affected', 0)
+        affected = getattr(result_set, 'rows_affected', getattr(result_set, 'affected_rows', None))
+        if (affected is None or affected == 0) and self.lastrowid is not None and self.lastrowid > 0:
+            affected = 1
+        self.rowcount = affected if affected is not None else 0
 
     async def fetchone(self):
         if self._idx < len(self.rs.rows):
@@ -491,44 +494,25 @@ class Database:
                     tagall_path.rename(tagall_path.parent / "tagall.db.bak")
                 except Exception:
                     pass
-
-        cur = await conn.execute("PRAGMA table_info(attendance_sessions)")
-        cols = {str(r[1]) for r in await cur.fetchall()}
-        if "announce_message_id" not in cols:
-            await conn.execute(
-                "ALTER TABLE attendance_sessions ADD COLUMN announce_message_id INTEGER"
-            )
-        cur = await conn.execute("PRAGMA table_info(profile_change_requests)")
-        pcr_cols = {str(r[1]) for r in await cur.fetchall()}
-        if "moderator_prompt_text" not in pcr_cols:
-            await conn.execute(
-                "ALTER TABLE profile_change_requests ADD COLUMN moderator_prompt_text TEXT"
-            )
-        cur = await conn.execute("PRAGMA table_info(attendance_records)")
-        rec_cols = {str(r[1]) for r in await cur.fetchall()}
-        if "status" not in rec_cols:
-            await conn.execute(
-                "ALTER TABLE attendance_records ADD COLUMN status TEXT NOT NULL DEFAULT 'hadir'"
-            )
-        cur = await conn.execute("PRAGMA table_info(access_codes)")
-        ac_cols = {str(r[1]) for r in await cur.fetchall()}
-        if "target_role" not in ac_cols:
-            await conn.execute(
-                "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"
-            )
-        cur = await conn.execute("PRAGMA table_info(promo_verifications)")
-        pv_cols = {str(r[1]) for r in await cur.fetchall()}
-        if "promo_type" not in pv_cols:
-            await conn.execute(
-                "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"
-            )
-            
-        cur = await conn.execute("PRAGMA table_info(bot_chats)")
-        bc_cols = {str(r[1]) for r in await cur.fetchall()}
-        if "greeting_message" not in bc_cols:
-            await conn.execute(
-                "ALTER TABLE bot_chats ADD COLUMN greeting_message TEXT"
-            )
+        migrations = [
+            ("attendance_sessions", "announce_message_id", "ALTER TABLE attendance_sessions ADD COLUMN announce_message_id INTEGER"),
+            ("profile_change_requests", "moderator_prompt_text", "ALTER TABLE profile_change_requests ADD COLUMN moderator_prompt_text TEXT"),
+            ("attendance_records", "status", "ALTER TABLE attendance_records ADD COLUMN status TEXT NOT NULL DEFAULT 'hadir'"),
+            ("access_codes", "target_role", "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"),
+            ("promo_verifications", "promo_type", "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"),
+            ("bot_chats", "greeting_message", "ALTER TABLE bot_chats ADD COLUMN greeting_message TEXT"),
+        ]
+        for tbl, col, sql in migrations:
+            try:
+                cur = await conn.execute(f"PRAGMA table_info({tbl})")
+                cols = {str(r[1]) for r in await cur.fetchall()}
+                if col not in cols:
+                    await conn.execute(sql)
+            except Exception:
+                try:
+                    await conn.execute(sql)
+                except Exception:
+                    pass
             
         await conn.commit()
         return conn
@@ -908,7 +892,7 @@ class Database:
             (target_id, actor_id, -amount, description, chat_id, message_id, time.time(), target_id, amount),
         )
         await conn.commit()
-        return cur.rowcount > 0
+        return bool((cur.rowcount is not None and cur.rowcount > 0) or (getattr(cur, 'lastrowid', None) and cur.lastrowid > 0))
 
     async def agra_report(
         self, conn: aiosqlite.Connection, limit: int = 50
@@ -980,7 +964,7 @@ class Database:
     async def _auto_close_stale_sessions(self, conn: aiosqlite.Connection) -> None:
         stale_cutoff = time.time() - 7200
         await conn.execute(
-            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ? AND class_id != 'staff_auto'",
+            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ? AND class_id NOT IN ('staff_auto', 'maba_auto')",
             (stale_cutoff,)
         )
         await conn.commit()
