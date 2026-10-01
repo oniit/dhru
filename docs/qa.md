@@ -10,7 +10,7 @@ Lakukan **QA level produksi** terhadap **seluruh sistem bot** sebagai satu kesat
 - **JANGAN** berhenti setelah menemukan bug.
 - **JANGAN** klaim PASS tanpa benar-benar diuji.
 - **JANGAN** kirim pesan ke user nyata — hanya ke `TESTER_ID`.
-- Gunakan `test_logic.py` dengan Turso DB khusus developing di environment, **bukan** DB produksi Turso.
+- Gunakan test suite di folder `tests/` dengan Turso DB khusus developing di environment, **bukan** DB produksi Turso.
 
 ---
 
@@ -32,7 +32,7 @@ Pelajari keseluruhan sistem — pahami interaksi antar komponen, bukan fungsi te
 
 Jalankan semua yang tersedia:
 
-- `pytest test_logic.py test_presensi.py test_major_logic.py` dll
+- `python -m pytest tests/` (menjalankan seluruh test suite di folder `tests/`)
 - Lint (`ruff`/`flake8`), typecheck (`mypy`)
 - Cek dependensi/keamanan
 - Cek skema DB (bandingkan DDL di `database.py` vs tabel aktual)
