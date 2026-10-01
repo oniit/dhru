@@ -892,7 +892,10 @@ class Database:
             (target_id, actor_id, -amount, description, chat_id, message_id, time.time(), target_id, amount),
         )
         await conn.commit()
-        return bool((cur.rowcount is not None and cur.rowcount > 0) or (getattr(cur, 'lastrowid', None) and cur.lastrowid > 0))
+        rc = getattr(cur, "rowcount", None)
+        if rc is None:
+            rc = getattr(cur, "rows_affected", 0)
+        return bool(rc and rc > 0)
 
     async def agra_report(
         self, conn: aiosqlite.Connection, limit: int = 50

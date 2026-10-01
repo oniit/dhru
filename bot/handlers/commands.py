@@ -1111,7 +1111,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 limit = 10
                 offset = page * limit
                 cur = await conn.execute(
-                    f"""
+                    """
                     SELECT
                         s.id,
                         s.class_id,
@@ -1123,8 +1123,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     FROM attendance_sessions s
                     LEFT JOIN users u ON u.telegram_id = s.opened_by
                     ORDER BY s.id DESC
-                    LIMIT {limit + 1} OFFSET {offset}
-                    """
+                    LIMIT ? OFFSET ?
+                    """,
+                    (limit + 1, offset),
                 )
                 sessions = await cur.fetchall()
                 if not sessions and page == 0:
@@ -2479,6 +2480,8 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     parsed = parse_add_command(update.message)
+    # CATATAN: Nominal negatif (misal -50) sengaja DIIZINKAN pada /add
+    # untuk memfasilitasi pengurangan agra / denda oleh pengelola agra (ROLE_ADMIN / OWNER / BEM).
     if not parsed:
         await update.message.reply_text(
             "Format: <code>/add &lt;angka&gt; @user … | &lt;deskripsi&gt;</code> atau reply pesan user lalu "
@@ -4564,7 +4567,7 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+    if not row or (row["role"] != ROLE_OWNER and not is_owner(update.effective_user.id)):
         await update.message.reply_text("Tidak diizinkan.")
         return
 
@@ -4583,7 +4586,7 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+    if not row or (row["role"] != ROLE_OWNER and not is_owner(update.effective_user.id)):
         await update.message.reply_text("Tidak diizinkan.")
         return
 

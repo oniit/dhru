@@ -57,6 +57,11 @@ def rate_limit_check(user_id: int, command_key: str, limit_seconds: int = 5) -> 
     Returns False if they are sending requests too quickly.
     """
     now = time.time()
+    if len(RATE_LIMIT_CACHE) > 500:
+        expired = [k for k, t in RATE_LIMIT_CACHE.items() if now - t > 60]
+        for k in expired:
+            RATE_LIMIT_CACHE.pop(k, None)
+
     cache_key = f"{user_id}:{command_key}"
     last_time = RATE_LIMIT_CACHE.get(cache_key, 0)
     
