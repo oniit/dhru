@@ -318,6 +318,15 @@ CREATE TABLE IF NOT EXISTS menfess_history (
 CREATE INDEX IF NOT EXISTS idx_menfess_sender ON menfess_history(sender_id);
 CREATE INDEX IF NOT EXISTS idx_menfess_receiver ON menfess_history(receiver_id);
 
+CREATE TABLE IF NOT EXISTS manosraya_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    message_text TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    FOREIGN KEY (sender_id) REFERENCES users(telegram_id)
+);
+CREATE INDEX IF NOT EXISTS idx_manosraya_sender ON manosraya_history(sender_id);
+
 CREATE TABLE IF NOT EXISTS promo_verifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -501,6 +510,7 @@ class Database:
             ("access_codes", "target_role", "ALTER TABLE access_codes ADD COLUMN target_role TEXT NOT NULL DEFAULT 'student'"),
             ("promo_verifications", "promo_type", "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"),
             ("bot_chats", "greeting_message", "ALTER TABLE bot_chats ADD COLUMN greeting_message TEXT"),
+            ("manosraya_history", "id", "CREATE TABLE IF NOT EXISTS manosraya_history (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER NOT NULL, message_text TEXT NOT NULL, created_at REAL NOT NULL, FOREIGN KEY (sender_id) REFERENCES users(telegram_id))"),
         ]
         for tbl, col, sql in migrations:
             try:
@@ -2429,6 +2439,21 @@ class Database:
         if row:
             return bool(row["is_allowed"])
         return False
+
+    async def add_manosraya(
+        self, conn: aiosqlite.Connection, sender_id: int, message_text: str
+    ) -> int:
+        import time
+        now = time.time()
+        cur = await conn.execute(
+            """
+            INSERT INTO manosraya_history (sender_id, message_text, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (sender_id, message_text, now)
+        )
+        await conn.commit()
+        return cur.lastrowid
 
 __all__ = [
     "Database",

@@ -120,6 +120,13 @@ Antrean tugas pengiriman pesan massal (/broadcast).
 - `reporter_id` (INTEGER): Telegram ID pemohon broadcast
 - `status` (TEXT DEFAULT 'pending'): Status pekerjaan (`pending`, `completed`, `failed`)
 
+### 18. `manosraya_history`
+Riwayat pengiriman aspirasi (Yaksa Open Arms).
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `sender_id` (INTEGER NOT NULL): Pengirim pesan
+- `message_text` (TEXT NOT NULL): Isi pesan
+- `created_at` (REAL NOT NULL)
+
 ---
 
 ## Konfigurasi Database Turso

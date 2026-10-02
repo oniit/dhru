@@ -7,7 +7,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from bot.database import Database
 
-from . import attendance, commands, kartu, kontrak, messages, triggers, broadcast, tugas, menfess, games
+from . import attendance, commands, kartu, kontrak, messages, triggers, broadcast, tugas, menfess, games, manosraya
 
 
 
@@ -80,6 +80,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))
     application.add_handler(CommandHandler("menfess_read", menfess.cmd_menfess_read))
     application.add_handler(menfess.cmd_menfess_router, group=1)
+    application.add_handler(manosraya.cmd_manosraya_router, group=1)
 
     from .promo import setup_promo_handlers
     setup_promo_handlers(application)

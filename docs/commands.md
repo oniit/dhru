@@ -19,6 +19,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pay` — Mengurangi saldo Agra (opsional untuk pembayaran _virtual_).
 - `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
 - `/menfess_read <id>` — Membaca detail pesan menfess dari history.
+- `/manosraya` — Mengirim aspirasi, kritik, atau saran anonim (Yaksa Open Arms) ke sistem/Dhruva. Tanpa biaya Agra.
 - `/link_kerja` — Membuat kode OTP untuk menautkan "Akun Kerja" (akun promosi).
 - `/cek_akun_kerja` — Melihat daftar akun kerja yang sudah ditautkan.
 - `/lpm <link>` — Men-submit link pesan promosi dari grup publik untuk divalidasi dan mendapatkan reward Agra.
