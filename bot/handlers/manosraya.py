@@ -16,6 +16,8 @@ warnings.filterwarnings("ignore", category=PTBUserWarning, message="If 'per_mess
 
 from bot.database import Database
 from bot.settings import MANOS_CH_ID
+from datetime import datetime
+from bot.timefmt import TZ
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +34,15 @@ async def cmd_manosraya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     from bot.handlers.common import rate_limit_check
     if not update.effective_user or not rate_limit_check(update.effective_user.id, "manosraya", 3):
         await update.message.reply_text("❌ Jangan spam! Tunggu beberapa detik sebelum mengakses menu lagi.")
+        return ConversationHandler.END
+        
+    now = datetime.now(TZ)
+    if now.weekday() > 4 or not (10 <= now.hour < 22):
+        await update.message.reply_text(
+            "❌ Layanan Manosraya (Yaksa Open Arms) saat ini sedang ditutup.\n"
+            "Jadwal operasional: <b>Senin - Jumat, 10.00 - 22.00 WIB</b>.",
+            parse_mode="HTML"
+        )
         return ConversationHandler.END
         
     await update.message.reply_text(
