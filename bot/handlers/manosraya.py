@@ -36,8 +36,8 @@ async def cmd_manosraya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         
     await update.message.reply_text(
         "<b>Yaksa Open Arms</b> 🕊️\n\n"
-        "Silakan ketik aspirasi, kritik, atau saran untuk Dhruva.\n"
-        "Pesan Anda akan dikirim secara anonim ke channel, namun tetap tercatat di sistem kami untuk keperluan moderasi jika diperlukan.\n\n"
+        "Silakan ketik aspirasi, kritik, atau saran untuk Institut Dhruva Ekāgra.\n"
+        "Pesan Anda akan dikirim secara anonim ke channel.\n\n"
         "<i>Ketik /cancel untuk membatalkan.</i>",
         parse_mode="HTML"
     )
@@ -63,7 +63,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         [InlineKeyboardButton("❌ Batal", callback_data="manos:cancel")]
     ]
     await update.message.reply_text(
-        "Pesan aspirasi sudah siap. Apakah Anda yakin ingin mengirimkannya?",
+        "Pesan sudah siap. Apakah Anda yakin ingin mengirimkannya?",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return CONFIRM

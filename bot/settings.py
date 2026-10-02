@@ -95,7 +95,7 @@ EDITOR_GID = int(_eg) if _eg else None
 _mc = os.environ.get("MENFESS_CH_ID", "").strip()
 MENFESS_CH_ID = int(_mc) if _mc else None
 
-_manos = os.environ.get("manos_ch_id", "").strip()
+_manos = os.environ.get("MANOS_CH_ID", "").strip()
 MANOS_CH_ID = int(_manos) if _manos else None
 
 _keep_c = os.environ.get("KEEP_CH_ID", "").strip()
