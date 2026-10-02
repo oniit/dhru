@@ -101,7 +101,7 @@ async def execute_manosraya(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return ConversationHandler.END
 
     safe_message = html.escape(message_text)
-    channel_msg = f"#Manosraya {safe_message}"
+    channel_msg = f"#OpenArms {safe_message}"
         
     try:
         await context.bot.send_message(
