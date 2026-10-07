@@ -47,15 +47,18 @@ async def cmd_selesai_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = _conn(context)
     actions_json = json.dumps(messages, ensure_ascii=False)
     
-    try:
+    # Cek apakah keyword sudah ada sebelumnya untuk menghindari duplikasi
+    cur = await conn.execute("SELECT id FROM triggers WHERE keyword = ?", (keyword,))
+    existing = await cur.fetchone()
+    if existing:
+        await conn.execute(
+            "UPDATE triggers SET actions_json = ?, created_by = ? WHERE keyword = ?",
+            (actions_json, update.effective_user.id, keyword)
+        )
+    else:
         await conn.execute(
             "INSERT INTO triggers (keyword, actions_json, created_by) VALUES (?, ?, ?)",
             (keyword, actions_json, update.effective_user.id)
-        )
-    except Exception:
-        await conn.execute(
-            "UPDATE triggers SET actions_json = ? WHERE keyword = ?",
-            (actions_json, keyword)
         )
     await conn.commit()
     context.user_data.pop("trigger_draft", None)

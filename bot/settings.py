@@ -118,6 +118,29 @@ OSPEK_GID = int(_ospek_gid) if _ospek_gid else None
 
 MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
 
+CHARYARTHI_GFORM_LINK = os.environ.get("CHARYARTHI_GFORM_LINK", "https://forms.gle/").strip()
+_charyarthi_open = os.environ.get("CHARYARTHI_OPREC_OPEN", "1").strip().lower()
+CHARYARTHI_OPREC_OPEN = _charyarthi_open in ("1", "true", "yes")
+
+
+def get_charyarthi_divisions() -> list[tuple[str, str]]:
+    excluded_ids = {
+        "d_rektor", "d_sekre", "d_warek1", "d_warek2",
+        "d_dekan", "d_guru_besar", "d_pembina", "p_panitia_ospek"
+    }
+    items = []
+    for item in CHOICES.get("position_details", []):
+        iid = str(item.get("id", ""))
+        if iid and iid not in excluded_ids:
+            items.append((iid, str(item.get("label", iid))))
+    return items
+
+
+def get_division_label(div_id: str | None) -> str:
+    if not div_id:
+        return "—"
+    return choice_label("position_details", div_id)
+
 # Agra Rewards Configuration
 _rewards = _load_yaml("rewards.yaml")
 AGRA_REWARD_CLASS_HADIR = int(_rewards.get("class_hadir", 25))

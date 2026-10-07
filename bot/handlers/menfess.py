@@ -30,7 +30,13 @@ def _conn(context: ContextTypes.DEFAULT_TYPE):
 def _db(context: ContextTypes.DEFAULT_TYPE) -> Database:
     return context.application.bot_data["db"]
 
+def _clear_menfess_data(context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.user_data:
+        for key in ("menfess_target_id", "menfess_message", "menfess_gift", "menfess_last_action"):
+            context.user_data.pop(key, None)
+
 async def cmd_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    _clear_menfess_data(context)
     from bot.handlers.common import rate_limit_check
     if not update.effective_user or not rate_limit_check(update.effective_user.id, "menfess", 3):
         if update.message:
@@ -209,6 +215,7 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = query.data
     
     if data == "confirm:cancel":
+        _clear_menfess_data(context)
         await query.message.edit_text("Pengiriman dibatalkan.")
         return ConversationHandler.END
         
@@ -227,6 +234,7 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def gift_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
     if text == "/cancel":
+        _clear_menfess_data(context)
         await update.message.reply_text("Dibatalkan.")
         return ConversationHandler.END
         
@@ -271,6 +279,16 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     target_id = context.user_data.get("menfess_target_id")
     message_text = context.user_data.get("menfess_message")
     gift = context.user_data.get("menfess_gift", 0)
+
+    # Validasi state data sebelum memproses atau memotong saldo
+    if not target_id or not message_text:
+        _clear_menfess_data(context)
+        fail_msg = "❌ Sesi menfess telah kedaluwarsa atau data tidak ditemukan. Silakan mulai ulang dengan perintah /menfess."
+        if is_message and update.message:
+            await update.message.reply_text(fail_msg)
+        elif update.callback_query and update.callback_query.message:
+            await update.callback_query.message.edit_text(fail_msg)
+        return ConversationHandler.END
     
     total_deduct = 1 + gift
     db = _db(context)
@@ -317,6 +335,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
                     await update.message.reply_text(fail_msg)
                 else:
                     await update.callback_query.message.edit_text(fail_msg)
+                _clear_menfess_data(context)
                 return ConversationHandler.END
     gift_text = f" [🎁 {gift} agra]" if gift > 0 else ""
     
@@ -338,6 +357,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
             await update.message.reply_text(msg)
         else:
             await update.callback_query.message.edit_text(msg)
+        _clear_menfess_data(context)
         return ConversationHandler.END
     
     # Send to channel FIRST
@@ -377,6 +397,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
             await update.message.reply_text(fail_msg)
         else:
             await update.callback_query.message.edit_text(fail_msg)
+        _clear_menfess_data(context)
         return ConversationHandler.END
     
     # Add cashback if eligible
@@ -437,6 +458,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
     if post_link:
         success_msg += f"\nLink post: {post_link}"
         
+    _clear_menfess_data(context)
     if is_message:
         await update.message.reply_text(success_msg, disable_web_page_preview=True)
     else:
@@ -483,6 +505,10 @@ async def cmd_menfess_read(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     await update.message.reply_text(text, parse_mode="HTML")
 
+async def _fallback_cancel_menfess(u: Update, c: ContextTypes.DEFAULT_TYPE) -> int:
+    _clear_menfess_data(c)
+    return ConversationHandler.END
+
 cmd_menfess_router = ConversationHandler(
     entry_points=[CommandHandler("menfess", cmd_menfess)],
     states={
@@ -493,8 +519,8 @@ cmd_menfess_router = ConversationHandler(
         GIFT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, gift_amount_handler), CommandHandler("cancel", gift_amount_handler)],
     },
     fallbacks=[
-        CommandHandler("cancel", lambda u, c: ConversationHandler.END),
-        MessageHandler(filters.COMMAND, lambda u, c: ConversationHandler.END)
+        CommandHandler("cancel", _fallback_cancel_menfess),
+        MessageHandler(filters.COMMAND, _fallback_cancel_menfess)
     ],
     per_chat=True,
     per_user=True,

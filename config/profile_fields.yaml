@@ -82,6 +82,20 @@ fields:
     roles: [maba]
     required: false
 
+  - key: target_division_1
+    label: Divisi Pilihan 1
+    type: choice
+    choices_key: position_details
+    roles: [charyarthi]
+    required: false
+
+  - key: target_division_2
+    label: Divisi Pilihan 2
+    type: choice
+    choices_key: position_details
+    roles: [charyarthi]
+    required: false
+
 
 profile_display:
   - telegram_name
@@ -90,6 +104,8 @@ profile_display:
   - bem_position
   - position
   - position_detail
+  - target_division_1
+  - target_division_2
   - staff_faculty
   - teaching_classes
   - faculty

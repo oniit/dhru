@@ -38,3 +38,10 @@ bot/
    - Diteruskan ke handler yang sesuai (misal `CommandHandler` atau `MessageHandler`).
    - Handler memanggil koneksi `aiosqlite` melalui `context.bot_data["conn"]`.
    - Handler mengirimkan tanggapan via `update.message.reply_text`.
+
+## Proteksi Keamanan & Integritas State
+1. **IDOR & Scope Guard**: Modul tugas (`tugas.py`) memvalidasi kepemilikan kelas (`_student_enrolled_class_ids`) baik pada interaksi callback inline (`tsi:`) maupun pengumpulan jawaban (`handle_tugas_input`) untuk mencegah mahasiswa mengakses tugas di luar fakultas/jurusannya.
+2. **Anti Self-Approval**: Pada workflow persetujuan profil (`commands.py`), reviewer tidak diperkenankan menyetujui (`a:<id>:1`) atau menolak pengajuannya sendiri, kecuali dengan role `owner`.
+3. **Atomic Sequence Generator**: Penomoran dokumen dinamis seperti surat kontrak kerja staf dihitung menggunakan generator atomic (`get_next_contract_seq`) pada tabel `bot_settings`, mencegah *race condition* dan duplikasi nomor urut pada eksekusi serentak.
+4. **Proteksi Finansial & State Menfess**: Transaksi debit saldo Agra pada menfess (`menfess.py`) selalu memvalidasi kelengkapan data sesi (`target_id`, `message_text`) sebelum pemotongan saldo, serta menjamin *auto-refund* jika pengiriman pesan ke channel gagal.
+5. **Sanitasi HTML Parsing**: Semua parameter dinamis pengguna (`first_name`, `username`, `reason`, dll) disanitasi menggunakan `html.escape` sebelum diinterpolasi ke format HTML Telegram guna mencegah `Bad Request: Can't parse entities`.

@@ -764,6 +764,17 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if allowed is not None and class_id not in allowed:
         await q.edit_message_text("Pilihan ini di luar lingkup presensi kamu.")
         return
+
+    # Cek apakah sesi untuk kelas ini sudah aktif
+    existing = await db.get_open_session_for_class(conn, class_id)
+    if existing:
+        c_lab = _class_label(class_id)
+        await q.edit_message_text(
+            f"⚠️ Sesi presensi untuk <b>{html.escape(c_lab)}</b> sudah dibuka sebelumnya (ID: <code>#{existing['id']}</code>).\n\n"
+            f"Tutup sesi tersebut terlebih dahulu dengan <code>/presensi tutup {existing['id']}</code> sebelum membuka sesi baru."
+        )
+        return
+
     sid = await db.open_attendance_session(
         conn,
         class_id=class_id,

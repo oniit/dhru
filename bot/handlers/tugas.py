@@ -490,6 +490,12 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await q.edit_message_text("Tugas tidak ditemukan atau sudah ditutup.")
             return
 
+        prof = profile_from_row(row) if row else {}
+        enrolled_classes = _student_enrolled_class_ids(prof, row["role"])
+        if task["class_id"] not in enrolled_classes:
+            await q.edit_message_text("Anda tidak terdaftar di kelas/matkul tugas ini.")
+            return
+
         # Check if already accepted
         sub = await db.get_submission_by_task_student(conn, task_id, uid)
         if sub and sub["status"] == "accepted":
@@ -768,6 +774,14 @@ async def handle_tugas_input(
     if not task or not task["is_open"]:
         await db.set_onboarding_step(conn, uid, None)
         await update.message.reply_text("Tugas tidak ditemukan atau sudah ditutup.")
+        return
+
+    row = await user_row(conn, db, uid)
+    prof = profile_from_row(row) if row else {}
+    enrolled_classes = _student_enrolled_class_ids(prof, row["role"] if row else "")
+    if task["class_id"] not in enrolled_classes:
+        await db.set_onboarding_step(conn, uid, None)
+        await update.message.reply_text("Anda tidak terdaftar di kelas/matkul tugas ini.")
         return
 
     sub_id = await db.submit_task(conn, task_id=task_id, student_id=uid, content=content)

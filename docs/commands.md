@@ -15,8 +15,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Sosial & Gamifikasi (Agra)
 - `/leaderboard` atau `/agra top [role] [all]` — Menampilkan peringkat Agra teratas. Gunakan argumen `all` untuk melihat keseluruhan tanpa batas Top 17 (contoh: `/agra top charya all`).
-- `/transfer <jumlah> <@username>` — Mentransfer poin Agra ke pengguna lain.
-- `/pay` — Mengurangi saldo Agra (opsional untuk pembayaran _virtual_).
+- `/transfer <jumlah> <@username>` atau `/pay <jumlah> <@username>` — Mentransfer poin Agra ke pengguna lain.
 - `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
 - `/menfess_read <id>` — Membaca detail pesan menfess dari history.
 - `/manosraya` — Mengirim aspirasi, kritik, atau saran anonim (Yaksa Open Arms) ke sistem/Dhruva. Tanpa biaya Agra (Tersedia Senin-Jumat, 10.00-22.00 WIB).
@@ -36,8 +35,11 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
 - `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
 - `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
-- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_.
+- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `publik`).
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
+- `/acc_charyarthi <user_id> [1|2]` — (Owner/Admin) Menerima pelamar Chāryārthī menjadi staf internal pada divisi pilihan 1 atau 2, dan mengirimkan notifikasi instruksi tanda tangan `/kontrak`.
+- `/reject_charyarthi <user_id>` — (Owner/Admin) Menolak pelamar Chāryārthī, me-rollback role ke `public`, dan mengirimkan pesan apresiasi sopan.
+- `/setting_charyarthi` — (Owner/Admin) Menu interaktif tombol toggle (✅/❌) saklar pendaftaran Chāryārthī master switch dan per divisi yang dibuka.
 - `/broadcast` — Mengirimkan pesan siaran ke semua saluran, bot _chats_, atau anggota fakultas tertentu.
 - `/trigger` — Memanajemen daftar _auto-reply_ khusus berbasis kata kunci.
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.

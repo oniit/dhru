@@ -177,15 +177,12 @@ async def _generate_and_send_kontrak(
     # Nomor Surat
     seq = profile.get("contract_seq_no")
     if not seq:
-        cur = await conn.execute("SELECT profile_json FROM users")
-        rows = await cur.fetchall()
-        max_seq = 0
-        for r in rows:
-            p = json.loads(r["profile_json"] or "{}")
-            s = p.get("contract_seq_no")
-            if s and isinstance(s, int) and s > max_seq:
-                max_seq = s
-        seq = max_seq + 1
+        if is_admin_check:
+            cur_s = await conn.execute("SELECT setting_value FROM bot_settings WHERE setting_key = 'contract_last_seq'")
+            row_s = await cur_s.fetchone()
+            seq = int(row_s["setting_value"]) + 1 if row_s and row_s["setting_value"].isdigit() else 1
+        else:
+            seq = await db.get_next_contract_seq(conn)
 
     dt_start = datetime.fromtimestamp(start_ts)
     romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]

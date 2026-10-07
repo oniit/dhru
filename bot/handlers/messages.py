@@ -236,6 +236,39 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
         return
 
+    if step == "CHARYARTHI_NAME":
+        name = text.title()
+        await db.set_profile_partial(conn, uid, {"full_name": name})
+        await db.set_onboarding_step(conn, uid, None)
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from bot.handlers.common import get_active_charyarthi_divisions
+        import html as html_module
+
+        divisions = await get_active_charyarthi_divisions(db, conn)
+        if not divisions:
+            await update.message.reply_text("Maaf, saat ini belum ada divisi yang dibuka untuk pendaftaran.")
+            return
+
+        buttons = []
+        row_btn = []
+        for div_id, div_lbl in divisions:
+            row_btn.append(InlineKeyboardButton(div_lbl, callback_data=f"charyarthi:div1:{div_id}"))
+            if len(row_btn) == 2:
+                buttons.append(row_btn)
+                row_btn = []
+        if row_btn:
+            buttons.append(row_btn)
+        buttons.append([InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")])
+
+        await update.message.reply_text(
+            f"Terima kasih, <b>{html_module.escape(name)}</b>.\n\n"
+            "Silakan pilih <b>Divisi Utama (Pilihan 1)</b> yang ingin Anda lamar:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML",
+        )
+        return
+
     if step == "INPUT_CODE":
         code = text.strip()
         cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
@@ -724,10 +757,12 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user = new_member.user
             
             # Replace placeholder if any
-            greeting = greeting.replace("{name}", user.first_name)
+            import html
+            first_name_esc = html.escape(user.first_name or "")
+            greeting = greeting.replace("{name}", first_name_esc)
             if "{username}" in greeting:
-                username = f"@{user.username}" if user.username else user.first_name
-                greeting = greeting.replace("{username}", username)
+                username_esc = f"@{html.escape(user.username)}" if user.username else first_name_esc
+                greeting = greeting.replace("{username}", username_esc)
                 
             try:
                 await context.bot.send_message(

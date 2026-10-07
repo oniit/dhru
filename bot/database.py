@@ -26,9 +26,10 @@ ROLE_INTERNAL = "internal"
 ROLE_STUDENT = "student"
 ROLE_BEM = "bem"
 ROLE_MABA = "maba"
+ROLE_CHARYARTHI = "charyarthi"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -523,6 +524,11 @@ class Database:
                     await conn.execute(sql)
                 except Exception:
                     pass
+            
+        try:
+            await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_triggers_keyword ON triggers(keyword)")
+        except Exception:
+            pass
             
         await conn.commit()
         return conn
@@ -2327,6 +2333,39 @@ class Database:
             (key, value)
         )
         await conn.commit()
+
+    async def get_next_contract_seq(self, conn: aiosqlite.Connection) -> int:
+        cur = await conn.execute("SELECT setting_value FROM bot_settings WHERE setting_key = 'contract_last_seq'")
+        row = await cur.fetchone()
+        if not row:
+            # Seed from users table if not initialized yet
+            cur_u = await conn.execute("SELECT profile_json FROM users")
+            rows_u = await cur_u.fetchall()
+            max_seq = 0
+            for r in rows_u:
+                try:
+                    p = json.loads(r["profile_json"] or "{}")
+                    s = p.get("contract_seq_no")
+                    if s and isinstance(s, int) and s > max_seq:
+                        max_seq = s
+                except Exception:
+                    pass
+            next_seq = max_seq + 1
+            await conn.execute(
+                "INSERT INTO bot_settings (setting_key, setting_value) VALUES ('contract_last_seq', ?) "
+                "ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
+                (str(next_seq),)
+            )
+            await conn.commit()
+            return next_seq
+        else:
+            await conn.execute(
+                "UPDATE bot_settings SET setting_value = CAST(setting_value AS INTEGER) + 1 WHERE setting_key = 'contract_last_seq'"
+            )
+            await conn.commit()
+            cur2 = await conn.execute("SELECT setting_value FROM bot_settings WHERE setting_key = 'contract_last_seq'")
+            row2 = await cur2.fetchone()
+            return int(row2["setting_value"])
 
     async def increment_message_count(self, conn: aiosqlite.Connection, user_id: int, chat_id: int) -> None:
         now = time.time()

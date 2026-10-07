@@ -14,6 +14,11 @@ async def daily_staff_attendance_open(context, opened_by=None):
         from bot.settings import OWNER_ID
         opened_by = OWNER_ID
 
+    existing_sess = await db.get_open_session_for_class(conn, "staff_auto")
+    if existing_sess:
+        print(f"Sesi presensi staff_auto sudah aktif (ID: {existing_sess['id']}), melewati pembuatan sesi baru.")
+        return existing_sess["id"]
+
     sid = await db.open_attendance_session(
         conn,
         class_id="staff_auto",
@@ -137,6 +142,11 @@ async def daily_maba_attendance_open(context):
 
     from bot.settings import OWNER_ID, MABA_GROUP_GIDS, OSPEK_GID
     if not OSPEK_GID: return
+
+    existing_sess = await db.get_open_session_for_class(conn, "maba_auto")
+    if existing_sess:
+        print(f"Sesi presensi maba_auto sudah aktif (ID: {existing_sess['id']}), melewati pembuatan sesi baru.")
+        return existing_sess["id"]
 
     sid = await db.open_attendance_session(
         conn,

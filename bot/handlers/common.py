@@ -15,6 +15,7 @@ from bot.database import (
     ROLE_STUDENT,
     ROLE_BEM,
     ROLE_MABA,
+    ROLE_CHARYARTHI,
 )
 from bot.settings import (
     CHOICES,
@@ -26,6 +27,8 @@ from bot.settings import (
     field_applies_to_role,
     multi_choice_labels,
     MABA_GROUP_NAMES,
+    CHARYARTHI_OPREC_OPEN,
+    get_charyarthi_divisions,
 )
 
 if TYPE_CHECKING:
@@ -42,6 +45,7 @@ def role_display(role: str) -> str:
         ROLE_BEM: "BEM",
         ROLE_STUDENT: "Shishya",
         ROLE_MABA: "Pravesi",
+        ROLE_CHARYARTHI: "Chāryārthī",
     }.get(role, role)
 
 
@@ -618,3 +622,19 @@ async def build_maba_verification_text(context, user_id: int | None = None) -> t
     now_str = datetime.datetime.now(tz).strftime("%H:%M:%S")
     text_verify += f"\nSetelah bergabung, tekan tombol <b>Verifikasi Kembali</b> di bawah ini.\n<i>(Terakhir dicek: {now_str})</i>"
     return text_verify, all_followed
+
+
+async def is_charyarthi_oprec_open(db, conn) -> bool:
+    val = await db.get_setting(conn, "charyarthi_oprec_open", "1" if CHARYARTHI_OPREC_OPEN else "0")
+    return val == "1"
+
+
+async def get_active_charyarthi_divisions(db, conn) -> list[tuple[str, str]]:
+    all_divs = get_charyarthi_divisions()
+    active_divs = []
+    for div_id, div_lbl in all_divs:
+        val = await db.get_setting(conn, f"charyarthi_div_{div_id}", "1")
+        if val == "1":
+            active_divs.append((div_id, div_lbl))
+    return active_divs
+

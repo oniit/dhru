@@ -13,7 +13,7 @@ Menyimpan data akun utama dan profil JSON *schema-less*.
 - `telegram_id` (INTEGER PRIMARY KEY): ID pengguna Telegram
 - `username`, `first_name`, `last_name` (TEXT): Informasi profil Telegram
 - `language_code` (TEXT), `is_premium` (INTEGER), `is_bot` (INTEGER)
-- `role` (TEXT NOT NULL DEFAULT 'public'): Peran pengguna (`owner`, `admin`, `internal`, `bem`, `student`, `maba`, `public`)
+- `role` (TEXT NOT NULL DEFAULT 'public'): Peran pengguna (`owner`, `admin`, `internal`, `bem`, `student`, `maba`, `charyarthi`, `public`)
 - `profile_json` (TEXT NOT NULL DEFAULT '{}'): JSON menyimpan data formulir (NIM, fakultas, jurusan, dll)
 - `raw_profile_json` (TEXT), `onboarding_step` (TEXT): State onboarding per-user
 - `created_at` (REAL), `updated_at` (REAL): Timestamp pembuatan/pembaruan
@@ -62,6 +62,7 @@ Kode akses pendaftaran/elevasi peran.
 Keyword triggers otomatis untuk merespons pesan tertentu di obrolan/grup.
 - `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
 - `keyword` (TEXT NOT NULL), `actions_json` (TEXT NOT NULL), `created_by` (INTEGER NOT NULL)
+- **Index**: `CREATE UNIQUE INDEX IF NOT EXISTS idx_triggers_keyword ON triggers(keyword)` (mencegah keyword duplikat).
 
 ### 8. `bot_chats`
 Daftar grup tempat bot terpasang.
@@ -101,6 +102,7 @@ Verifikasi promosi (LPM / Story) dan akun kerja/klon.
 ### 14. `bot_settings`
 Konfigurasi dinamis bot (*key-value*).
 - `setting_key` (TEXT PRIMARY KEY), `setting_value` (TEXT NOT NULL)
+- Digunakan untuk: `promo_lpm_keyword`, `promo_story_post`, `ospek_mode`, dan `contract_last_seq` (atomic counter penomoran surat kontrak).
 
 ### 15. `userbot_requests`
 Komunikasi antarmuka (IPC) antara `main.py` dan `checker.py` (Pyrogram userbot).
