@@ -4,6 +4,12 @@ Sistem menggunakan **Turso** (remote database via `libsql_client`) secara eksklu
 
 Inisialisasi skema dilakukan melalui string `SCHEMA` dan migrasi otomatis pada method `connect()` di [`bot/database.py`](file:///c:/Users/onit/OneDrive/Documents/Python/tele/dhru/bot/database.py).
 
+### Ketahanan Koneksi Turso (Connection Resilience & Auto-Retry)
+Karena Turso berjalan melalui HTTP API over internet, koneksi idle TCP keep-alive yang disimpan di pool `aiohttp` rentan diputus oleh edge proxy (Cloudflare/Turso) saat bot tidak melakukan query selama beberapa saat. Kelas `AiosqliteConnectionMock` mengimplementasikan:
+- **Deteksi Transient Error**: Mengenali error jaringan seperti `aiohttp.ClientError`, `ServerDisconnectedError`, `ClientOSError`, dan timeout.
+- **Auto-Retry Cerdas**: Melakukan retry hingga 3 kali dengan backoff bertahap (`0.3s * attempt`).
+- **Client Re-initialization**: Jika retry pertama masih gagal, koneksi client `libsql_client` akan di-close dan dibuat ulang secara transparan menggunakan URL dan authToken yang tersimpan.
+
 ---
 
 ## Tabel Utama & Struktur Data
@@ -14,7 +20,13 @@ Menyimpan data akun utama dan profil JSON *schema-less*.
 - `username`, `first_name`, `last_name` (TEXT): Informasi profil Telegram
 - `language_code` (TEXT), `is_premium` (INTEGER), `is_bot` (INTEGER)
 - `role` (TEXT NOT NULL DEFAULT 'public'): Peran pengguna (`owner`, `admin`, `internal`, `bem`, `student`, `maba`, `charyarthi`, `public`)
-- `profile_json` (TEXT NOT NULL DEFAULT '{}'): JSON menyimpan data formulir (NIM, fakultas, jurusan, dll)
+- `profile_json` (TEXT NOT NULL DEFAULT '{}'): JSON menyimpan data formulir (NIM, fakultas, jurusan, dll). Khusus staf internal/admin/owner, juga menyimpan metadata kontrak:
+  - `contract_seq_no` (int): ID unik/nomor urut tetap staf.
+  - `internal_since` (str): Tanggal pertama kali resmi mengesahkan kontrak kerja internal.
+  - `contract_count` (int): Counter termin/perpanjangan kontrak (1, 2, dst).
+  - `contract_start`, `contract_end`, `contract_end_ts`: Rentang masa aktif kontrak berjalan.
+  - `contract_history` (list[dict]): Rekam jejak teks riwayat penandatanganan kontrak (`iteration`, `period`, `nomor_surat`, `signed_at`).
+  - `ttd_file_id` (str): Telegram photo file ID spesimen tanda tangan digital.
 - `raw_profile_json` (TEXT), `onboarding_step` (TEXT): State onboarding per-user
 - `created_at` (REAL), `updated_at` (REAL): Timestamp pembuatan/pembaruan
 
@@ -128,6 +140,24 @@ Riwayat pengiriman aspirasi (Yaksa Open Arms).
 - `sender_id` (INTEGER NOT NULL): Pengirim pesan
 - `message_text` (TEXT NOT NULL): Isi pesan
 - `created_at` (REAL NOT NULL)
+
+### 19. `charyarthi_questions`
+Daftar pertanyaan tes esai/studi kasus spesifik per divisi untuk pendaftaran calon staf Chāryārthī.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `division_id` (TEXT NOT NULL): ID divisi yang dilamar (contoh: `d_editor`, `d_hrd`)
+- `question_order` (INTEGER NOT NULL): Urutan nomor soal (1, 2, 3...)
+- `question_text` (TEXT NOT NULL): Teks pertanyaan esai
+- `created_at` (REAL NOT NULL): Timestamp pembuatan
+
+### 20. `charyarthi_answers`
+Draft dan jawaban tes esai divisi yang dikerjakan oleh pelamar calon staf.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `telegram_id` (INTEGER NOT NULL): ID Telegram pelamar
+- `division_id` (TEXT NOT NULL): ID divisi yang dilamar
+- `question_id` (INTEGER NOT NULL): ID pertanyaan pada tabel `charyarthi_questions`
+- `answer_text` (TEXT NOT NULL): Teks jawaban pelamar
+- `updated_at` (REAL NOT NULL): Timestamp update terakhir
+- `UNIQUE (telegram_id, division_id, question_id)`
 
 ---
 

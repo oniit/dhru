@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import asyncio
+import logging
 from pathlib import Path
 
 import aiosqlite
@@ -13,6 +15,8 @@ try:
     import libsql_client
 except ImportError:
     libsql_client = None
+
+log = logging.getLogger(__name__)
 
 from bot.settings import ADMIN_IDS, CHOICES, OWNER_ID, GENERATION_CODE
 
@@ -27,9 +31,10 @@ ROLE_STUDENT = "student"
 ROLE_BEM = "bem"
 ROLE_MABA = "maba"
 ROLE_CHARYARTHI = "charyarthi"
+ROLE_PURVA = "purva"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_PURVA, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -80,13 +85,14 @@ async def _apply_generated_profile_fields(
     # Calc SKS: kelas otomatis dari jurusan + kelas manual + club/UKM.
     major_id = str(out.get("major") or "").strip()
     enrolled_class_ids: set[str] = set(_normalize_multi_choice(out.get("class_enrolled")))
-    for item in CHOICES.get("classes", []):
-        cid = str(item.get("id") or "").strip()
-        if not cid:
-            continue
-        item_major = str(item.get("majors") or "").strip()
-        if not item_major or (major_id and item_major == major_id):
-            enrolled_class_ids.add(cid)
+    if role in (ROLE_STUDENT, ROLE_BEM):
+        for item in CHOICES.get("classes", []):
+            cid = str(item.get("id") or "").strip()
+            if not cid:
+                continue
+            item_major = str(item.get("majors") or "").strip()
+            if not item_major or (major_id and item_major == major_id):
+                enrolled_class_ids.add(cid)
 
     sks_total = 0
     for item in CHOICES.get("classes", []):
@@ -377,6 +383,24 @@ CREATE TABLE IF NOT EXISTS broadcast_jobs (
     reporter_id INTEGER,
     status TEXT DEFAULT 'pending'
 );
+
+CREATE TABLE IF NOT EXISTS charyarthi_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    division_id TEXT NOT NULL,
+    question_order INTEGER NOT NULL,
+    question_text TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS charyarthi_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    division_id TEXT NOT NULL,
+    question_id INTEGER NOT NULL,
+    answer_text TEXT NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE (telegram_id, division_id, question_id)
+);
 """
 
 class AiosqliteRowMock:
@@ -429,20 +453,63 @@ class AiosqliteCursorMock:
             self._idx += 1
         return rows
 
+def _is_transient_db_error(e: Exception) -> bool:
+    if isinstance(e, (ConnectionError, OSError, asyncio.TimeoutError)):
+        return True
+    mod = getattr(type(e), "__module__", "")
+    if "aiohttp" in mod or "libsql" in mod:
+        return True
+    msg = str(e).lower()
+    if any(k in msg for k in ("connection", "disconnected", "reset", "closed", "timeout", "broken pipe", "handshake")):
+        return True
+    return False
+
 class AiosqliteConnectionMock:
-    def __init__(self, client):
+    def __init__(self, client, url: str | None = None, auth_token: str | None = None):
         self.client = client
+        self.url = url
+        self.auth_token = auth_token
         self.row_factory = None
 
+    async def _recreate_client(self):
+        if self.url and self.auth_token and libsql_client:
+            try:
+                await self.client.close()
+            except Exception:
+                pass
+            self.client = libsql_client.create_client(url=self.url, auth_token=self.auth_token)
+
     async def execute(self, sql, parameters=()):
-        rs = await self.client.execute(sql, list(parameters) if parameters else [])
-        return AiosqliteCursorMock(rs)
+        params = list(parameters) if parameters else []
+        for attempt in range(3):
+            try:
+                rs = await self.client.execute(sql, params)
+                return AiosqliteCursorMock(rs)
+            except Exception as e:
+                if _is_transient_db_error(e) and attempt < 2:
+                    log.warning("Transient Turso error on execute (attempt %d/3): %s", attempt + 1, e)
+                    if attempt == 1 and self.url:
+                        await self._recreate_client()
+                    await asyncio.sleep(0.3 * (attempt + 1))
+                    continue
+                raise
 
     async def executemany(self, sql, parameters_seq):
         if hasattr(self.client, "batch"):
             from libsql_client import Statement
             stmts = [Statement(sql, list(p)) for p in parameters_seq]
-            await self.client.batch(stmts)
+            for attempt in range(3):
+                try:
+                    await self.client.batch(stmts)
+                    return
+                except Exception as e:
+                    if _is_transient_db_error(e) and attempt < 2:
+                        log.warning("Transient Turso error on executemany (attempt %d/3): %s", attempt + 1, e)
+                        if attempt == 1 and self.url:
+                            await self._recreate_client()
+                        await asyncio.sleep(0.3 * (attempt + 1))
+                        continue
+                    raise
         else:
             for p in parameters_seq:
                 await self.execute(sql, p)
@@ -451,18 +518,27 @@ class AiosqliteConnectionMock:
         # Hindari memecah titik koma di dalam string literal.
         # SQLite membolehkan mengeksekusi banyak statement dalam satu execute di bbrp driver.
         try:
-            # Gunakan split sederhana (diasumsikan tidak ada semicolon di dalam string literal schema)
             statements = [s.strip() for s in sql_script.split(";") if s.strip()]
                 
             if hasattr(self.client, "batch"):
-                await self.client.batch(statements)
+                for attempt in range(3):
+                    try:
+                        await self.client.batch(statements)
+                        return
+                    except Exception as e:
+                        if _is_transient_db_error(e) and attempt < 2:
+                            log.warning("Transient Turso error on executescript batch (attempt %d/3): %s", attempt + 1, e)
+                            if attempt == 1 and self.url:
+                                await self._recreate_client()
+                            await asyncio.sleep(0.3 * (attempt + 1))
+                            continue
+                        raise
             else:
                 for s in statements:
                     if s:
-                        await self.client.execute(s)
+                        await self.execute(s)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error("executescript error: %s", e)
+            log.error("executescript error: %s", e)
             raise e
 
     async def commit(self):
@@ -482,7 +558,7 @@ class Database:
         
         if turso_url and turso_token and libsql_client:
             client = libsql_client.create_client(url=turso_url, auth_token=turso_token)
-            conn = AiosqliteConnectionMock(client)
+            conn = AiosqliteConnectionMock(client, url=turso_url, auth_token=turso_token)
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             conn = await aiosqlite.connect(self.path)
@@ -512,6 +588,8 @@ class Database:
             ("promo_verifications", "promo_type", "ALTER TABLE promo_verifications ADD COLUMN promo_type TEXT NOT NULL DEFAULT 'lpm'"),
             ("bot_chats", "greeting_message", "ALTER TABLE bot_chats ADD COLUMN greeting_message TEXT"),
             ("manosraya_history", "id", "CREATE TABLE IF NOT EXISTS manosraya_history (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER NOT NULL, message_text TEXT NOT NULL, created_at REAL NOT NULL, FOREIGN KEY (sender_id) REFERENCES users(telegram_id))"),
+            ("charyarthi_questions", "id", "CREATE TABLE IF NOT EXISTS charyarthi_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, division_id TEXT NOT NULL, question_order INTEGER NOT NULL, question_text TEXT NOT NULL, created_at REAL NOT NULL)"),
+            ("charyarthi_answers", "id", "CREATE TABLE IF NOT EXISTS charyarthi_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, division_id TEXT NOT NULL, question_id INTEGER NOT NULL, answer_text TEXT NOT NULL, updated_at REAL NOT NULL, UNIQUE (telegram_id, division_id, question_id))"),
         ]
         for tbl, col, sql in migrations:
             try:
@@ -687,7 +765,18 @@ class Database:
     async def set_role(
         self, conn: aiosqlite.Connection, telegram_id: int, role: str
     ) -> None:
+        cur = await conn.execute("SELECT role FROM users WHERE telegram_id = ?", (telegram_id,))
+        row = await cur.fetchone()
+        old_role = row["role"] if row else ROLE_PUBLIC
+        
         current = await self.get_profile_dict(conn, telegram_id)
+        
+        if old_role != ROLE_PURVA and role == ROLE_PURVA:
+            current["accumulated_sks"] = current.get("total_sks", 0)
+            current.pop("major", None)
+            current.pop("class_enrolled", None)
+            current.pop("club_enrolled", None)
+            current.pop("student_id", None)
         current = await _apply_generated_profile_fields(
             conn, telegram_id, role, current
         )
@@ -980,13 +1069,28 @@ class Database:
         )
         await conn.commit()
 
-    async def _auto_close_stale_sessions(self, conn: aiosqlite.Connection) -> None:
-        stale_cutoff = time.time() - 7200
-        await conn.execute(
-            "UPDATE attendance_sessions SET closed_at = opened_at + 7200 WHERE closed_at IS NULL AND opened_at < ? AND class_id NOT IN ('staff_auto', 'maba_auto')",
-            (stale_cutoff,)
+    async def auto_close_stale_sessions(
+        self, conn: aiosqlite.Connection, timeout_seconds: int = 7200
+    ) -> list[int]:
+        """Close attendance sessions older than timeout_seconds (default 2 hours). Returns list of closed session IDs."""
+        cutoff = time.time() - timeout_seconds
+        cur = await conn.execute(
+            "SELECT id FROM attendance_sessions WHERE closed_at IS NULL AND opened_at < ? AND class_id NOT IN ('staff_auto', 'maba_auto')",
+            (cutoff,),
         )
-        await conn.commit()
+        rows = await cur.fetchall()
+        closed_ids = [int(r["id"]) for r in rows]
+        if closed_ids:
+            ph = ",".join("?" * len(closed_ids))
+            await conn.execute(
+                f"UPDATE attendance_sessions SET closed_at = opened_at + ? WHERE id IN ({ph})",
+                [timeout_seconds] + closed_ids,
+            )
+            await conn.commit()
+        return closed_ids
+
+    async def _auto_close_stale_sessions(self, conn: aiosqlite.Connection) -> None:
+        await self.auto_close_stale_sessions(conn)
 
     async def get_attendance_session(
         self, conn: aiosqlite.Connection, session_id: int
@@ -2262,21 +2366,44 @@ class Database:
         row = await cur.fetchone()
         return row["main_user_id"] if row else None
 
-    async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str, promo_type: str = 'lpm') -> int:
+    async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str, promo_type: str = 'lpm', status: str = 'PENDING') -> int:
         now = time.time()
         cur = await conn.execute(
-            """
-            INSERT INTO promo_verifications (user_id, link, status, promo_type, created_at)
-            VALUES (?, ?, 'PENDING', ?, ?)
-            """,
-            (user_id, link, promo_type, now)
+            "SELECT id, status FROM promo_verifications WHERE link = ?",
+            (link,)
         )
-        await conn.commit()
-        return cur.lastrowid
+        row = await cur.fetchone()
+        if row:
+            req_id = row["id"]
+            if row["status"] == "VALID":
+                return req_id
+            await conn.execute(
+                "UPDATE promo_verifications SET user_id = ?, status = ?, promo_type = ?, created_at = ? WHERE id = ?",
+                (user_id, status, promo_type, now, req_id)
+            )
+            await conn.commit()
+            return req_id
+        else:
+            cur = await conn.execute(
+                """
+                INSERT INTO promo_verifications (user_id, link, status, promo_type, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, link, status, promo_type, now)
+            )
+            await conn.commit()
+            return cur.lastrowid
+
+    async def get_promo_link_record(self, conn: aiosqlite.Connection, link: str) -> aiosqlite.Row | None:
+        cur = await conn.execute(
+            "SELECT * FROM promo_verifications WHERE link = ?",
+            (link,)
+        )
+        return await cur.fetchone()
 
     async def check_promo_link_exists(self, conn: aiosqlite.Connection, link: str) -> bool:
         cur = await conn.execute(
-            "SELECT id FROM promo_verifications WHERE link = ?",
+            "SELECT id FROM promo_verifications WHERE link = ? AND status = 'VALID'",
             (link,)
         )
         row = await cur.fetchone()
@@ -2492,7 +2619,161 @@ class Database:
             (sender_id, message_text, now)
         )
         await conn.commit()
+    async def get_charyarthi_questions(
+        self, conn: aiosqlite.Connection, division_id: str
+    ) -> list[dict]:
+        cur = await conn.execute(
+            """
+            SELECT id, division_id, question_order, question_text
+            FROM charyarthi_questions
+            WHERE division_id = ?
+            ORDER BY question_order ASC, id ASC
+            """,
+            (division_id,)
+        )
+        rows = await cur.fetchall()
+        return [
+            {
+                "id": int(r["id"]),
+                "division_id": str(r["division_id"]),
+                "question_order": int(r["question_order"]),
+                "question_text": str(r["question_text"]),
+            }
+            for r in rows
+        ]
+
+    async def get_charyarthi_question_by_id(
+        self, conn: aiosqlite.Connection, question_id: int
+    ) -> dict | None:
+        cur = await conn.execute(
+            """
+            SELECT id, division_id, question_order, question_text
+            FROM charyarthi_questions
+            WHERE id = ?
+            """,
+            (question_id,)
+        )
+        r = await cur.fetchone()
+        if not r:
+            return None
+        return {
+            "id": int(r["id"]),
+            "division_id": str(r["division_id"]),
+            "question_order": int(r["question_order"]),
+            "question_text": str(r["question_text"]),
+        }
+
+    async def set_charyarthi_questions_bulk(
+        self, conn: aiosqlite.Connection, division_id: str, questions: list[str]
+    ) -> None:
+        await conn.execute(
+            "DELETE FROM charyarthi_questions WHERE division_id = ?",
+            (division_id,)
+        )
+        now = time.time()
+        for idx, q_text in enumerate(questions, start=1):
+            await conn.execute(
+                """
+                INSERT INTO charyarthi_questions (division_id, question_order, question_text, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (division_id, idx, q_text.strip(), now)
+            )
+        await conn.commit()
+
+    async def add_charyarthi_question(
+        self, conn: aiosqlite.Connection, division_id: str, question_text: str
+    ) -> int:
+        cur = await conn.execute(
+            "SELECT COALESCE(MAX(question_order), 0) AS max_o FROM charyarthi_questions WHERE division_id = ?",
+            (division_id,)
+        )
+        row = await cur.fetchone()
+        next_order = (int(row["max_o"]) if row and row["max_o"] is not None else 0) + 1
+        now = time.time()
+        cur = await conn.execute(
+            """
+            INSERT INTO charyarthi_questions (division_id, question_order, question_text, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (division_id, next_order, question_text.strip(), now)
+        )
+        await conn.commit()
         return cur.lastrowid
+
+    async def delete_charyarthi_question(
+        self, conn: aiosqlite.Connection, question_id: int
+    ) -> bool:
+        q = await self.get_charyarthi_question_by_id(conn, question_id)
+        if not q:
+            return False
+        div_id = q["division_id"]
+        await conn.execute("DELETE FROM charyarthi_questions WHERE id = ?", (question_id,))
+        cur = await conn.execute(
+            "SELECT id FROM charyarthi_questions WHERE division_id = ? ORDER BY question_order ASC, id ASC",
+            (div_id,)
+        )
+        rows = await cur.fetchall()
+        for idx, r in enumerate(rows, start=1):
+            await conn.execute(
+                "UPDATE charyarthi_questions SET question_order = ? WHERE id = ?",
+                (idx, r["id"])
+            )
+        await conn.commit()
+        return True
+
+    async def clear_charyarthi_questions(
+        self, conn: aiosqlite.Connection, division_id: str
+    ) -> None:
+        await conn.execute(
+            "DELETE FROM charyarthi_questions WHERE division_id = ?",
+            (division_id,)
+        )
+        await conn.commit()
+
+    async def get_charyarthi_answers(
+        self, conn: aiosqlite.Connection, telegram_id: int, division_id: str
+    ) -> dict[int, str]:
+        cur = await conn.execute(
+            """
+            SELECT question_id, answer_text
+            FROM charyarthi_answers
+            WHERE telegram_id = ? AND division_id = ?
+            """,
+            (telegram_id, division_id)
+        )
+        rows = await cur.fetchall()
+        return {int(r["question_id"]): str(r["answer_text"]) for r in rows}
+
+    async def save_charyarthi_answer(
+        self,
+        conn: aiosqlite.Connection,
+        telegram_id: int,
+        division_id: str,
+        question_id: int,
+        answer_text: str,
+    ) -> None:
+        now = time.time()
+        await conn.execute(
+            """
+            INSERT INTO charyarthi_answers (telegram_id, division_id, question_id, answer_text, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(telegram_id, division_id, question_id)
+            DO UPDATE SET answer_text = excluded.answer_text, updated_at = excluded.updated_at
+            """,
+            (telegram_id, division_id, question_id, answer_text.strip(), now)
+        )
+        await conn.commit()
+
+    async def clear_charyarthi_user_answers(
+        self, conn: aiosqlite.Connection, telegram_id: int
+    ) -> None:
+        await conn.execute(
+            "DELETE FROM charyarthi_answers WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        await conn.commit()
+
 
 __all__ = [
     "Database",
