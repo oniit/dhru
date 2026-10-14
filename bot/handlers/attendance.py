@@ -208,6 +208,7 @@ async def refresh_presensi_announcement(
             chat_id=sess["chat_id"],
             message_id=sess["announce_message_id"],
             text=text[:4000],
+            parse_mode="HTML",
             reply_markup=kb,
         )
     except Exception as e:
@@ -237,6 +238,7 @@ async def refresh_maba_presensi_announcement(context, db, conn, session_id: int)
                 chat_id=sess["chat_id"],
                 message_id=sess["announce_message_id"],
                 text=text_global[:4000],
+                parse_mode="HTML",
                 reply_markup=kb_global,
             )
         except Exception as e:
@@ -280,6 +282,7 @@ async def refresh_maba_presensi_announcement(context, db, conn, session_id: int)
                         chat_id=g_chat_id,
                         message_id=g_msg_id,
                         text=text_local[:4000],
+                        parse_mode="HTML",
                         reply_markup=kb,
                     )
                 except Exception as e:
@@ -771,7 +774,8 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         c_lab = _class_label(class_id)
         await q.edit_message_text(
             f"⚠️ Sesi presensi untuk <b>{html.escape(c_lab)}</b> sudah dibuka sebelumnya (ID: <code>#{existing['id']}</code>).\n\n"
-            f"Tutup sesi tersebut terlebih dahulu dengan <code>/presensi tutup {existing['id']}</code> sebelum membuka sesi baru."
+            f"Tutup sesi tersebut terlebih dahulu dengan <code>/presensi tutup {existing['id']}</code> sebelum membuka sesi baru.",
+            parse_mode="HTML"
         )
         return
 
@@ -804,6 +808,7 @@ async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     await q.edit_message_text(
         text[:4000],
+        parse_mode="HTML",
         reply_markup=kb,
     )
     await db.set_attendance_announce_message(

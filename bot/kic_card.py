@@ -140,11 +140,12 @@ def _normalize_multi_choice(raw) -> list[str]:
 
 
 def cache_payload_for_profile(profile: dict, agra: int, role: str) -> dict:
+    from bot.handlers.common import lecturer_class_ids
     return {
         "full_name": (profile.get("full_name") or "").strip(),
         "position": (profile.get("position") or "").strip(),
         "position_detail": sorted(_normalize_multi_choice(profile.get("position_detail"))),
-        "teaching_classes": sorted(_normalize_multi_choice(profile.get("teaching_classes"))),
+        "teaching_classes": sorted(lecturer_class_ids(profile)),
         "club_enrolled": sorted(_normalize_multi_choice(profile.get("club_enrolled"))),
         "role": role,
         "agra": int(agra),

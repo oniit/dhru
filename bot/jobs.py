@@ -1,8 +1,13 @@
 import os
 import datetime
+import html
+import time
+import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from bot.settings import ROOT, BACKUP_CH_ID, PRESENCE_CH_ID, EDITOR_GID
+
+log = logging.getLogger(__name__)
 
 async def daily_staff_attendance_open(context, opened_by=None):
     if not PRESENCE_CH_ID: return
@@ -76,6 +81,26 @@ async def daily_staff_attendance_close(context):
     
     from bot.handlers.attendance import refresh_auto_presensi_announcement
     await refresh_auto_presensi_announcement(context, db, conn, sess["id"])
+
+
+
+async def periodic_auto_close_attendance(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn: return
+    try:
+        timeout_sec = int(os.environ.get("PRESENSI_AUTOCLOSE_TIMEOUT", "7200"))
+        closed_ids = await db.auto_close_stale_sessions(conn, timeout_seconds=timeout_sec)
+        if closed_ids:
+            print(f"Auto-closed {len(closed_ids)} stale attendance sessions: {closed_ids}")
+            from bot.handlers.attendance import refresh_presensi_announcement
+            for sid in closed_ids:
+                try:
+                    await refresh_presensi_announcement(context, db, conn, sid)
+                except Exception as e:
+                    print(f"Failed to refresh announcement for auto-closed session #{sid}: {e}")
+    except Exception as e:
+        print(f"Error in periodic_auto_close_attendance: {e}")
 
 
 
@@ -244,7 +269,7 @@ async def process_broadcast_queue(context):
     # Process a batch of 30
     batch = remaining[:30]
     success_in_batch = 0
-    from telegram.error import RetryAfter
+    from telegram.error import RetryAfter, BadRequest
     import asyncio
 
     for uid in batch:
@@ -259,8 +284,23 @@ async def process_broadcast_queue(context):
         except RetryAfter as e:
             # Stop batch, will retry next run
             break
-        except Exception:
+        except BadRequest as e:
+            err_str = str(e).lower()
+            if "can't parse entities" in err_str or "entity" in err_str:
+                try:
+                    await context.bot.send_message(
+                        chat_id=uid,
+                        text=msg_text,
+                    )
+                    success_in_batch += 1
+                except Exception as inner_e:
+                    log.warning("Broadcast to %s failed after plain text fallback: %s", uid, inner_e)
+            else:
+                log.warning("Broadcast to %s failed (BadRequest): %s", uid, e)
+            processed.add(uid)
+        except Exception as e:
             # Mark as processed even if failed to avoid infinite loop
+            log.warning("Broadcast to %s failed: %s", uid, e)
             processed.add(uid)
         await asyncio.sleep(0.05)
 
@@ -275,6 +315,33 @@ async def process_broadcast_queue(context):
             )
         except Exception: pass
 
+def is_keep_msg_excluded(msg, bot_id: int | None = None) -> bool:
+    """
+    Menentukan apakah pesan di KEEP_CH_ID harus diabaikan dan tidak diforward ke POST_CH_ID.
+    Semua jenis pesan (teks, media, poll, dokumen, stiker, dll) TETAP diforward,
+    KECUALI pesan bot (notifikasi sukses/error) dan pesan servis sistem Telegram.
+    """
+    # 1. Abaikan jika pesan kosong/terhapus atau pesan servis Telegram (pin pesan, ubah foto ch, dll)
+    if getattr(msg, "empty", False) or getattr(msg, "service", False):
+        return True
+
+    # 2. Jika pengirim teridentifikasi sebagai bot
+    from_user = getattr(msg, "from_user", None)
+    if from_user:
+        if getattr(from_user, "is_bot", False):
+            return True
+        if bot_id and getattr(from_user, "id", None) == bot_id:
+            return True
+
+    # 3. Cek teks template spesifik yang dikirim oleh bot ini sendiri
+    text_content = (getattr(msg, "text", "") or getattr(msg, "caption", "") or "").lower()
+    if "cek @dhruvaposter" in text_content or "terjadi kesalahan saat mem-forward pesan" in text_content:
+        return True
+
+    # Semua pesan lainnya tetap diforward!
+    return False
+
+
 async def daily_keep_to_post(context):
     import logging
     log = logging.getLogger(__name__)
@@ -283,6 +350,8 @@ async def daily_keep_to_post(context):
     if not KEEP_CH_ID or not POST_CH_ID or not API_ID or not API_HASH:
         log.warning("Missing config for KEEP to POST forwarder")
         return
+
+    bot_id = int(BOT_TOKEN.split(":")[0]) if BOT_TOKEN and ":" in BOT_TOKEN else None
 
     from pyrogram import Client
     import asyncio
@@ -304,6 +373,9 @@ async def daily_keep_to_post(context):
     try:
         message_ids = []
         async for msg in app.get_chat_history(KEEP_CH_ID):
+            # Abaikan pesan notifikasi dan error bot agar tidak ikut ter-forward ke POST_CH_ID
+            if is_keep_msg_excluded(msg, bot_id=bot_id):
+                continue
             message_ids.append(msg.id)
             
         if not message_ids:
@@ -311,26 +383,48 @@ async def daily_keep_to_post(context):
             
         message_ids.reverse()
 
-        try:
-            await app.forward_messages(
-                chat_id=POST_CH_ID,
-                from_chat_id=KEEP_CH_ID,
-                message_ids=message_ids
-            )
-            log.info(f"Successfully forwarded {len(message_ids)} messages.")
+        forwarded_count = 0
+        chunk_size = 100
+        for i in range(0, len(message_ids), chunk_size):
+            chunk = message_ids[i:i + chunk_size]
+            try:
+                await app.forward_messages(
+                    chat_id=POST_CH_ID,
+                    from_chat_id=KEEP_CH_ID,
+                    message_ids=chunk
+                )
+                forwarded_count += len(chunk)
+            except Exception as fe:
+                log.warning(f"Batch forward failed ({fe}), falling back to single-message forwarding")
+                for mid in chunk:
+                    try:
+                        await app.forward_messages(
+                            chat_id=POST_CH_ID,
+                            from_chat_id=KEEP_CH_ID,
+                            message_ids=[mid]
+                        )
+                        forwarded_count += 1
+                        await asyncio.sleep(0.3)
+                    except Exception as single_e:
+                        log.warning(f"Skipping unforwardable message {mid}: {single_e}")
+            if i + chunk_size < len(message_ids):
+                await asyncio.sleep(2)
+
+        if forwarded_count > 0:
+            log.info(f"Successfully forwarded {forwarded_count} messages.")
             try:
                 await context.bot.send_message(
                     chat_id=KEEP_CH_ID,
-                    text=f"✅ <b>Cek @DhruvaPoster</b>, {len(message_ids)} pesan di atas telah diforward ke sana.",
+                    text=f"✅ <b>Cek @DhruvaPoster</b>, {forwarded_count} pesan di atas telah diforward ke sana.",
                     parse_mode="HTML"
                 )
             except Exception: pass
-        except Exception as e:
-            log.error(f"Failed to forward messages: {e}")
+        else:
+            log.error("Failed to forward any messages in keep_to_post.")
             try:
                 await context.bot.send_message(
                     chat_id=KEEP_CH_ID,
-                    text=f"❌ <b>Gagal!</b> Terjadi kesalahan saat mem-forward pesan:\n<code>{e}</code>",
+                    text="❌ <b>Gagal!</b> Seluruh pesan tidak dapat di-forward.",
                     parse_mode="HTML"
                 )
             except Exception: pass
@@ -340,6 +434,95 @@ async def daily_keep_to_post(context):
         log.error(f"Error in keep_to_post loop: {e}\n{traceback.format_exc()}")
     finally:
         await app.stop()
+
+async def process_promo_queue(context):
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    if not db or not conn:
+        return
+
+    try:
+        cur = await conn.execute("SELECT * FROM promo_verifications WHERE status = 'PENDING'")
+        rows = await cur.fetchall()
+        if not rows:
+            return
+
+        from bot.handlers.promo import verify_lpm_link_embed
+        lpm_keyword = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
+
+        for row in rows:
+            req_id = row["id"]
+            user_id = row["user_id"]
+            link = row["link"]
+            promo_type = row.get("promo_type", "lpm")
+            created_at = row["created_at"]
+
+            # Expiration (2 days)
+            if time.time() - created_at > 2 * 24 * 3600:
+                await conn.execute("UPDATE promo_verifications SET status = 'EXPIRED' WHERE id = ?", (req_id,))
+                await conn.commit()
+                continue
+
+            # Atomic claim: transition from PENDING -> PROCESSING
+            cur_lock = await conn.execute(
+                "UPDATE promo_verifications SET status = 'PROCESSING' WHERE id = ? AND status = 'PENDING'",
+                (req_id,)
+            )
+            await conn.commit()
+            if getattr(cur_lock, "rowcount", 1) == 0:
+                continue
+
+            if promo_type == "lpm":
+                is_valid, status_code, err_msg = await verify_lpm_link_embed(conn, db, user_id, link, lpm_keyword)
+                if is_valid:
+                    cur_v = await conn.execute("UPDATE promo_verifications SET status = 'VALID' WHERE id = ? AND status = 'PROCESSING'", (req_id,))
+                    if getattr(cur_v, "rowcount", 1) > 0:
+                        await db.add_agra(
+                            conn,
+                            target_id=user_id,
+                            actor_id=user_id,
+                            amount=1,
+                            description="Reward promosi LPM",
+                            chat_id=None,
+                            message_id=None,
+                        )
+                        await conn.commit()
+                        try:
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=(
+                                    f"✅ <b>Link LPM kamu berhasil divalidasi!</b>\n\n"
+                                    f"🔗 <code>{html.escape(link)}</code>\n\n"
+                                    f"🎁 Kamu mendapatkan <b>+1 Agra</b>."
+                                ),
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                        except Exception as e:
+                            log.warning("Gagal kirim notif promo valid ke %s: %s", user_id, e)
+                elif status_code not in ("NETWORK_ERROR",):
+                    await conn.execute("UPDATE promo_verifications SET status = ? WHERE id = ?", (status_code, req_id))
+                    await conn.commit()
+                    if err_msg:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=(
+                                    f"❌ <b>Gagal Memvalidasi Link LPM</b>\n\n"
+                                    f"🔗 <code>{html.escape(link)}</code>\n\n"
+                                    f"<b>Alasan:</b>\n{err_msg}"
+                                ),
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                        except Exception as e:
+                            log.warning("Gagal kirim notif promo gagal ke %s: %s", user_id, e)
+                else:
+                    # NETWORK_ERROR: rollback back to PENDING so next tick can retry
+                    await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ?", (req_id,))
+                    await conn.commit()
+    except Exception as e:
+        log.error("Error in process_promo_queue: %s", e)
 
 def setup_jobs(application: Application):
     jq = application.job_queue
@@ -355,6 +538,8 @@ def setup_jobs(application: Application):
 
     # Background queue
     jq.run_repeating(process_broadcast_queue, interval=10, first=10)
+    jq.run_repeating(process_promo_queue, interval=10, first=5)
+    jq.run_repeating(periodic_auto_close_attendance, interval=60, first=15)
 
 
     if PRESENCE_CH_ID:
