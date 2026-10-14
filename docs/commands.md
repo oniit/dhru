@@ -8,6 +8,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/lengkapi` — Memulai proses pengisian data (_onboarding_) yang belum lengkap.
 - `/ubah` — Meminta perubahan data yang sudah terkunci (masuk ke antrean _pending_).
 - `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
+- `/cancel` atau `/batal` — Membatalkan proses pengisian data atau interaksi aktif dan kembali ke kondisi awal.
 
 ## Akademik & Kelas
 - `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu (sesi manual otomatis ditutup oleh background job setelah 2 jam).

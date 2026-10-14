@@ -868,6 +868,11 @@ async def cb_kontrak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "<b>Tanda tangan harus berwarna hitam dengan background putih.</b>",
             parse_mode="HTML"
         )
+    else:
+        try:
+            await query.answer()
+        except Exception:
+            pass
 
 
 async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

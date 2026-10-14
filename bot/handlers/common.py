@@ -813,7 +813,14 @@ async def render_charyarthi_quiz_view(uid: int, div_id: str, conn, db) -> tuple[
         status_icon = "✅" if is_done else "⏳"
         text += f"<b>{q_order}.</b> {html.escape(short_q)} [{status_icon}]\n"
 
-    text += "\n━━━━━━━━━━━━━━━━━━━\n<i>Klik nomor soal di bawah untuk mulai menjawab atau mengubah:</i>"
+    if total_q == 0:
+        text = (
+            f"🏛 <b>Tes Khusus Divisi: {html.escape(div_lbl)}</b>\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "💡 <i>Divisi ini tidak memerlukan tes studi kasus tertulis khusus. Anda dapat langsung melanjutkan ke pengisian berkas dan submit pendaftaran.</i>\n"
+        )
+    else:
+        text += "\n━━━━━━━━━━━━━━━━━━━\n<i>Klik nomor soal di bawah untuk mulai menjawab atau mengubah:</i>"
 
     buttons = []
     row = []
@@ -832,7 +839,7 @@ async def render_charyarthi_quiz_view(uid: int, div_id: str, conn, db) -> tuple[
     if answered_count > 0:
         buttons.append([InlineKeyboardButton("👁 Pratinjau Semua Jawaban", callback_data=f"charyarthi:preview:{div_id}")])
 
-    if answered_count == total_q and total_q > 0:
+    if total_q == 0 or answered_count == total_q:
         buttons.append([InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")])
     else:
         buttons.append([InlineKeyboardButton(f"⏳ Belum Lengkap ({answered_count}/{total_q})", callback_data="charyarthi:not_ready")])

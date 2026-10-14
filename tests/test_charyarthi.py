@@ -400,6 +400,14 @@ async def test_charyarthi_acc_and_rej_callback():
         assert prof_after_acc["application_status"] == "ACCEPTED"
         assert "d_editor" in prof_after_acc["position_detail"]
 
+        # Verify duplicate decision is blocked
+        await commands.on_callback(update_acc, ctx_acc)
+        q_acc.answer.assert_called_with("⚠️ Lamaran ini sudah pernah diputuskan sebelumnya (ACCEPTED).", show_alert=True)
+
+        # Reset candidate to PENDING to test REJ callback
+        await db.set_role(conn, uid_candidate, ROLE_CHARYARTHI)
+        await db.set_profile_partial(conn, uid_candidate, {"application_status": "PENDING"})
+
         # Now test REJ callback
         q_rej = MagicMock(spec=CallbackQuery)
         q_rej.data = f"charyarthi:rej:{uid_candidate}"

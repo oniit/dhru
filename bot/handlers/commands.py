@@ -1235,9 +1235,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 ans = answers.get(qid, "<i>(Belum diisi)</i>")
                 prev_text += f"<b>{q_order}. {html.escape(q_txt)}</b>\n<blockquote>{html.escape(ans)}</blockquote>\n\n"
             prev_text += "━━━━━━━━━━━━━━━━━━━\n<i>Anda dapat kembali untuk mengubah jawaban atau lanjut ke pendaftaran.</i>"
+            total_q = len(questions)
+            answered_count = sum(1 for q_item in questions if q_item["id"] in answers and answers[q_item["id"]].strip())
+            ready_btn = (
+                InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")
+                if (total_q == 0 or answered_count == total_q)
+                else InlineKeyboardButton(f"⏳ Belum Lengkap ({answered_count}/{total_q})", callback_data="charyarthi:not_ready")
+            )
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")],
-                [InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")]
+                [ready_btn]
             ])
             await q.answer()
             await q.edit_message_text(prev_text, reply_markup=kb, parse_mode="HTML")
@@ -1340,6 +1347,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         elif action == "submit":
+            user_sub_r = await user_row(conn, db, uid)
+            prof_sub = profile_from_row(user_sub_r) if user_sub_r else {}
+            d1_sub = prof_sub.get("target_division_1")
+            if d1_sub:
+                q_sub_list = await db.get_charyarthi_questions(conn, d1_sub)
+                if q_sub_list:
+                    ans_sub_dict = await db.get_charyarthi_answers(conn, uid, d1_sub)
+                    ans_count = sum(1 for q_item in q_sub_list if q_item["id"] in ans_sub_dict and ans_sub_dict[q_item["id"]].strip())
+                    if ans_count < len(q_sub_list):
+                        await q.answer(
+                            f"❌ Soal tes divisi Anda belum lengkap ({ans_count}/{len(q_sub_list)} terisi). Harap selesaikan tes sebelum submit!",
+                            show_alert=True
+                        )
+                        return
+
             promo_count = await db.count_valid_promos(conn, uid)
             if promo_count < 1:
                 await q.answer(
@@ -1487,6 +1509,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 return
 
             prof_t = profile_from_row(row_t)
+            if row_t["role"] != ROLE_CHARYARTHI or prof_t.get("application_status") in ("ACCEPTED", "REJECTED"):
+                await q.answer(f"⚠️ Lamaran ini sudah pernah diputuskan sebelumnya ({prof_t.get('application_status') or row_t['role']}).", show_alert=True)
+                try:
+                    await q.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+                return
             accepted_div = prof_t.get("target_division_1") if choice_num == "1" else prof_t.get("target_division_2")
             if not accepted_div and choice_num == "2":
                 accepted_div = prof_t.get("target_division_1")
@@ -1545,6 +1574,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 return
 
             prof_t = profile_from_row(row_t)
+            if row_t["role"] != ROLE_CHARYARTHI or prof_t.get("application_status") in ("ACCEPTED", "REJECTED"):
+                await q.answer(f"⚠️ Lamaran ini sudah pernah diputuskan sebelumnya ({prof_t.get('application_status') or row_t['role']}).", show_alert=True)
+                try:
+                    await q.edit_message_reply_markup(reply_markup=None)
+                except Exception:
+                    pass
+                return
             name = prof_t.get("full_name") or row_t["first_name"] or "Pengguna"
 
             await db.set_role(conn, target_uid, ROLE_PUBLIC)
@@ -3189,6 +3225,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             except Exception as e:
                 log.warning("notify dependent clear: %s", e)
         return
+
+    # Fallback to prevent infinite button loading spinners on unhandled callbacks
+    try:
+        await q.answer()
+    except Exception:
+        pass
+
+
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    uid = update.effective_user.id
+    await db.set_onboarding_step(conn, uid, None)
+    if context.user_data:
+        context.user_data.pop("temp_ans_q", None)
+        context.user_data.pop("temp_ec_faculty", None)
+        context.user_data.pop("temp_ec_sfaculty", None)
+    await update.message.reply_text("Aksi dibatalkan. Ketik /start untuk kembali ke menu utama.")
 
 
 async def _notify_moderators_profile(

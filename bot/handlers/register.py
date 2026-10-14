@@ -17,6 +17,7 @@ def register_all(application: Application, db: Database) -> None:
     application.bot_data["db"] = db
 
     application.add_handler(CommandHandler("start", commands.cmd_start))
+    application.add_handler(CommandHandler(["cancel", "batal"], commands.cmd_cancel))
     application.add_handler(CommandHandler("help", commands.cmd_help))
     application.add_handler(CommandHandler("profile", commands.cmd_profile))
     application.add_handler(CommandHandler("profile_dtl", commands.cmd_profile_dtl))
