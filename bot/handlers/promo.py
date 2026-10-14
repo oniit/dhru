@@ -1,9 +1,10 @@
-from __future__ import annotations
-
+import html
 import logging
 import random
+import re
 import string
 import time
+import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
@@ -64,34 +65,314 @@ async def cek_akun_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await update.message.reply_text(text, parse_mode="HTML")
 
+async def _safe_edit_or_reply(msg, text: str, parse_mode: str = "HTML") -> None:
+    try:
+        await msg.edit_text(text, parse_mode=parse_mode, disable_web_page_preview=True)
+    except Exception:
+        try:
+            await msg.reply_text(text, parse_mode=parse_mode, disable_web_page_preview=True)
+        except Exception as e:
+            log.warning("Gagal mengirim balasan edit/reply promo: %s", e)
+
+def normalize_telegram_post_link(link: str) -> str | None:
+    """
+    Normalizes a Telegram post/message link to standard canonical format:
+    https://t.me/<chat>/<msg_id>
+    For private group links: https://t.me/c/<chat_id>/<msg_id>
+    Returns None if format does not match.
+    """
+    if not link:
+        return None
+    raw = link.strip()
+    m_priv = re.search(r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/c/(\d+)/(\d+)", raw, re.IGNORECASE)
+    if m_priv:
+        return f"https://t.me/c/{m_priv.group(1)}/{m_priv.group(2)}"
+    
+    m_pub = re.search(r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/([a-zA-Z0-9_]+)/(\d+)", raw, re.IGNORECASE)
+    if m_pub:
+        username = m_pub.group(1).lower()
+        if username not in ("c", "s", "joinchat", "share", "addstickers"):
+            return f"https://t.me/{username}/{m_pub.group(2)}"
+
+    return None
+
+def normalize_telegram_story_link(link: str) -> str | None:
+    """
+    Normalizes a Telegram story link to standard canonical format:
+    https://t.me/<username>/s/<story_id>
+    """
+    if not link:
+        return None
+    raw = link.strip()
+    m_story = re.search(r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/([a-zA-Z0-9_]+)/s/(\d+)", raw, re.IGNORECASE)
+    if m_story:
+        return f"https://t.me/{m_story.group(1).lower()}/s/{m_story.group(2)}"
+    return None
+
+async def verify_lpm_link_embed(
+    conn, db: Database, user_id: int, link: str, lpm_keyword: str
+) -> tuple[bool, str, str | None]:
+    """
+    Validates a public LPM Telegram link by fetching its public embed (https://t.me/<chat>/<msg_id>?embed=1).
+    Returns (is_valid, status_code, user_message).
+    """
+    import json
+    match = re.search(r"t\.me/([^/]+)/(\d+)", link)
+    if not match:
+        return False, "INVALID_URL", (
+            "Format tautan tidak dikenali.\n"
+            "Pastikan tautan mengarah ke pesan spesifik, contoh:\n"
+            "<code>https://t.me/grup_lpm/123</code>"
+        )
+
+    chat_username = match.group(1)
+    msg_id = int(match.group(2))
+
+    if chat_username.lower() == "c":
+        return False, "PRIVATE_GROUP_NOT_SUPPORTED", (
+            "Tautan dari grup Private tidak dapat dibaca oleh bot.\n"
+            "Pastikan promosi dilakukan di Grup Publik (memiliki username grup)."
+        )
+
+    embed_url = f"https://t.me/{chat_username}/{msg_id}?embed=1"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(embed_url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return False, "NOT_FOUND", (
+                    "Pesan tidak ditemukan atau grup tersebut bersifat privat/dibatasi sehingga tidak dapat diakses oleh bot."
+                )
+            html_content = resp.text
+    except Exception as e:
+        log.warning("Gagal fetch embed %s: %s", embed_url, e)
+        return False, "NETWORK_ERROR", None
+
+    if "tgme_widget_message_error" in html_content or "Post not found" in html_content:
+        return False, "NOT_FOUND", (
+            "Pesan tidak ditemukan atau grup tersebut bersifat privat/dibatasi sehingga tidak dapat diakses oleh bot."
+        )
+
+    text_m = re.search(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', html_content, re.DOTALL)
+    raw_text = text_m.group(1) if text_m else ""
+    msg_text = html.unescape(re.sub(r'<[^>]+>', '', raw_text)).strip()
+
+    if not lpm_keyword or lpm_keyword.lower() not in msg_text.lower():
+        return False, "NO_KEYWORD", (
+            f"Teks pesan tidak memuat kata kunci promosi yang sesuai.\n"
+            f"Wajib memuat kata kunci: <b>{html.escape(lpm_keyword)}</b>"
+        )
+
+    author_username = None
+    author_name = ""
+    author_link_m = re.search(r'class="tgme_widget_message_author_name[^"]*"[^>]*href="https?://t\.me/([^"/]+)"', html_content)
+    if author_link_m:
+        author_username = author_link_m.group(1).lower().lstrip("@")
+
+    author_elem_m = re.search(r'<[a-zA-Z0-9]+ class="tgme_widget_message_author_name[^"]*"[^>]*>(.*?)</[a-zA-Z0-9]+>', html_content, re.DOTALL)
+    if author_elem_m:
+        raw_author_name = author_elem_m.group(1)
+        author_name = html.unescape(re.sub(r'<[^>]+>', '', raw_author_name)).strip().lower()
+
+    user_row = await db.get_user(conn, user_id)
+    if not user_row:
+        return False, "USER_NOT_FOUND", "Data pengguna tidak ditemukan di database bot."
+
+    valid_usernames = set()
+    valid_names = set()
+
+    if user_row["username"]:
+        valid_usernames.add(user_row["username"].lower().lstrip("@"))
+    if user_row["first_name"]:
+        valid_names.add(user_row["first_name"].lower().strip())
+
+    prof = {}
+    if user_row["profile_json"]:
+        try:
+            prof = json.loads(user_row["profile_json"] or "{}")
+        except Exception:
+            pass
+    if prof.get("full_name"):
+        valid_names.add(prof["full_name"].lower().strip())
+
+    linked_ids = await db.get_linked_accounts(conn, user_id)
+    for lid in linked_ids:
+        l_row = await db.get_user(conn, lid)
+        if l_row:
+            if l_row["username"]:
+                valid_usernames.add(l_row["username"].lower().lstrip("@"))
+            if l_row["first_name"]:
+                valid_names.add(l_row["first_name"].lower().strip())
+            l_prof = {}
+            if l_row["profile_json"]:
+                try:
+                    l_prof = json.loads(l_row["profile_json"] or "{}")
+                except Exception:
+                    pass
+            if l_prof.get("full_name"):
+                valid_names.add(l_prof["full_name"].lower().strip())
+
+    is_sender_valid = False
+    if author_username and author_username in valid_usernames:
+        is_sender_valid = True
+    elif author_name:
+        for vn in valid_names:
+            if vn and (vn == author_name or vn in author_name or author_name in vn):
+                is_sender_valid = True
+                break
+
+    if not is_sender_valid:
+        return False, "SENDER_MISMATCH", (
+            "Pengirim pesan bukan akun utamamu dan bukan dari Akun Kerja yang sudah ditautkan.\n\n"
+            "<i>💡 Catatan: Jika promosi dikirim menggunakan akun cadangan (clone/work account), "
+            "tautkan akun tersebut terlebih dahulu menggunakan perintah <code>/link_kerja</code>.</i>"
+        )
+
+    return True, "VALID", None
+
 async def lpm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
-        await update.message.reply_text("Format salah! Gunakan: `/lpm <link_pesan>`\nContoh: `/lpm https://t.me/grup_lpm/123`")
+        await update.message.reply_text(
+            "⚠️ <b>Format Perintah Salah!</b>\n\n"
+            "Gunakan format:\n"
+            "<code>/lpm &lt;link_pesan&gt;</code>\n\n"
+            "Contoh:\n"
+            "<code>/lpm https://t.me/grup_lpm/123</code>",
+            parse_mode="HTML"
+        )
         return
         
-    link = context.args[0]
-    import re
-    if not re.match(r"^https?://t\.me/", link):
-        await update.message.reply_text("Link tidak valid. Pastikan link diawali dengan https://t.me/")
+    raw_link = context.args[0].strip()
+    canonical_link = normalize_telegram_post_link(raw_link)
+    if not canonical_link:
+        if "/c/" in raw_link:
+            await update.message.reply_text(
+                "❌ <b>Grup Private Tidak Didukung</b>\n\n"
+                "Tautan dari grup Private tidak dapat dibaca oleh bot.\n"
+                "Pastikan promosi dilakukan di Grup Publik (memiliki username grup).",
+                parse_mode="HTML"
+            )
+            return
+        await update.message.reply_text(
+            "❌ <b>Link Tidak Valid!</b>\n\n"
+            "Format tautan tidak dikenali. Pastikan tautan diawali dengan <code>https://t.me/</code> "
+            "dan mengarah ke pesan spesifik, contoh:\n"
+            "<code>https://t.me/grup_lpm/123</code>",
+            parse_mode="HTML"
+        )
         return
 
     db: Database = context.bot_data["db"]
     conn = context.bot_data["conn"]
     user_id = update.effective_user.id
     
-    # Check if link exists
-    exists = await db.check_promo_link_exists(conn, link)
-    if exists:
-        await update.message.reply_text("❌ Link ini sudah pernah diklaim sebelumnya.")
-        return
+    # Check if link exists in database
+    rec = await db.get_promo_link_record(conn, canonical_link)
+    if rec:
+        if rec["status"] == "VALID":
+            await update.message.reply_text("❌ Link promosi ini sudah pernah divalidasi dan diklaim sebelumnya.")
+            return
+        if rec["status"] in ("PENDING", "PROCESSING"):
+            await update.message.reply_text(
+                "⏳ <b>Link Sedang Diproses!</b>\n\n"
+                "Link promosi ini sedang dalam antrean atau proses validasi. "
+                "Mohon tunggu beberapa saat dan tidak mengirim ulang berkali-kali.",
+                parse_mode="HTML"
+            )
+            return
 
-    # Add to database
-    await db.add_promo_verification(conn, user_id, link)
-    
-    await update.message.reply_text(
-        "⏳ Link berhasil disubmit! Sistem sedang memvalidasi pesanmu. "
-        "Jika valid, Agra akan otomatis masuk ke saldomu."
+    # Kirim balasan tunggu di awal agar pengguna langsung tahu bahwa bot merespons
+    wait_msg = await update.message.reply_text(
+        "⏳ <b>Sedang Memvalidasi Link LPM...</b>\n\n"
+        "Sistem sedang memeriksa postingan promosi Anda ke server Telegram. Mohon tunggu sebentar...",
+        parse_mode="HTML"
     )
+
+    try:
+        # Add to database with status PROCESSING so background jobs do NOT steal/duplicate it
+        req_id = await db.add_promo_verification(conn, user_id, canonical_link, promo_type="lpm", status="PROCESSING")
+        
+        # Try immediate public embed verification
+        lpm_keyword = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
+        is_valid, status_code, err_msg = await verify_lpm_link_embed(conn, db, user_id, canonical_link, lpm_keyword)
+
+        if is_valid:
+            cur = await conn.execute(
+                "UPDATE promo_verifications SET status = 'VALID' WHERE id = ? AND status = 'PROCESSING'",
+                (req_id,)
+            )
+            if getattr(cur, "rowcount", 1) > 0:
+                await db.add_agra(
+                    conn,
+                    target_id=user_id,
+                    actor_id=user_id,
+                    amount=1,
+                    description="Reward promosi LPM",
+                    chat_id=None,
+                    message_id=None
+                )
+                await conn.commit()
+                await _safe_edit_or_reply(
+                    wait_msg,
+                    f"✅ <b>Link LPM Berhasil Divalidasi!</b>\n\n"
+                    f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+                    f"🎁 Kamu mendapatkan <b>+1 Agra</b>.",
+                    parse_mode="HTML"
+                )
+            else:
+                await _safe_edit_or_reply(
+                    wait_msg,
+                    f"ℹ️ <b>Link LPM Sudah Diproses</b>\n\n"
+                    f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+                    f"Link promosi ini telah diverifikasi sebelumnya.",
+                    parse_mode="HTML"
+                )
+        elif status_code not in ("NETWORK_ERROR", "PRIVATE_GROUP_NOT_SUPPORTED"):
+            await conn.execute("UPDATE promo_verifications SET status = ? WHERE id = ?", (status_code, req_id))
+            await conn.commit()
+            await _safe_edit_or_reply(
+                wait_msg,
+                f"❌ <b>Gagal Memvalidasi Link LPM</b>\n\n"
+                f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+                f"<b>Alasan:</b>\n{err_msg}",
+                parse_mode="HTML"
+            )
+        elif status_code == "PRIVATE_GROUP_NOT_SUPPORTED":
+            await conn.execute("UPDATE promo_verifications SET status = ? WHERE id = ?", (status_code, req_id))
+            await conn.commit()
+            await _safe_edit_or_reply(
+                wait_msg,
+                f"❌ <b>Grup Private Tidak Didukung</b>\n\n"
+                f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+                f"{err_msg}",
+                parse_mode="HTML"
+            )
+        else:
+            # NETWORK_ERROR: set to PENDING so background queue can retry
+            await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ?", (req_id,))
+            await conn.commit()
+            await _safe_edit_or_reply(
+                wait_msg,
+                f"⏳ <b>Pemeriksaan Instan Tertunda</b>\n\n"
+                f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+                f"Koneksi ke server Telegram sedang lambat. Link telah dicatat ke antrean validasi latar belakang.\n"
+                f"Sistem akan memverifikasi otomatis dalam beberapa saat. Jika valid, saldo Agra akan otomatis bertambah.",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        log.exception("Error saat memproses validasi /lpm: %s", e)
+        try:
+            await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE link = ? AND status = 'PROCESSING'", (canonical_link,))
+            await conn.commit()
+        except Exception:
+            pass
+        await _safe_edit_or_reply(
+            wait_msg,
+            f"⚠️ <b>Terjadi Kendala Teknis Saat Memvalidasi</b>\n\n"
+            f"🔗 <code>{html.escape(canonical_link)}</code>\n\n"
+            f"<b>Detail Kendala:</b> <code>{html.escape(str(e))}</code>\n\n"
+            f"Link kamu tetap tersimpan di sistem antrean dan akan diperiksa ulang secara otomatis.",
+            parse_mode="HTML"
+        )
 
 async def handle_otp_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catches OTP codes sent by promo accounts."""
@@ -237,9 +518,9 @@ async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Format salah! Gunakan: `/story <link_story>`\nContoh: `/story https://t.me/username/s/15`", parse_mode="Markdown")
         return
         
-    link = context.args[0]
-    import re
-    if not re.match(r"^https?://t\.me/", link) or "/s/" not in link:
+    raw_link = context.args[0].strip()
+    canonical_link = normalize_telegram_story_link(raw_link)
+    if not canonical_link:
         await update.message.reply_text("Link tidak valid. Pastikan formatnya benar (contoh: https://t.me/username/s/15).")
         return
 
@@ -247,12 +528,16 @@ async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = context.bot_data["conn"]
     user_id = update.effective_user.id
     
-    exists = await db.check_promo_link_exists(conn, link)
-    if exists:
-        await update.message.reply_text("❌ Link ini sudah pernah diklaim sebelumnya.")
-        return
+    record = await db.get_promo_link_record(conn, canonical_link)
+    if record:
+        if record["status"] == "VALID":
+            await update.message.reply_text("❌ Link ini sudah pernah diklaim sebelumnya.")
+            return
+        if record["status"] in ("PENDING", "PROCESSING"):
+            await update.message.reply_text("⏳ Link ini sedang dalam antrean atau proses validasi. Mohon tunggu beberapa saat.")
+            return
 
-    await db.add_promo_verification(conn, user_id, link, promo_type="story")
+    await db.add_promo_verification(conn, user_id, canonical_link, promo_type="story", status="PENDING")
     
     await update.message.reply_text(
         "⏳ Link Story berhasil disubmit! Sistem sedang memvalidasi story-mu. "

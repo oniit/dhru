@@ -137,6 +137,15 @@ async def process_pending_links():
                     await conn.commit()
                     continue
 
+                # Atomic claim lock: transition from PENDING -> PROCESSING
+                claim_cur = await conn.execute(
+                    "UPDATE promo_verifications SET status = 'PROCESSING' WHERE id = ? AND status = 'PENDING'",
+                    (req_id,)
+                )
+                await conn.commit()
+                if getattr(claim_cur, "rowcount", 1) == 0:
+                    continue
+
                 log.info(f"Checking {promo_type} link {link} for user {main_user_id}...")
                 
                 lpm_keyword = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
@@ -237,27 +246,30 @@ async def process_pending_links():
                             continue
                             
                         # VALID STORY
-                        await conn.execute("UPDATE promo_verifications SET status = 'VALID' WHERE id = ?", (req_id,))
-                        await db.add_agra(
-                            conn,
-                            target_id=main_user_id,
-                            actor_id=main_user_id,
-                            amount=3,
-                            description="Reward promosi Story",
-                            chat_id=None,
-                            message_id=None
-                        )
-                        await conn.commit()
-                        await asyncio.to_thread(requests.post,
-                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                            json={
-                                "chat_id": main_user_id,
-                                "text": f"✅ Link Story kamu berhasil divalidasi!\n{link}\nKamu mendapatkan +3 Agra."
-                            }
-                        )
+                        cur_v = await conn.execute("UPDATE promo_verifications SET status = 'VALID' WHERE id = ? AND status = 'PROCESSING'", (req_id,))
+                        if getattr(cur_v, "rowcount", 1) > 0:
+                            await db.add_agra(
+                                conn,
+                                target_id=main_user_id,
+                                actor_id=main_user_id,
+                                amount=3,
+                                description="Reward promosi Story",
+                                chat_id=None,
+                                message_id=None
+                            )
+                            await conn.commit()
+                            await asyncio.to_thread(requests.post,
+                                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                                json={
+                                    "chat_id": main_user_id,
+                                    "text": f"✅ Link Story kamu berhasil divalidasi!\n{link}\nKamu mendapatkan +3 Agra."
+                                }
+                            )
                         
                     except errors.FloodWait as e:
                         log.warning(f"FloodWait: sleeping for {e.value} seconds")
+                        await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ? AND status = 'PROCESSING'", (req_id,))
+                        await conn.commit()
                         await asyncio.sleep(e.value)
                     except Exception as e:
                         log.error(f"Error reading story {link}: {e}")
@@ -350,29 +362,32 @@ async def process_pending_links():
                             )
                             continue
                             
-                        await conn.execute("UPDATE promo_verifications SET status = 'VALID' WHERE id = ?", (req_id,))
-                        await db.add_agra(
-                            conn,
-                            target_id=main_user_id,
-                            actor_id=main_user_id,
-                            amount=1,
-                            description="Reward promosi LPM",
-                            chat_id=None,
-                            message_id=None
-                        )
-                        await conn.commit()
-                        log.info(f"Link {link} VALID. +1 Agra for {main_user_id}")
-                        
-                        await asyncio.to_thread(requests.post,
-                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                            json={
-                                "chat_id": main_user_id,
-                                "text": f"✅ Link LPM kamu berhasil divalidasi!\n{link}\nKamu mendapatkan +1 Agra."
-                            }
-                        )
+                        cur_v = await conn.execute("UPDATE promo_verifications SET status = 'VALID' WHERE id = ? AND status = 'PROCESSING'", (req_id,))
+                        if getattr(cur_v, "rowcount", 1) > 0:
+                            await db.add_agra(
+                                conn,
+                                target_id=main_user_id,
+                                actor_id=main_user_id,
+                                amount=1,
+                                description="Reward promosi LPM",
+                                chat_id=None,
+                                message_id=None
+                            )
+                            await conn.commit()
+                            log.info(f"Link {link} VALID. +1 Agra for {main_user_id}")
+                            
+                            await asyncio.to_thread(requests.post,
+                                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                                json={
+                                    "chat_id": main_user_id,
+                                    "text": f"✅ Link LPM kamu berhasil divalidasi!\n{link}\nKamu mendapatkan +1 Agra."
+                                }
+                            )
                         
                     except errors.FloodWait as e:
                         log.warning(f"FloodWait: sleeping for {e.value} seconds")
+                        await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ? AND status = 'PROCESSING'", (req_id,))
+                        await conn.commit()
                         await asyncio.sleep(e.value)
                     except Exception as e:
                         log.error(f"Error reading message {link}: {e}")
