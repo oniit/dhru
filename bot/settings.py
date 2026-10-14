@@ -118,15 +118,19 @@ OSPEK_GID = int(_ospek_gid) if _ospek_gid else None
 
 MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
 
+_sdm_gid = os.environ.get("SDM_GID", "").strip()
+SDM_GID = int(_sdm_gid) if _sdm_gid else None
+
 CHARYARTHI_GFORM_LINK = os.environ.get("CHARYARTHI_GFORM_LINK", "https://forms.gle/").strip()
 _charyarthi_open = os.environ.get("CHARYARTHI_OPREC_OPEN", "1").strip().lower()
 CHARYARTHI_OPREC_OPEN = _charyarthi_open in ("1", "true", "yes")
 
 
 def get_charyarthi_divisions() -> list[tuple[str, str]]:
+    # Hanya Nayaka (pimpinan tertinggi: Rektor, Warek, Sekretaris) dan penugasan khusus yang dikecualikan dari pendaftaran calon staf
     excluded_ids = {
-        "d_rektor", "d_sekre", "d_warek1", "d_warek2",
-        "d_dekan", "d_guru_besar", "d_pembina", "p_panitia_ospek"
+        "d_rektor", "d_sekre", "d_warek1", "d_warek2", "d_warek3",
+        "p_panitia_ospek", "d_eksternal", "d_lain"
     }
     items = []
     for item in CHOICES.get("position_details", []):
@@ -140,6 +144,42 @@ def get_division_label(div_id: str | None) -> str:
     if not div_id:
         return "—"
     return choice_label("position_details", div_id)
+
+
+def resolve_division_id(query: str | None) -> str | None:
+    if not query:
+        return None
+    q = query.strip().lower()
+    divs = get_charyarthi_divisions()
+    # 1. Exact ID match (e.g. "d_editor")
+    for did, lbl in divs:
+        if did.lower() == q:
+            return did
+    # 2. Match without 'd_' prefix (e.g. "editor" -> "d_editor")
+    for did, lbl in divs:
+        clean = did[2:] if did.startswith("d_") else did
+        if clean.lower() == q:
+            return did
+    # 3. Label exact / substring match (e.g. "editorial", "sdm", "sarpras")
+    for did, lbl in divs:
+        if q in lbl.lower():
+            return did
+    # 4. Special aliases
+    alias_map = {
+        "sdm": "d_hrd",
+        "konten": "d_editor",
+        "editorial": "d_editor",
+        "pelatih": "d_coach",
+        "pembina": "d_pembina",
+        "sarana": "d_sarpras",
+        "gurubesar": "d_guru_besar",
+        "humas": "d_pr",
+        "eksternal": "d_mpps",
+        "hubungan_eksternal": "d_mpps",
+    }
+    if q in alias_map:
+        return alias_map[q]
+    return None
 
 # Agra Rewards Configuration
 _rewards = _load_yaml("rewards.yaml")

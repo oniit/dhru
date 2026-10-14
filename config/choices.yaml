@@ -76,6 +76,7 @@ classes:
     sks: 0
 
 positions:
+  # Nayaka
   - id: rektor
     label: Adhipati अधिपति
   - id: sekre
@@ -84,6 +85,10 @@ positions:
     label: Pratinidhi I प्रतिनिधि I
   - id: warek2
     label: Pratinidhi II प्रतिनिधि II
+  - id: warek3
+    label: Pratinidhi III प्रतिनिधि III
+
+  # Acharya (Biro Akademik)
   - id: dekan
     label: Pradhānāchārya प्रधानाचार्य
   - id: guru_besar
@@ -94,18 +99,29 @@ positions:
     label: Āchāryaka आचार्यक
   - id: pembina
     label: Āchāryata आचार्यता
+
+  # Pacharya (Biro Umum)
   - id: editor
     label: Śilpāchārya शिल्पाचार्य
   - id: hrd
     label: Upāchārya उपचर्या
-  - id: eksternal
-    label: Kāryāchārya कार्याचार्य
   - id: sarpras
     label: Parichārya परिचर्या
+
+  # Yacharya (Biro Eksternal)
+  - id: mpps
+    label: Kāryāchārya कार्याचार्य
+  - id: pfp
+    label: Taryāchārya तर्याचार्य
+  - id: pr
+    label: Chitrayāchārya चित्रायाचार्य
+
+  # Legacy fallback
   - id: lainnya
     label: Lainnya
 
 position_details:
+  # Nayaka (Tidak untuk didaftar calon staf)
   - id: d_rektor
     label: Rektor
     position: rektor
@@ -118,6 +134,11 @@ position_details:
   - id: d_warek2
     label: Wakil Rektor II
     position: warek2
+  - id: d_warek3
+    label: Wakil Rektor III
+    position: warek3
+
+  # Acharya (Biro Akademik)
   - id: d_dekan
     label: Dekan
     position: dekan
@@ -133,18 +154,33 @@ position_details:
   - id: d_pembina
     label: Pembina BEM
     position: pembina
+
+  # Pacharya (Biro Umum)
   - id: d_editor
     label: Editorial & Konten
     position: editor
   - id: d_hrd
     label: Pengembangan SDM
     position: hrd
-  - id: d_eksternal
-    label: Hubungan Eksternal
-    position: eksternal
   - id: d_sarpras
     label: Sarana & Prasarana
     position: sarpras
+
+  # Yacharya (Biro Eksternal)
+  - id: d_mpps
+    label: MPPS
+    position: karyacharya
+  - id: d_pfp
+    label: PFP
+    position: taryacharya
+  - id: d_pr
+    label: PR
+    position: citrayacharya
+
+  # Fallback & penugasan khusus
+  - id: d_eksternal
+    label: Hubungan Eksternal
+    position: karyacharya
   - id: d_lain
     label: Lainnya
     position: lainnya

@@ -11,13 +11,13 @@ fields:
   - key: muse
     label: Muse
     type: text
-    roles: [owner, admin, internal, student, bem]
+    roles: [owner, admin, internal, student, bem, purva]
     required: true
 
   - key: birth_date
     label: Tanggal lahir
     type: text
-    roles: [owner, admin, internal, student, bem]
+    roles: [owner, admin, internal, student, bem, purva]
     required: true
 
   - key: faculty
@@ -62,6 +62,14 @@ fields:
     roles: [owner, admin, internal]
     required: false
 
+  - key: staff_major
+    label: Homebase Jurusan (Dosen)
+    type: choice
+    choices_key: majors
+    filter_by_field: staff_faculty
+    roles: [owner, admin, internal]
+    required: false
+
   - key: teaching_classes
     label: Kelas yang diampu
     type: multi_choice
@@ -80,6 +88,12 @@ fields:
     label: Alasan Bergabung
     type: text
     roles: [maba]
+    required: false
+
+  - key: charyarthi_reason
+    label: Alasan Mendaftar Staf
+    type: text
+    roles: [charyarthi]
     required: false
 
   - key: target_division_1
