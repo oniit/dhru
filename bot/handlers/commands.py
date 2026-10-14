@@ -4,9 +4,13 @@ import asyncio
 import html
 import json
 import logging
+
+log = logging.getLogger(__name__)
+logger = log
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import Forbidden, BadRequest
 from telegram.ext import ContextTypes
 
 import random
@@ -21,6 +25,7 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STUDENT,
     ROLE_BEM,
+    ROLE_PURVA,
     ROLE_MABA,
     ROLE_CHARYARTHI,
     ROLE_PUBLIC,
@@ -39,8 +44,16 @@ from bot.settings import (
     CHARYARTHI_GFORM_LINK,
     CHARYARTHI_OPREC_OPEN,
     PETINGGI_GID,
+    PENDAFTAR_CH_ID,
+    MABA_GROUP_LINK,
+    MABA_CH_IDS,
+    MABA_GROUP_GIDS,
+    MABA_GROUP_NAMES,
+    KELOMPOK_GID,
+    SDM_GID,
     get_charyarthi_divisions,
     get_division_label,
+    resolve_division_id,
 )
 from bot.timefmt import format_local_time, days_until_next_birthday
 
@@ -71,9 +84,14 @@ from .common import (
     can_view_sensitive_logs,
     can_report,
     can_tag_all,
-    presence_allowed_class_ids,
     is_charyarthi_oprec_open,
     get_active_charyarthi_divisions,
+    resolve_target_user,
+    send_message_or_media_to_target,
+    build_maba_verification_text,
+    render_charyarthi_quiz_view,
+    get_user_jabatans,
+    presence_allowed_class_ids,
 )
 
 MULTI_UD_KEY = "multi_select"
@@ -202,6 +220,8 @@ async def _revalidate_filtered_choice_fields(
                 continue
             if f.key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA):
                 continue
+            if f.key in ("birth_date", "muse", "join_reason", "charyarthi_reason"):
+                continue
             if f.key in prof:
                 to_remove.append(f.key)
         else:
@@ -269,8 +289,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         status_text = (
             "🏛 <b>Status Pendaftaran Chāryārthī (Calon Staf)</b>\n\n"
             f"👤 <b>Nama:</b> {html.escape(profile.get('full_name') or u.first_name or '—')}\n"
-            f"🏛 <b>Pilihan 1:</b> {p1_label}\n"
-            f"🏛 <b>Pilihan 2:</b> {p2_label}\n"
+            f"🏛 <b>Divisi Pilihan:</b> {p1_label}\n"
             "📋 <b>Status:</b> ⏳ <i>Menunggu Peninjauan / Pengumuman</i>\n\n"
             "Berkas pendaftaran dan syarat promosi Anda telah diterima. Tim Seleksi sedang meninjau formulir pendaftaran. "
             "Hasil kelulusan akan diumumkan langsung melalui bot ini. Harap bersabar!"
@@ -729,7 +748,6 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     "Silakan pantau Grup OSPEK untuk mendapatkan instruksi lebih lanjut."
                 )
             else:
-                from bot.settings import MABA_GROUP_GIDS, MABA_GROUP_NAMES
                 mg = int(profile.get("maba_group", 1))
                 link = "(Grup kelompok belum disetel oleh admin)"
                 try:
@@ -742,8 +760,7 @@ async def cmd_lengkapi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                         )
                         link = invite.invite_link
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid} di lengkapi: {e}")
+                    log.warning(f"Gagal membuat invite link Maba {uid} di lengkapi: {e}")
                     link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
                     
                 await update.message.reply_text(
@@ -957,15 +974,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         if action == "start":
             await q.answer()
-            await db.set_onboarding_step(conn, uid, "MABA_NAME")
-            await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan <b>Nama Lengkap</b> Anda:", parse_mode="HTML")
+            user_r = await user_row(conn, db, uid)
+            prof = profile_from_row(user_r) if user_r else {}
+            if prof.get("full_name"):
+                await db.set_onboarding_step(conn, uid, "MABA_REASON")
+                await q.edit_message_text(
+                    f"Pendaftaran Mahasiswa Baru.\n\nNama Lengkap: <b>{html.escape(prof['full_name'])}</b> (Sudah terisi)\n\nSilakan ketikkan <b>Alasan Bergabung</b> Anda:",
+                    parse_mode="HTML"
+                )
+            else:
+                await db.set_onboarding_step(conn, uid, "MABA_NAME")
+                await q.edit_message_text("Pendaftaran Mahasiswa Baru.\nSilakan ketikkan <b>Nama Lengkap</b> Anda:", parse_mode="HTML")
         elif action == "verify":
             # This is called when they click "Verifikasi Kembali" after following channels
             # We need to check channels here. But we need their chat info.
             # We can check channel status here.
-            from bot.settings import MABA_CH_IDS, MABA_GROUP_LINK
-            from bot.handlers.common import build_maba_verification_text
-            
             text_verify, all_followed = await build_maba_verification_text(context, uid)
                     
             if not all_followed:
@@ -993,8 +1016,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.edit_message_text(instruction_text, reply_markup=kb, parse_mode="HTML")
             
         elif action == "claim_ospek":
-            from bot.settings import MABA_GROUP_LINK, PENDAFTAR_CH_ID
-
             promo_count = await db.count_valid_promos(conn, uid)
             if promo_count < 1:
                 await q.answer("❌ Kamu belum melakukan promosi atau sistem masih memvalidasinya. Tunggu sampai ada notifikasi berhasil!", show_alert=True)
@@ -1016,14 +1037,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 try:
                     row_tmp = await user_row(conn, db, uid)
                     prof_tmp = profile_from_row(row_tmp)
-                    name_tmp = html.escape(str(prof_tmp.get("full_name", "Tanpa Nama")))
-                    reason_tmp = html.escape(str(prof_tmp.get("join_reason", "-")))
+                    first_name_tmp = row_tmp["first_name"] if row_tmp and row_tmp["first_name"] else "Tanpa Nama"
+                    name_tmp = html.escape(str(prof_tmp.get("full_name") or first_name_tmp))
+                    reason_tmp = html.escape(str(prof_tmp.get("join_reason") or "-"))
                     username_tmp = f"@{html.escape(row_tmp['username'])}" if row_tmp and row_tmp["username"] else "-"
                     msg_pendaftar = f"<b>Nama:</b> <a href=\"tg://user?id={uid}\">{name_tmp}</a>\n<b>Username:</b> {username_tmp}\n<b>Alasan Bergabung:</b> {reason_tmp}\n<b>ID:</b> <code>{uid}</code>"
                     await context.bot.send_message(chat_id=PENDAFTAR_CH_ID, text=msg_pendaftar, parse_mode="HTML")
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Gagal mengirim info pendaftar ke {PENDAFTAR_CH_ID}: {e}")
+                    log.warning("Gagal mengirim info pendaftar ke %s: %s", PENDAFTAR_CH_ID, e)
             
         return
 
@@ -1046,6 +1067,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 if user_r["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
                     await q.answer("Anda sudah berstatus Charya / Petinggi.", show_alert=True)
                     return
+                if user_r["role"] in (ROLE_STUDENT, ROLE_MABA, ROLE_BEM):
+                    await q.answer("Mahasiswa aktif belum dapat melamar menjadi staf. Anda harus menjadi alumni terlebih dahulu.", show_alert=True)
+                    return
+
+            prof = profile_from_row(user_r) if user_r else {}
+            if prof.get("full_name"):
+                await db.set_onboarding_step(conn, uid, "CHARYARTHI_REASON")
+                await q.answer()
+                cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")]])
+                await q.edit_message_text(
+                    f"Pendaftaran Chāryārthī (Calon Staf).\n\nNama Lengkap: <b>{html.escape(prof['full_name'])}</b> (Sudah terisi)\n\nSilakan ketikkan <b>Alasan Anda Mendaftar Menjadi Staf</b>:",
+                    parse_mode="HTML",
+                    reply_markup=cancel_kb
+                )
+                return
 
             await q.answer()
             await db.set_onboarding_step(conn, uid, "CHARYARTHI_NAME")
@@ -1083,31 +1119,181 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif action == "div1":
             parts = data.split(":")
             div1_id = parts[2]
-            await db.set_profile_partial(conn, uid, {"target_division_1": div1_id})
             div1_label = get_division_label(div1_id)
-            divisions = await get_active_charyarthi_divisions(db, conn)
+
+            confirm_text = (
+                "⚠️ <b>Konfirmasi Pilihan Divisi</b>\n"
+                "━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Anda memilih divisi: <b>{html.escape(div1_label)}</b>\n\n"
+                "⚠️ <i>Setelah dikonfirmasi, Anda <b>tidak bisa mengganti divisi</b>. "
+                "Pastikan pilihan Anda sudah benar.</i>\n\n"
+                "💡 Cek ulang jobdesc di @dhruvarsip sebelum memilih.\n\n"
+                "Yakin ingin memilih divisi ini?"
+            )
+            buttons = [
+                [InlineKeyboardButton(f"✅ Ya, Saya Yakin Pilih {html.escape(div1_label)}", callback_data=f"charyarthi:confirm_div1:{div1_id}")],
+                [InlineKeyboardButton("🔙 Pilih Divisi Lain", callback_data="charyarthi:reselect")],
+                [InlineKeyboardButton("❌ Batal Pendaftaran", callback_data="charyarthi:cancel")],
+            ]
+            await q.answer()
+            await q.edit_message_text(
+                confirm_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="HTML",
+            )
+            return
+
+        elif action == "confirm_div1":
+            parts = data.split(":")
+            div1_id = parts[2]
+            await db.set_profile_partial(conn, uid, {"target_division_1": div1_id, "target_division_2": None})
+            div1_label = get_division_label(div1_id)
+
+            questions = await db.get_charyarthi_questions(conn, div1_id)
+            if questions:
+                dash_text, dash_kb = await render_charyarthi_quiz_view(uid, div1_id, conn, db)
+                await q.answer()
+                await q.edit_message_text(dash_text, reply_markup=dash_kb, parse_mode="HTML")
+                return
+
+            instruction_text = (
+                "📋 <b>Formulir & Persyaratan Pendaftaran Chāryārthī</b>\n\n"
+                f"• <b>Divisi Pilihan:</b> {div1_label}\n\n"
+                "<b>Langkah Selanjutnya:</b>\n"
+                "1️⃣ <b>Isi Formulir Google Form:</b>\n"
+                f'Silakan isi berkas pendaftaran melalui tautan: <a href="{CHARYARTHI_GFORM_LINK}">{CHARYARTHI_GFORM_LINK}</a>\n\n'
+                "2️⃣ <b>Lakukan Promosi Wajib:</b>\n"
+                "Sebarkan postingan promosi ke minimal <b>1 LPM</b> atau bagikan di <b>Telegram Story</b> Anda.\n"
+                "Kirimkan buktinya ke bot ini dengan format:\n"
+                "<code>/lpm &lt;link_pesan&gt;</code> atau <code>/story &lt;link_story&gt;</code>\n\n"
+                "3️⃣ <b>Submit Pendaftaran:</b>\n"
+                "Setelah mengisi Google Form dan promosi Anda dinyatakan valid, klik tombol <b>🚀 Submit Pendaftaran</b> di bawah ini."
+            )
 
             buttons = []
+            if CHARYARTHI_GFORM_LINK.startswith("http"):
+                buttons.append([InlineKeyboardButton("📋 Buka Google Form", url=CHARYARTHI_GFORM_LINK)])
+            buttons.append([InlineKeyboardButton("🚀 Submit Pendaftaran", callback_data="charyarthi:submit")])
+            buttons.append([InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")])
+
+            await q.answer()
+            await q.edit_message_text(
+                instruction_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+            return
+
+        elif action == "ans_q":
+            parts = data.split(":")
+            div_id = parts[2]
+            qid = int(parts[3])
+            q_row = await db.get_charyarthi_question_by_id(conn, qid)
+            if not q_row:
+                await q.answer("Soal tidak ditemukan.", show_alert=True)
+                return
+            answers = await db.get_charyarthi_answers(conn, uid, div_id)
+            cur_ans = answers.get(qid, "")
+            div_lbl = get_division_label(div_id)
+
+            await db.set_onboarding_step(conn, uid, f"CHARYARTHI_ANS:{div_id}:{qid}")
+            msg_text = (
+                f"📝 <b>Soal No. {q_row['question_order']} — Divisi {html.escape(div_lbl)}</b>\n"
+                "━━━━━━━━━━━━━━━━━━━\n"
+                f"<b>Pertanyaan:</b>\n{html.escape(q_row['question_text'])}\n"
+                "━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+            if cur_ans:
+                msg_text += f"<i>Jawaban Anda saat ini:</i>\n<blockquote>{html.escape(cur_ans)}</blockquote>\n\n"
+            msg_text += "Silakan ketikkan jawaban Anda di bawah ini dan kirimkan ke bot:"
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")]])
+            await q.answer()
+            await q.edit_message_text(msg_text, reply_markup=kb, parse_mode="HTML")
+            return
+
+        elif action == "back_quiz":
+            parts = data.split(":")
+            div_id = parts[2]
+            await db.set_onboarding_step(conn, uid, None)
+            dash_text, dash_kb = await render_charyarthi_quiz_view(uid, div_id, conn, db)
+            await q.answer()
+            await q.edit_message_text(dash_text, reply_markup=dash_kb, parse_mode="HTML")
+            return
+
+        elif action == "preview":
+            parts = data.split(":")
+            div_id = parts[2]
+            questions = await db.get_charyarthi_questions(conn, div_id)
+            answers = await db.get_charyarthi_answers(conn, uid, div_id)
+            div_lbl = get_division_label(div_id)
+            prev_text = f"👁 <b>Pratinjau Jawaban Tes ({html.escape(div_lbl)})</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+            for q_item in questions:
+                qid = q_item["id"]
+                q_order = q_item["question_order"]
+                q_txt = q_item["question_text"]
+                ans = answers.get(qid, "<i>(Belum diisi)</i>")
+                prev_text += f"<b>{q_order}. {html.escape(q_txt)}</b>\n<blockquote>{html.escape(ans)}</blockquote>\n\n"
+            prev_text += "━━━━━━━━━━━━━━━━━━━\n<i>Anda dapat kembali untuk mengubah jawaban atau lanjut ke pendaftaran.</i>"
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")],
+                [InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")]
+            ])
+            await q.answer()
+            await q.edit_message_text(prev_text, reply_markup=kb, parse_mode="HTML")
+            return
+
+        elif action == "not_ready":
+            await q.answer("Silakan lengkapi seluruh pertanyaan terlebih dahulu sebelum melanjutkan.", show_alert=True)
+            return
+
+        elif action == "ready":
+            parts = data.split(":")
+            div_id = parts[2]
+            div_lbl = get_division_label(div_id)
+            instruction_text = (
+                "📋 <b>Formulir & Persyaratan Pendaftaran Chāryārthī</b>\n\n"
+                f"• <b>Divisi Pilihan:</b> {div_lbl}\n"
+                "• <b>Status Tes Divisi:</b> ✅ Seluruh Soal Telah Terisi\n\n"
+                "<b>Langkah Selanjutnya:</b>\n"
+                "1️⃣ <b>Isi Formulir Google Form:</b>\n"
+                f'Silakan isi berkas pendaftaran melalui tautan: <a href="{CHARYARTHI_GFORM_LINK}">{CHARYARTHI_GFORM_LINK}</a>\n\n'
+                "2️⃣ <b>Lakukan Promosi Wajib:</b>\n"
+                "Sebarkan postingan promosi ke minimal <b>1 LPM</b> atau bagikan di <b>Telegram Story</b> Anda.\n"
+                "Kirimkan buktinya ke bot ini dengan format:\n"
+                "<code>/lpm &lt;link_pesan&gt;</code> atau <code>/story &lt;link_story&gt;</code>\n\n"
+                "3️⃣ <b>Submit Pendaftaran:</b>\n"
+                "Setelah mengisi Google Form dan promosi Anda dinyatakan valid, klik tombol <b>🚀 Submit Pendaftaran</b> di bawah ini."
+            )
+            buttons = []
+            if CHARYARTHI_GFORM_LINK.startswith("http"):
+                buttons.append([InlineKeyboardButton("📋 Buka Google Form", url=CHARYARTHI_GFORM_LINK)])
+            buttons.append([InlineKeyboardButton("🚀 Submit Pendaftaran", callback_data="charyarthi:submit")])
+            buttons.append([InlineKeyboardButton("📝 Periksa Ulang Jawaban Tes", callback_data=f"charyarthi:back_quiz:{div_id}")])
+            buttons.append([InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")])
+            await q.answer()
+            await q.edit_message_text(
+                instruction_text,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+            return
+
+        elif action == "reselect":
+            divisions = await get_active_charyarthi_divisions(db, conn)
+            buttons = []
             row_btn = []
-            for did, dlbl in divisions:
-                if did == div1_id:
-                    continue
-                row_btn.append(InlineKeyboardButton(dlbl, callback_data=f"charyarthi:div2:{did}"))
+            for div_id, div_lbl in divisions:
+                row_btn.append(InlineKeyboardButton(div_lbl, callback_data=f"charyarthi:div1:{div_id}"))
                 if len(row_btn) == 2:
                     buttons.append(row_btn)
                     row_btn = []
             if row_btn:
                 buttons.append(row_btn)
-            buttons.append([InlineKeyboardButton("⏭ Lewati / Cukup 1 Divisi", callback_data="charyarthi:div2:skip")])
             buttons.append([InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")])
-
             await q.answer()
-            await q.edit_message_text(
-                f"Divisi Utama: <b>{div1_label}</b> ✅\n\n"
-                "Silakan pilih <b>Divisi Cadangan (Pilihan 2)</b> atau lewati jika hanya berminat pada satu divisi:",
-                reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode="HTML"
-            )
+            await q.edit_message_text("Silakan pilih <b>Divisi</b> yang ingin Anda lamar:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             return
 
         elif action == "div2":
@@ -1179,43 +1365,46 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
             await q.edit_message_text(success_text, parse_mode="HTML")
 
+            u_row = await user_row(conn, db, uid)
+            prof = profile_from_row(u_row)
+            first_name = u_row["first_name"] if u_row and u_row["first_name"] else "Tanpa Nama"
+            nama = html.escape(str(prof.get("full_name") or first_name))
+            uname = f"@{html.escape(u_row['username'])}" if u_row and u_row["username"] else "Tanpa Username"
+            d1_id = prof.get("target_division_1")
+            d2_id = prof.get("target_division_2")
+            d1_lbl = get_division_label(d1_id)
+            d2_lbl = get_division_label(d2_id) if d2_id else None
+
+            reason = html.escape(str(prof.get("charyarthi_reason", "-")))
+            msg_admin = (
+                "📑 <b>PENDAFTARAN CHARYA (CALON STAF)</b>\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>Nama:</b> <a href=\"tg://user?id={uid}\">{nama}</a>\n"
+                f"🔗 <b>Username:</b> {uname}\n"
+                f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+                f"📝 <b>Alasan Mendaftar:</b> {reason}\n"
+                f"🏛 <b>Pilihan 1:</b> {d1_lbl}\n"
+            )
+            if d2_lbl:
+                msg_admin += f"🏛 <b>Pilihan 2:</b> {d2_lbl}\n"
+            msg_admin += (
+                f"📢 <b>Status Promo:</b> ✅ {promo_count}x Valid\n"
+                "📋 <b>Google Form:</b> Telah konfirmasi submit\n"
+                f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "<i>Cocokkan jawaban di Spreadsheet GForm sebelum memutuskan:</i>"
+            )
+
+            admin_buttons = []
+            if d2_lbl:
+                admin_buttons.append([InlineKeyboardButton(f"✅ Terima Pilihan 1 ({d1_lbl})", callback_data=f"charyarthi:acc:{uid}:1")])
+                admin_buttons.append([InlineKeyboardButton(f"✅ Terima Pilihan 2 ({d2_lbl})", callback_data=f"charyarthi:acc:{uid}:2")])
+            else:
+                admin_buttons.append([InlineKeyboardButton("✅ Terima Menjadi Charya", callback_data=f"charyarthi:acc:{uid}:1")])
+            admin_buttons.append([InlineKeyboardButton("❌ Tolak Lamaran", callback_data=f"charyarthi:rej:{uid}")])
+
             if PENDAFTAR_CH_ID:
                 try:
-                    u_row = await user_row(conn, db, uid)
-                    prof = profile_from_row(u_row)
-                    nama = html.escape(str(prof.get("full_name") or u_row["first_name"] or "Tanpa Nama"))
-                    uname = f"@{html.escape(u_row['username'])}" if u_row and u_row["username"] else "Tanpa Username"
-                    d1_id = prof.get("target_division_1")
-                    d2_id = prof.get("target_division_2")
-                    d1_lbl = get_division_label(d1_id)
-                    d2_lbl = get_division_label(d2_id) if d2_id else None
-
-                    msg_admin = (
-                        "📑 <b>PENDAFTARAN CHARYA (CALON STAF)</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━\n"
-                        f"👤 <b>Nama:</b> <a href=\"tg://user?id={uid}\">{nama}</a>\n"
-                        f"🔗 <b>Username:</b> {uname}\n"
-                        f"🆔 <b>ID:</b> <code>{uid}</code>\n"
-                        f"🏛 <b>Pilihan 1:</b> {d1_lbl}\n"
-                    )
-                    if d2_lbl:
-                        msg_admin += f"🏛 <b>Pilihan 2:</b> {d2_lbl}\n"
-                    msg_admin += (
-                        f"📢 <b>Status Promo:</b> ✅ {promo_count}x Valid\n"
-                        "📋 <b>Google Form:</b> Telah konfirmasi submit\n"
-                        f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
-                        "━━━━━━━━━━━━━━━━━━━\n"
-                        "<i>Cocokkan jawaban di Spreadsheet GForm sebelum memutuskan:</i>"
-                    )
-
-                    admin_buttons = []
-                    if d2_lbl:
-                        admin_buttons.append([InlineKeyboardButton(f"✅ Terima Pilihan 1 ({d1_lbl})", callback_data=f"charyarthi:acc:{uid}:1")])
-                        admin_buttons.append([InlineKeyboardButton(f"✅ Terima Pilihan 2 ({d2_lbl})", callback_data=f"charyarthi:acc:{uid}:2")])
-                    else:
-                        admin_buttons.append([InlineKeyboardButton("✅ Terima Menjadi Charya", callback_data=f"charyarthi:acc:{uid}:1")])
-                    admin_buttons.append([InlineKeyboardButton("❌ Tolak Lamaran", callback_data=f"charyarthi:rej:{uid}")])
-
                     await context.bot.send_message(
                         chat_id=PENDAFTAR_CH_ID,
                         text=msg_admin,
@@ -1224,7 +1413,65 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     )
                 except Exception as e:
                     log.warning("Gagal mengirim info pendaftar charya ke %s: %s", PENDAFTAR_CH_ID, e)
+
+            if SDM_GID:
+                try:
+                    questions = await db.get_charyarthi_questions(conn, d1_id) if d1_id else []
+                    answers = await db.get_charyarthi_answers(conn, uid, d1_id) if d1_id else {}
+                    if questions:
+                        sdm_header = (
+                            "📝 <b>JAWABAN TES DIVISI (TIM SDM)</b>\n"
+                            "━━━━━━━━━━━━━━━━━━\n"
+                            f"👤 <b>Pelamar:</b> <a href=\"tg://user?id={uid}\">{nama}</a> ({uname})\n"
+                            f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+                            f"📝 <b>Alasan Mendaftar:</b> {reason}\n"
+                            f"🏛 <b>Divisi Dilamar:</b> {d1_lbl}\n"
+                            f"📝 <b>Total Soal Tes:</b> {len(questions)} Soal (Lengkap Dijawab)\n"
+                            f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
+                            "━━━━━━━━━━━━━━━━━━\n"
+                            "<i>Lihat lembar jawaban pada balasan pesan di bawah:</i>"
+                        )
+                        sent_sdm_msg = await context.bot.send_message(
+                            chat_id=SDM_GID,
+                            text=sdm_header,
+                            parse_mode="HTML"
+                        )
+
+                        # Kirim lembar jawaban terstruktur (anti limit 4096 teks)
+                        ans_blocks = []
+                        cur_block = f"📝 <b>LEMBAR JAWABAN TES DIVISI ({d1_lbl})</b>\n👤 <b>Pelamar:</b> {nama} (<code>{uid}</code>)\n━━━━━━━━━━━━━━━━━━\n\n"
+                        for q_item in questions:
+                            qid = q_item["id"]
+                            q_o = q_item["question_order"]
+                            q_t = q_item["question_text"]
+                            ans_t = answers.get(qid, "-")
+                            entry = f"<b>{q_o}. {html.escape(q_t)}</b>\n<blockquote>{html.escape(ans_t)}</blockquote>\n\n"
+                            if len(cur_block) + len(entry) > 3800:
+                                ans_blocks.append(cur_block)
+                                cur_block = f"📝 <b>LEMBAR JAWABAN (Lanjutan) — {nama}</b>\n━━━━━━━━━━━━━━━━━━\n\n" + entry
+                            else:
+                                cur_block += entry
+                        if cur_block:
+                            ans_blocks.append(cur_block)
+
+                        for blk in ans_blocks:
+                            try:
+                                await context.bot.send_message(
+                                    chat_id=SDM_GID,
+                                    text=blk,
+                                    reply_to_message_id=sent_sdm_msg.message_id,
+                                    parse_mode="HTML"
+                                )
+                            except Exception:
+                                await context.bot.send_message(
+                                    chat_id=SDM_GID,
+                                    text=blk,
+                                    parse_mode="HTML"
+                                )
+                except Exception as e:
+                    log.warning("Gagal mengirim info jawaban charya ke SDM_GID (%s): %s", SDM_GID, e)
             return
+
 
         elif action == "acc":
             if not is_admin_elevated(q.from_user.id):
@@ -1331,6 +1578,103 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 log.warning("Gagal kirim DM rej charyarthi ke %s: %s", target_uid, e)
             return
 
+    if data.startswith("soal:"):
+        chat_id = q.message.chat_id if q.message else None
+        is_auth = is_admin_elevated(q.from_user.id) or (SDM_GID and chat_id == SDM_GID) or (PETINGGI_GID and chat_id == PETINGGI_GID)
+        if not is_auth:
+            conn = _conn(context)
+            db = _db(context)
+            u_row = await user_row(conn, db, q.from_user.id)
+            if u_row:
+                prof = profile_from_row(u_row)
+                jabs = get_user_jabatans(prof)
+                if "d_hrd" in jabs or "d_umum_sdm" in jabs or u_row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+                    is_auth = True
+        if not is_auth:
+            await q.answer("Hanya Tim SDM, Petinggi, dan Staf Internal yang berhak mengakses.", show_alert=True)
+            return
+
+        conn = _conn(context)
+        db = _db(context)
+        parts = data.split(":")
+        sub_act = parts[1]
+
+        if sub_act == "adm_menu":
+            text_res, kb = await _render_admin_soal_menu(conn, db)
+            await q.answer()
+            await q.edit_message_text(text_res, reply_markup=kb, parse_mode="HTML")
+            return
+        elif sub_act == "adm_div":
+            div_id = parts[2]
+            text_res, kb = await _render_admin_division_soal(div_id, conn, db)
+            await q.answer()
+            await q.edit_message_text(text_res, reply_markup=kb, parse_mode="HTML")
+            return
+        elif sub_act == "adm_add":
+            div_id = parts[2]
+            clean_alias = div_id[2:] if div_id.startswith("d_") else div_id
+            div_lbl = get_division_label(div_id)
+            await db.set_onboarding_step(conn, q.from_user.id, f"INPUT_SOAL_ADD:{div_id}")
+            cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data=f"soal:adm_div:{div_id}")]])
+            await q.answer()
+            await q.edit_message_text(
+                f"➕ <b>Tambah Soal Baru — {html.escape(div_lbl)}</b>\n"
+                f"🔑 <b>ID Divisi:</b> <code>{clean_alias}</code>\n\n"
+                "• <b>Jika di Private Chat (DM):</b> Ketik teks pertanyaan dan langsung kirim ke bot.\n"
+                "• <b>Jika di Grup:</b> Anda juga bisa langsung mengetik perintah cepat:\n"
+                f"<code>/tambah_soal {clean_alias} &lt;teks pertanyaan&gt;</code>",
+                reply_markup=cancel_kb,
+                parse_mode="HTML"
+            )
+            return
+        elif sub_act == "adm_del_menu":
+            div_id = parts[2]
+            questions = await db.get_charyarthi_questions(conn, div_id)
+            div_lbl = get_division_label(div_id)
+            if not questions:
+                await q.answer("Belum ada soal untuk divisi ini.", show_alert=True)
+                return
+            btn_rows = []
+            cur_r = []
+            for q_it in questions:
+                cur_r.append(InlineKeyboardButton(f"❌ Soal {q_it['question_order']}", callback_data=f"soal:adm_del_do:{div_id}:{q_it['id']}"))
+                if len(cur_r) == 2:
+                    btn_rows.append(cur_r)
+                    cur_r = []
+            if cur_r:
+                btn_rows.append(cur_r)
+            btn_rows.append([InlineKeyboardButton("🔙 Batal & Kembali", callback_data=f"soal:adm_div:{div_id}")])
+            await q.answer()
+            await q.edit_message_text(
+                f"🗑️ <b>Hapus Soal — {html.escape(div_lbl)}</b>\n\n"
+                "Pilih nomor soal yang ingin Anda hapus:",
+                reply_markup=InlineKeyboardMarkup(btn_rows),
+                parse_mode="HTML"
+            )
+            return
+        elif sub_act == "adm_del_do":
+            div_id = parts[2]
+            qid = int(parts[3])
+            await db.delete_charyarthi_question(conn, qid)
+            await q.answer("Soal berhasil dihapus!", show_alert=True)
+            text_res, kb = await _render_admin_division_soal(div_id, conn, db)
+            await q.edit_message_text(text_res, reply_markup=kb, parse_mode="HTML")
+            return
+        elif sub_act == "adm_reset":
+            div_id = parts[2]
+            await db.clear_charyarthi_questions(conn, div_id)
+            await q.answer("Seluruh soal divisi dikosongkan!", show_alert=True)
+            text_res, kb = await _render_admin_division_soal(div_id, conn, db)
+            await q.edit_message_text(text_res, reply_markup=kb, parse_mode="HTML")
+            return
+        elif sub_act == "adm_close":
+            await q.answer("Ditutup.")
+            try:
+                await q.delete_message()
+            except Exception:
+                pass
+            return
+
     if data.startswith("setcharyarthi:"):
         chat_id = q.message.chat_id if q.message else None
         is_auth = is_admin_elevated(q.from_user.id) or (PETINGGI_GID and chat_id == PETINGGI_GID)
@@ -1344,8 +1688,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         db = _db(context)
 
         if subaction == "close":
+            is_open = await is_charyarthi_oprec_open(db, conn)
+            active_divs = await get_active_charyarthi_divisions(db, conn)
+            
+            summary = "⚙️ <b>Pengaturan Tersimpan</b>\n\n"
+            summary += f"<b>Status Pendaftaran:</b> {'✅ DIBUKA' if is_open else '❌ DITUTUP'}\n\n"
+            summary += "<b>Divisi yang Aktif:</b>\n"
+            if not active_divs:
+                summary += "- (Tidak ada)\n"
+            else:
+                for did, lbl in active_divs:
+                    summary += f"- {lbl}\n"
             try:
-                await q.message.delete()
+                await q.edit_message_text(summary, parse_mode="HTML")
             except Exception:
                 pass
             await q.answer("Pengaturan disimpan.")
@@ -2145,20 +2500,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if _is_lengkapi_done(profile_u):
             await q.edit_message_text("/lengkapi hanya untuk isi awal. Pakai /ubah.")
             return
-        if field_key == "major":
-            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == "faculty"), None)
+        if field_key in ("major", "staff_major"):
+            fac_key = "faculty" if field_key == "major" else "staff_faculty"
+            prefix = "lc_fac_for_maj" if field_key == "major" else "lc_fac_for_smaj"
+            step = "PICK_LC_FAC_FOR_MAJ" if field_key == "major" else "PICK_LC_FAC_FOR_SMAJ"
+            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == fac_key), None)
             if fac_fdef:
                 opts = CHOICES.get(fac_fdef.choices_key, [])
                 await q.edit_message_text(
                     f"Pilih <b>{fac_fdef.label}</b> terlebih dahulu:",
                     reply_markup=keyboard_for_choices(
-                        "faculty",
+                        fac_key,
                         fac_fdef.choices_key,
-                        prefix="lc_fac_for_maj",
+                        prefix=prefix,
                         options=opts,
                     ),
                 )
-                await db.set_onboarding_step(conn, uid, "PICK_LC_FAC_FOR_MAJ")
+                await db.set_onboarding_step(conn, uid, step)
                 return
 
         opts = filtered_choice_items(fdef, profile_u)
@@ -2204,8 +2562,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 f"Kirim pesan teks untuk <b>{fdef.label}</b> (lengkapi).",
             )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("openlt edit_message_text error: %s", e)
+            log.warning("openlt edit_message_text error: %s", e)
         return
 
     if data.startswith("openec:"):
@@ -2218,20 +2575,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
-        if field_key == "major":
-            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == "faculty"), None)
+        if field_key in ("major", "staff_major"):
+            fac_key = "faculty" if field_key == "major" else "staff_faculty"
+            prefix = "ec_fac_for_maj" if field_key == "major" else "ec_fac_for_smaj"
+            step = "PICK_EC_FAC_FOR_MAJ" if field_key == "major" else "PICK_EC_FAC_FOR_SMAJ"
+            fac_fdef = next((x for x in PROFILE_FIELDS if x.key == fac_key), None)
             if fac_fdef:
                 opts = CHOICES.get(fac_fdef.choices_key, [])
                 await q.edit_message_text(
                     f"Pilih <b>{fac_fdef.label}</b> terlebih dahulu:",
                     reply_markup=keyboard_for_choices(
-                        "faculty",
+                        fac_key,
                         fac_fdef.choices_key,
-                        prefix="ec_fac_for_maj",
+                        prefix=prefix,
                         options=opts,
                     ),
                 )
-                await db.set_onboarding_step(conn, uid, "PICK_EC_FAC_FOR_MAJ")
+                await db.set_onboarding_step(conn, uid, step)
                 return
 
         opts = filtered_choice_items(fdef, profile_u)
@@ -2255,57 +2615,68 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await db.set_onboarding_step(conn, uid, f"PICK_EC:{field_key}")
         return
 
-    if data.startswith("lc_fac_for_maj:"):
+    if data.startswith("lc_fac_for_maj:") or data.startswith("lc_fac_for_smaj:"):
         await q.answer()
         _, _, choice_id = data.split(":", 2)
+        is_staff = data.startswith("lc_fac_for_smaj:")
+        expected_step = "PICK_LC_FAC_FOR_SMAJ" if is_staff else "PICK_LC_FAC_FOR_MAJ"
+        fac_key = "staff_faculty" if is_staff else "faculty"
+        maj_key = "staff_major" if is_staff else "major"
+
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
-        if step != "PICK_LC_FAC_FOR_MAJ":
+        if step != expected_step:
             await q.edit_message_text("Sesi kedaluwarsa. Buka /lengkapi lagi.", reply_markup=None)
             return
             
-        await db.set_profile_partial(conn, uid, {"faculty": choice_id})
-        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == "major"), None)
+        await db.set_profile_partial(conn, uid, {fac_key: choice_id})
+        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == maj_key), None)
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
         opts = filtered_choice_items(maj_fdef, profile_u)
         await q.edit_message_text(
             f"Fakultas disimpan sementara.\nSekarang pilih <b>{maj_fdef.label}</b>:",
             reply_markup=keyboard_for_choices(
-                "major",
+                maj_key,
                 maj_fdef.choices_key,
                 prefix="lc",
                 options=opts,
             ),
         )
-        await db.set_onboarding_step(conn, uid, "PICK_LC:major")
+        await db.set_onboarding_step(conn, uid, f"PICK_LC:{maj_key}")
         return
 
-    if data.startswith("ec_fac_for_maj:"):
+    if data.startswith("ec_fac_for_maj:") or data.startswith("ec_fac_for_smaj:"):
         await q.answer()
         _, _, choice_id = data.split(":", 2)
+        is_staff = data.startswith("ec_fac_for_smaj:")
+        expected_step = "PICK_EC_FAC_FOR_SMAJ" if is_staff else "PICK_EC_FAC_FOR_MAJ"
+        fac_key = "staff_faculty" if is_staff else "faculty"
+        maj_key = "staff_major" if is_staff else "major"
+        temp_key = "temp_ec_sfaculty" if is_staff else "temp_ec_faculty"
+
         step_row = await user_row(conn, db, uid)
         step = (step_row["onboarding_step"] or "") if step_row else ""
-        if step != "PICK_EC_FAC_FOR_MAJ":
+        if step != expected_step:
             await q.edit_message_text("Sesi kedaluwarsa. Buka /ubah lagi.", reply_markup=None)
             return
             
-        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == "major"), None)
+        maj_fdef = next((x for x in PROFILE_FIELDS if x.key == maj_key), None)
         row_u = await user_row(conn, db, uid)
         profile_u = profile_from_row(row_u) if row_u else {}
-        profile_u["faculty"] = choice_id
+        profile_u[fac_key] = choice_id
         opts = filtered_choice_items(maj_fdef, profile_u)
         await q.edit_message_text(
             f"Fakultas dipilih.\nSekarang pilih <b>{maj_fdef.label}</b>:",
             reply_markup=keyboard_for_choices(
-                "major",
+                maj_key,
                 maj_fdef.choices_key,
                 prefix="ec",
                 options=opts,
             ),
         )
-        await db.set_onboarding_step(conn, uid, "PICK_EC:major")
-        context.user_data["temp_ec_faculty"] = choice_id
+        await db.set_onboarding_step(conn, uid, f"PICK_EC:{maj_key}")
+        context.user_data[temp_key] = choice_id
         return
 
     if data.startswith("openet:"):
@@ -2564,7 +2935,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await q.answer()
         
         prof = profile_from_row(step_row) if step_row else {}
-        from bot.handlers.common import normalize_multi_choice_value
         current_ids = sorted(normalize_multi_choice_value(prof.get(field_key)))
         if current_ids == ids_list:
             await q.edit_message_text("Tidak ada perubahan yang diajukan.", reply_markup=None)
@@ -2664,6 +3034,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         prof_before = profile_from_row(step_row) if step_row else {}
         if field_key == "major" and "temp_ec_faculty" in context.user_data:
             prof_before["faculty"] = context.user_data["temp_ec_faculty"]
+        elif field_key == "staff_major" and "temp_ec_sfaculty" in context.user_data:
+            prof_before["staff_faculty"] = context.user_data["temp_ec_sfaculty"]
 
         if fdef and fdef.filter_by_field and not is_choice_allowed_for_profile(
             fdef, prof_before, choice_id
@@ -2676,6 +3048,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         req_dict = {field_key: choice_id}
         if field_key == "major" and "temp_ec_faculty" in context.user_data:
             req_dict["faculty"] = context.user_data.pop("temp_ec_faculty")
+        elif field_key == "staff_major" and "temp_ec_sfaculty" in context.user_data:
+            req_dict["staff_faculty"] = context.user_data.pop("temp_ec_sfaculty")
 
         if field_key == "position_detail":
             pos_id = None
@@ -3105,7 +3479,6 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
         
     lines = [title, ""]
-    from bot.timefmt import format_local_time
     for r in logs:
         dt = format_local_time(r["created_at"])
         amt = r["amount"]
@@ -3264,13 +3637,13 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "<code>/daftar charya</code> — Staf, Admin, Owner\n"
             "<code>/daftar charyarthi</code> — Calon Staf / Pendaftar\n"
             "<code>/daftar pravesi</code> — MABA\n"
+            "<code>/daftar purva</code> — Alumni / Purna Mahasiswa\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
             "<code>/daftar kelompok &lt;nama_kelompok&gt;</code> (Bisa pakai nama kelompok, atau 'belum')\n"
             f"<code>/daftar fakultas &lt;id&gt;</code> — {html.escape(fac_opts)}\n"
             f"<code>/daftar jurusan &lt;id&gt;</code> — {html.escape(maj_opts)}\n"
             f"<code>/daftar kelas &lt;id&gt;</code> — {html.escape(cls_opts)}\n"
-            f"<code>/daftar ukm &lt;id&gt;</code> — {html.escape(ukm_opts)}\n"
-            "<code>/daftar all_staf</code>\n\n"
+            f"<code>/daftar ukm &lt;id&gt;</code> — {html.escape(ukm_opts)}\n\n"
             "<b>Info Data Server (Admin/Owner):</b>\n"
             "<code>/daftar grup</code> — Lihat daftar grup yang diikuti bot\n"
             "<code>/daftar channel</code> — Lihat daftar channel yang diikuti bot\n\n"
@@ -3354,6 +3727,12 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if r["role"] == ROLE_PUBLIC:
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
+    elif kind == "purva":
+        title = "Daftar Purva (Alumni)"
+        for r in all_rows:
+            if r["role"] == ROLE_PURVA:
+                p = json.loads(r["profile_json"] or "{}")
+                push_row(r, p)
     elif kind in ("charyarthi", "calon", "pelamar"):
         title = "Daftar Chāryārthī (Pendaftar Staf)"
         for r in all_rows:
@@ -3370,7 +3749,6 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                     push_row(r, p)
     elif kind == "kelompok" and len(parts) > kind_idx + 1:
         g_name_input = parts[kind_idx + 1].lower()
-        from bot.settings import MABA_GROUP_NAMES
         if g_name_input == "belum":
             title = "Daftar — Belum Dapat Kelompok"
             for r in all_rows:
@@ -3582,11 +3960,12 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ROLE_INTERNAL,
         ROLE_BEM,
         ROLE_STUDENT,
+        ROLE_PURVA,
         ROLE_MABA,
         ROLE_PUBLIC,
     ):
         await update.message.reply_text(
-            "Role tidak dikenal. Gunakan admin, internal, bem, student, maba, atau public."
+            "Role tidak dikenal. Gunakan admin, internal, bem, student, purva, maba, atau public."
         )
         return
     conn = _conn(context)
@@ -3646,7 +4025,6 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 mg = ((m_order - 1) % 4) + 1
                 await db.set_profile_partial(conn, tid, {"maba_group": mg})
             
-            from bot.settings import MABA_GROUP_GIDS, MABA_GROUP_NAMES, KELOMPOK_GID
             link = "(Grup kelompok belum disetel oleh admin)"
             try:
                 if len(MABA_GROUP_GIDS) >= mg:
@@ -3658,8 +4036,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     )
                     link = invite.invite_link
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {tid}: {e}")
+                log.warning("Gagal membuat invite link Maba %s: %s", tid, e)
                 link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
                 
             extra_text = f"\n\nKamu ditempatkan di Kelompok {MABA_GROUP_NAMES.get(mg, mg)}.\nSilakan bergabung ke grup kelompokmu:\n{link}"
@@ -3676,8 +4053,7 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     )
                     await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok admin ke {KELOMPOK_GID}: {e}")
+                    log.warning("Gagal mengirim info kelompok admin ke %s: %s", KELOMPOK_GID, e)
         try:
             await context.bot.send_message(
                 chat_id=tid,
@@ -4148,6 +4524,9 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             elif sub == "pravesi":
                 where_clause = "WHERE u.role = 'maba'"
                 title_suffix = " (Pravesi)"
+            elif sub == "purva":
+                where_clause = "WHERE u.role = 'purva'"
+                title_suffix = " (Purva)"
                 
     limit_clause = "" if is_all else "LIMIT 7"
     
@@ -4539,7 +4918,6 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     prof = profile_from_row(u_row)
     pos = prof.get("position_detail")
     
-    from bot.settings import is_admin_elevated
     is_sekre = "d_sekre" in pos if isinstance(pos, list) else pos == "d_sekre"
     if not (is_admin_elevated(uid) or is_sekre):
         await update.message.reply_text("⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.")
@@ -4711,7 +5089,6 @@ async def _do_kick(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
                 )
             else:
                 await update.effective_message.reply_text(f"✅ Berhasil mengeluarkan <b>{html.escape(target_name)}</b> dari grup.", parse_mode="HTML")
-                from bot.settings import OWNER_ID
                 if OWNER_ID and OWNER_ID != update.effective_user.id:
                     try:
                         await context.bot.send_message(
@@ -5111,6 +5488,7 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     import tempfile
     import os
     
+    zip_path = None
     try:
         cur = await conn.execute("SELECT telegram_id, profile_json, role FROM users")
         rows = await cur.fetchall()
@@ -5146,7 +5524,6 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                         
         if count_photos == 0:
             await msg.edit_text("Tidak ada data foto yang ditemukan.")
-            os.remove(zip_path)
             return
             
         await msg.edit_text(f"Berhasil mengemas {count_photos} foto. Sedang mengirim...")
@@ -5160,11 +5537,16 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             
         await msg.delete()
-        os.remove(zip_path)
         
     except Exception as e:
         log.error(f"Export photos error: {e}")
         await msg.edit_text(f"❌ Terjadi kesalahan saat mengekspor: {e}")
+    finally:
+        if zip_path and os.path.exists(zip_path):
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
 
 
 async def cmd_acc_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -5323,6 +5705,405 @@ async def cmd_setting_charyarthi(update: Update, context: ContextTypes.DEFAULT_T
         "<i>Hanya divisi bertanda ✅ yang akan muncul pada menu pendaftaran pelamar.</i>"
     )
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+
+
+async def _can_manage_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    chat_id = update.effective_chat.id if update.effective_chat else 0
+    uid = update.effective_user.id if update.effective_user else 0
+    if is_admin_elevated(uid):
+        return True
+    if SDM_GID and chat_id == SDM_GID:
+        return True
+    if PETINGGI_GID and chat_id == PETINGGI_GID:
+        return True
+    conn = _conn(context)
+    db = _db(context)
+    u_row = await user_row(conn, db, uid)
+    if u_row:
+        prof = profile_from_row(u_row)
+        jabs = get_user_jabatans(prof)
+        if "d_hrd" in jabs or "d_umum_sdm" in jabs or u_row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+            return True
+    return False
+
+
+def _format_valid_divisions_text() -> str:
+    all_divs = get_charyarthi_divisions()
+    lines = []
+    for did, dlbl in all_divs:
+        clean_alias = did[2:] if did.startswith("d_") else did
+        lines.append(f"• <b>{html.escape(dlbl)}:</b> <code>{clean_alias}</code> <i>(atau <code>{did}</code>)</i>")
+    return "\n".join(lines)
+
+
+async def _render_admin_soal_menu(conn, db) -> tuple[str, InlineKeyboardMarkup]:
+    all_divs = get_charyarthi_divisions()
+    buttons = []
+    row = []
+    for div_id, div_lbl in all_divs:
+        row.append(InlineKeyboardButton(div_lbl, callback_data=f"soal:adm_div:{div_id}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("❌ Tutup Menu", callback_data="soal:adm_close")])
+
+    div_list_text = _format_valid_divisions_text()
+
+    text = (
+        "⚙️ <b>PENGATURAN SOAL TES CHĀRYĀRTHĪ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "Silakan klik tombol divisi di bawah, atau gunakan ID variabel berikut untuk perintah teks cepat:\n\n"
+        f"📌 <b>Daftar ID Variabel Divisi:</b>\n{div_list_text}\n\n"
+        "💡 <b>Panduan Perintah Cepat:</b>\n"
+        "• <code>/soal &lt;id_divisi&gt;</code> — lihat daftar soal divisi\n"
+        "• <code>/setsoal &lt;id_divisi&gt;</code> — input banyak soal sekaligus (bulk paste)\n"
+        "• <code>/tambah_soal &lt;id_divisi&gt; &lt;teks&gt;</code> — tambah 1 soal susulan\n"
+        "• <code>/hapus_soal &lt;id_divisi&gt; &lt;no&gt;</code> — hapus soal nomor tertentu"
+    )
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def _render_admin_division_soal(div_id: str, conn, db) -> tuple[str, InlineKeyboardMarkup]:
+    questions = await db.get_charyarthi_questions(conn, div_id)
+    div_lbl = get_division_label(div_id)
+    clean_alias = div_id[2:] if div_id.startswith("d_") else div_id
+    text = (
+        f"📋 <b>Daftar Soal Tes: {html.escape(div_lbl)}</b>\n"
+        f"🔑 <b>ID Variabel:</b> <code>{clean_alias}</code> <i>(atau <code>{div_id}</code>)</i>\n"
+        f"📊 <b>Total Soal:</b> {len(questions)} Pertanyaan\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+    )
+    if not questions:
+        text += "<i>(Belum ada soal khusus untuk divisi ini. Pelamar tidak akan ditanya tes esai tambahan.)</i>\n"
+    else:
+        for q in questions:
+            text += f"<b>{q['question_order']}.</b> {html.escape(q['question_text'])}\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n<i>Pilih tindakan di bawah ini:</i>"
+
+    buttons = [
+        [InlineKeyboardButton("➕ Tambah 1 Soal", callback_data=f"soal:adm_add:{div_id}")],
+    ]
+    if questions:
+        buttons.append([InlineKeyboardButton("🗑️ Hapus Soal Tertentu", callback_data=f"soal:adm_del_menu:{div_id}")])
+        buttons.append([InlineKeyboardButton("⚠️ Kosongkan Semua Soal", callback_data=f"soal:adm_reset:{div_id}")])
+    buttons.append([InlineKeyboardButton("🔙 Pilih Divisi Lain", callback_data="soal:adm_menu")])
+    buttons.append([InlineKeyboardButton("❌ Tutup", callback_data="soal:adm_close")])
+    return text, InlineKeyboardMarkup(buttons)
+
+
+async def cmd_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _can_manage_soal(update, context):
+        await update.effective_message.reply_text("⛔ Perintah ini hanya dapat diakses oleh Tim SDM, Petinggi, dan Staf Internal.")
+        return
+    conn = _conn(context)
+    db = _db(context)
+    args = context.args or []
+    if args:
+        query = " ".join(args).strip()
+        div_id = resolve_division_id(query)
+        if not div_id:
+            all_divs = get_charyarthi_divisions()
+            valid_ids = ", ".join(f"<code>{did[2:] if did.startswith('d_') else did}</code>" for did, _ in all_divs)
+            await update.effective_message.reply_text(
+                f"❌ Divisi '<code>{html.escape(query)}</code>' tidak ditemukan.\n\n"
+                f"📌 <b>ID yang tersedia:</b> {valid_ids}\nContoh: <code>/soal editor</code>",
+                parse_mode="HTML"
+            )
+            return
+        text_res, kb = await _render_admin_division_soal(div_id, conn, db)
+        await update.effective_message.reply_text(text_res, reply_markup=kb, parse_mode="HTML")
+        return
+
+    text_res, kb = await _render_admin_soal_menu(conn, db)
+    await update.effective_message.reply_text(text_res, reply_markup=kb, parse_mode="HTML")
+
+
+async def cmd_setsoal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _can_manage_soal(update, context):
+        await update.effective_message.reply_text("⛔ Perintah ini hanya dapat diakses oleh Tim SDM, Petinggi, dan Staf Internal.")
+        return
+    raw_text = update.effective_message.text or ""
+    lines = raw_text.strip().split("\n")
+    first_line = lines[0].strip()
+    parts = first_line.split(maxsplit=1)
+    all_divs = get_charyarthi_divisions()
+    valid_ids = ", ".join(f"<code>{did[2:] if did.startswith('d_') else did}</code>" for did, _ in all_divs)
+
+    if len(parts) < 2:
+        help_msg = (
+            "⚠️ <b>Format Input Soal Sekaligus (Bulk Paste):</b>\n\n"
+            "<code>/setsoal &lt;id_divisi&gt;\n"
+            "1. Teks pertanyaan pertama\n"
+            "2. Teks pertanyaan kedua\n"
+            "3. Teks pertanyaan ketiga</code>\n\n"
+            f"📌 <b>ID Divisi yang Tersedia:</b>\n{valid_ids}\n\n"
+            "<i>Contoh:</i>\n"
+            "<code>/setsoal editor\n"
+            "1. Ceritakan portofolio dan pengalaman kepenulisan Anda.\n"
+            "2. Tools apa saja yang Anda kuasai untuk editing?\n"
+            "3. Bagaimana cara Anda mengatasi revisi di saat deadline?</code>"
+        )
+        await update.effective_message.reply_text(help_msg, parse_mode="HTML")
+        return
+
+    div_arg = parts[1].strip()
+    div_id = resolve_division_id(div_arg)
+    if not div_id:
+        await update.effective_message.reply_text(
+            f"❌ Divisi '<code>{html.escape(div_arg)}</code>' tidak ditemukan.\n\n"
+            f"📌 <b>ID yang tersedia:</b> {valid_ids}",
+            parse_mode="HTML"
+        )
+        return
+
+    import re
+    questions = []
+    for line in lines[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = re.match(r"^\s*\d+[\.\)]\s*(.+)$", stripped)
+        if m:
+            questions.append(m.group(1).strip())
+        else:
+            questions.append(stripped)
+
+    if not questions:
+        await update.effective_message.reply_text("❌ Tidak ada teks pertanyaan yang ditemukan di bawah baris perintah.", parse_mode="HTML")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+    await db.set_charyarthi_questions_bulk(conn, div_id, questions)
+    div_lbl = get_division_label(div_id)
+
+    resp = (
+        f"✅ <b>Berhasil Menyimpan {len(questions)} Soal Tes untuk Divisi {html.escape(div_lbl)}!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+    )
+    for idx, q_txt in enumerate(questions, start=1):
+        resp += f"<b>{idx}.</b> {html.escape(q_txt)}\n"
+    resp += "\n<i>Pelamar divisi ini akan otomatis mendapatkan pertanyaan di atas.</i>"
+    await update.effective_message.reply_text(resp, parse_mode="HTML")
+
+
+async def cmd_tambah_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _can_manage_soal(update, context):
+        await update.effective_message.reply_text("⛔ Perintah ini hanya dapat diakses oleh Tim SDM, Petinggi, dan Staf Internal.")
+        return
+    args = context.args or []
+    all_divs = get_charyarthi_divisions()
+    valid_ids = ", ".join(f"<code>{did[2:] if did.startswith('d_') else did}</code>" for did, _ in all_divs)
+
+    if len(args) < 2:
+        await update.effective_message.reply_text(
+            "⚠️ <b>Format:</b> <code>/tambah_soal &lt;id_divisi&gt; &lt;teks pertanyaan&gt;</code>\n\n"
+            f"📌 <b>ID Divisi yang Tersedia:</b>\n{valid_ids}\n\n"
+            "<b>Contoh:</b>\n"
+            "• <code>/tambah_soal editor Apa motivasimu melamar di divisi ini?</code>\n"
+            "• <code>/tambah_soal hrd Ceritakan pengalamanmu mengelola tim.</code>",
+            parse_mode="HTML"
+        )
+        return
+    div_arg = args[0]
+    div_id = resolve_division_id(div_arg)
+    if not div_id:
+        await update.effective_message.reply_text(
+            f"❌ Divisi '<code>{html.escape(div_arg)}</code>' tidak ditemukan.\n\n"
+            f"📌 <b>Pilihan ID yang valid:</b> {valid_ids}",
+            parse_mode="HTML"
+        )
+        return
+    q_text = " ".join(args[1:]).strip()
+    conn = _conn(context)
+    db = _db(context)
+    await db.add_charyarthi_question(conn, div_id, q_text)
+    div_lbl = get_division_label(div_id)
+    clean_alias = div_id[2:] if div_id.startswith("d_") else div_id
+    await update.effective_message.reply_text(
+        f"✅ Berhasil menambahkan soal baru untuk divisi <b>{html.escape(div_lbl)}</b>!\n\n"
+        f"Ketik <code>/soal {clean_alias}</code> untuk memeriksa.",
+        parse_mode="HTML"
+    )
+
+
+async def cmd_hapus_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _can_manage_soal(update, context):
+        await update.effective_message.reply_text("⛔ Perintah ini hanya dapat diakses oleh Tim SDM, Petinggi, dan Staf Internal.")
+        return
+    args = context.args or []
+    all_divs = get_charyarthi_divisions()
+    valid_ids = ", ".join(f"<code>{did[2:] if did.startswith('d_') else did}</code>" for did, _ in all_divs)
+
+    if len(args) < 2:
+        await update.effective_message.reply_text(
+            "⚠️ <b>Format:</b> <code>/hapus_soal &lt;id_divisi&gt; &lt;nomor soal&gt;</code>\n\n"
+            f"📌 <b>ID Divisi yang Tersedia:</b>\n{valid_ids}\n\n"
+            "Contoh: <code>/hapus_soal editor 2</code>",
+            parse_mode="HTML"
+        )
+        return
+    div_arg = args[0]
+    div_id = resolve_division_id(div_arg)
+    if not div_id:
+        await update.effective_message.reply_text(
+            f"❌ Divisi '<code>{html.escape(div_arg)}</code>' tidak ditemukan.\n\n"
+            f"📌 <b>Pilihan ID yang valid:</b> {valid_ids}",
+            parse_mode="HTML"
+        )
+        return
+    try:
+        order_num = int(args[1])
+    except ValueError:
+        await update.effective_message.reply_text("❌ Nomor soal harus berupa angka.")
+        return
+    conn = _conn(context)
+    db = _db(context)
+    questions = await db.get_charyarthi_questions(conn, div_id)
+    target_q = next((q for q in questions if q["question_order"] == order_num), None)
+    if not target_q:
+        await update.effective_message.reply_text(f"❌ Soal nomor {order_num} tidak ditemukan untuk divisi ini.")
+        return
+    await db.delete_charyarthi_question(conn, target_q["id"])
+    div_lbl = get_division_label(div_id)
+    await update.effective_message.reply_text(f"✅ Soal nomor {order_num} untuk divisi <b>{html.escape(div_lbl)}</b> berhasil dihapus!", parse_mode="HTML")
+
+
+async def cmd_reset_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _can_manage_soal(update, context):
+        await update.effective_message.reply_text("⛔ Perintah ini hanya dapat diakses oleh Tim SDM, Petinggi, dan Staf Internal.")
+        return
+    args = context.args or []
+    all_divs = get_charyarthi_divisions()
+    valid_ids = ", ".join(f"<code>{did[2:] if did.startswith('d_') else did}</code>" for did, _ in all_divs)
+
+    if not args:
+        await update.effective_message.reply_text(
+            "⚠️ <b>Format:</b> <code>/reset_soal &lt;id_divisi&gt;</code>\n\n"
+            f"📌 <b>ID Divisi yang Tersedia:</b>\n{valid_ids}",
+            parse_mode="HTML"
+        )
+        return
+    div_arg = args[0]
+    div_id = resolve_division_id(div_arg)
+    if not div_id:
+        await update.effective_message.reply_text(
+            f"❌ Divisi '<code>{html.escape(div_arg)}</code>' tidak ditemukan.\n\n"
+            f"📌 <b>Pilihan ID yang valid:</b> {valid_ids}",
+            parse_mode="HTML"
+        )
+        return
+    conn = _conn(context)
+    db = _db(context)
+    await db.clear_charyarthi_questions(conn, div_id)
+    div_lbl = get_division_label(div_id)
+    await update.effective_message.reply_text(f"🗑️ Seluruh soal untuk divisi <b>{html.escape(div_lbl)}</b> telah dikosongkan.", parse_mode="HTML")
+
+
+async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("⛔ Perintah ini khusus Owner.")
+        return
+
+    raw_text = (update.message.text or update.message.caption or "").strip()
+    parts = raw_text.split(maxsplit=2)
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "⚠️ <b>Format Penggunaan:</b>\n"
+            "<code>/chat &lt;@username|ID&gt; &lt;pesan&gt;</code>\n\n"
+            "<b>Contoh:</b>\n"
+            "• <code>/chat @username Halo apa kabar</code>\n"
+            "• <code>/chat 123456789 Halo</code>\n"
+            "• Kirim Foto/Media dengan caption: <code>/chat @username [pesan]</code>\n"
+            "• Reply pesan/media apa pun dengan: <code>/chat @username [pesan]</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    target_query = parts[1].strip()
+    extra_text = parts[2].strip() if len(parts) >= 3 else ""
+
+    reply_msg = update.message.reply_to_message
+    has_direct_media = bool(
+        update.message.photo
+        or update.message.video
+        or update.message.document
+        or update.message.audio
+        or update.message.voice
+        or update.message.animation
+        or update.message.sticker
+        or update.message.video_note
+    )
+    has_reply_content = bool(
+        reply_msg
+        and (
+            reply_msg.text
+            or reply_msg.photo
+            or reply_msg.video
+            or reply_msg.document
+            or reply_msg.audio
+            or reply_msg.voice
+            or reply_msg.animation
+            or reply_msg.sticker
+            or reply_msg.video_note
+        )
+    )
+
+    if not extra_text and not has_direct_media and not has_reply_content:
+        await update.message.reply_text("⚠️ Isi pesan tidak boleh kosong. Sertakan teks atau lampirkan media.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+
+    target_id, target_desc = await resolve_target_user(conn, db, target_query)
+    if not target_id:
+        await update.message.reply_text(
+            f"❌ Target <code>{html.escape(target_query)}</code> tidak ditemukan di database maupun Telegram.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await send_message_or_media_to_target(
+            bot=context.bot,
+            target_id=target_id,
+            message=update.message,
+            text_or_caption=extra_text,
+            source_message=reply_msg,
+        )
+        await update.message.reply_text(
+            f"✅ Pesan berhasil dikirim ke <b>{html.escape(target_desc)}</b>.",
+            parse_mode="HTML",
+        )
+    except Forbidden:
+        await update.message.reply_text(
+            f"❌ Gagal: Bot diblokir oleh user <b>{html.escape(target_desc)}</b>.",
+            parse_mode="HTML",
+        )
+    except BadRequest as e:
+        err_msg = str(e).lower()
+        if "chat not found" in err_msg or "bot can't initiate conversation" in err_msg:
+            await update.message.reply_text(
+                f"❌ Gagal: User <b>{html.escape(target_desc)}</b> belum pernah memulai (<code>/start</code>) chat dengan bot ini.",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Gagal mengirim ke <b>{html.escape(target_desc)}</b>: {html.escape(str(e))}",
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Gagal mengirim pesan: {html.escape(str(e))}",
+            parse_mode="HTML",
+        )
+
 
 
 

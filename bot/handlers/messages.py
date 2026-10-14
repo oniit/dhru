@@ -1,21 +1,38 @@
 from __future__ import annotations
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import ContextTypes
 import json
 import asyncio
 import time
 import re
+import html
+import logging
 
-from bot.settings import PROFILE_FIELDS, PETINGGI_GID, MABA_GROUP_NAMES, MABA_GROUP_GIDS
+log = logging.getLogger(__name__)
+
+from bot.settings import (
+    PROFILE_FIELDS,
+    PETINGGI_GID,
+    MABA_GROUP_NAMES,
+    MABA_GROUP_GIDS,
+    MABA_CH_IDS,
+    is_admin_elevated,
+)
 
 from .common import (
+    award_lengkapi_agra,
+    build_maba_verification_text,
     can_approve_profile,
     can_report,
     field_label_for_key,
+    get_active_charyarthi_divisions,
     missing_required_fields,
     profile_from_row,
     user_row,
+    resolve_target_user,
+    send_message_or_media_to_target,
+    render_charyarthi_quiz_view,
 )
 from .kartu import STEP_KARTU_PHOTO, on_foto
 
@@ -85,6 +102,10 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = raw_text.strip()
     
     if not step:
+        # Abaikan hanya /chat agar pesan owner tidak bocor ke grup petinggi
+        if text.lower().startswith("/chat"):
+            return
+
         is_trigger = False
         try:
             from .triggers import check_and_execute_trigger
@@ -94,7 +115,6 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
         if not is_trigger and PETINGGI_GID:
             try:
-                import html
                 u = update.effective_user
                 first_name_esc = html.escape(u.first_name or "User")
                 
@@ -141,8 +161,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 if row["role"] == "public":
                     await update.message.reply_text("Pesan Anda telah diteruskan ke tim kami.")
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Gagal meneruskan pesan ke PETINGGI_GID ({PETINGGI_GID}): {e}")
+                log.warning(f"Gagal meneruskan pesan ke PETINGGI_GID ({PETINGGI_GID}): {e}")
         return
         
     if step.startswith("REMPAH_SETOR:"):
@@ -198,21 +217,15 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         profile_before = profile_from_row(row)
         await db.set_profile_partial(conn, uid, {"full_name": name})
         
-        from bot.handlers.common import award_lengkapi_agra
         await award_lengkapi_agra(conn, db, uid, "full_name", profile_before, context, update.message.chat_id)
         
-        import html as html_module
         await db.set_onboarding_step(conn, uid, "MABA_REASON")
-        await update.message.reply_text(f"Terima kasih, {html_module.escape(name)}. Selanjutnya, ketikkan <b>Alasan Bergabung</b> Anda:", parse_mode="HTML")
+        await update.message.reply_text(f"Terima kasih, {html.escape(name)}. Selanjutnya, ketikkan <b>Alasan Bergabung</b> Anda:", parse_mode="HTML")
         return
         
     if step == "MABA_REASON":
         reason = text
         await db.set_profile_partial(conn, uid, {"join_reason": reason})
-        
-        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-        from bot.settings import MABA_CH_IDS
-        from bot.handlers.common import build_maba_verification_text
         
         if MABA_CH_IDS:
             text_verify, _ = await build_maba_verification_text(context, uid)
@@ -239,11 +252,21 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if step == "CHARYARTHI_NAME":
         name = text.title()
         await db.set_profile_partial(conn, uid, {"full_name": name})
-        await db.set_onboarding_step(conn, uid, None)
+        await db.set_onboarding_step(conn, uid, "CHARYARTHI_REASON")
+        
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")]])
+        await update.message.reply_text(
+            f"Terima kasih, <b>{html.escape(name)}</b>.\n\n"
+            "Selanjutnya, silakan ketikkan <b>Alasan Anda Mendaftar Menjadi Staf</b>:",
+            reply_markup=cancel_kb,
+            parse_mode="HTML"
+        )
+        return
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        from bot.handlers.common import get_active_charyarthi_divisions
-        import html as html_module
+    if step == "CHARYARTHI_REASON":
+        reason = text
+        await db.set_profile_partial(conn, uid, {"charyarthi_reason": reason})
+        await db.set_onboarding_step(conn, uid, None)
 
         divisions = await get_active_charyarthi_divisions(db, conn)
         if not divisions:
@@ -261,11 +284,43 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             buttons.append(row_btn)
         buttons.append([InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")])
 
+        user_r = await user_row(conn, db, uid)
+        prof = profile_from_row(user_r) if user_r else {}
+        name = prof.get("full_name", "Tanpa Nama")
+
         await update.message.reply_text(
-            f"Terima kasih, <b>{html_module.escape(name)}</b>.\n\n"
-            "Silakan pilih <b>Divisi Utama (Pilihan 1)</b> yang ingin Anda lamar:",
+            f"Alasan diterima.\n\n"
+            "Silakan pilih <b>Divisi</b> yang ingin Anda lamar:",
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="HTML",
+        )
+        return
+
+    if step.startswith("CHARYARTHI_ANS:"):
+        parts = step.split(":", 2)
+        if len(parts) == 3:
+            div_id = parts[1]
+            qid = int(parts[2])
+            await db.save_charyarthi_answer(conn, uid, div_id, qid, text)
+            await db.set_onboarding_step(conn, uid, None)
+
+            q = await db.get_charyarthi_question_by_id(conn, qid)
+            q_order = q["question_order"] if q else ""
+            await update.message.reply_text(f"✅ <i>Jawaban Soal {q_order} berhasil disimpan!</i>", parse_mode="HTML")
+            dash_text, dash_kb = await render_charyarthi_quiz_view(uid, div_id, conn, db)
+            await update.message.reply_text(dash_text, reply_markup=dash_kb, parse_mode="HTML")
+        return
+
+    if step.startswith("INPUT_SOAL_ADD:"):
+        div_id = step.split(":", 1)[1]
+        await db.add_charyarthi_question(conn, div_id, text)
+        await db.set_onboarding_step(conn, uid, None)
+        from bot.settings import get_division_label
+        div_lbl = get_division_label(div_id)
+        await update.message.reply_text(
+            f"✅ <b>Soal baru berhasil ditambahkan untuk divisi {html.escape(div_lbl)}!</b>\n\n"
+            f"Ketik /soal {div_id} untuk melihat daftar soal lengkap.",
+            parse_mode="HTML"
         )
         return
 
@@ -379,8 +434,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         )
                         await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
                     except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
+                        log.warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
                 
                 if _is_lengkapi_done(prof_u):
                     link = "(Grup kelompok belum disetel oleh admin)"
@@ -394,8 +448,7 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                             )
                             link = invite.invite_link
                     except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).warning(f"Gagal membuat invite link Maba {uid}: {e}")
+                        log.warning(f"Gagal membuat invite link Maba {uid}: {e}")
                         link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
                     await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
                 else:
@@ -478,7 +531,6 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await db.set_profile_partial(conn, uid, {field_key: text})
         await _mark_lengkapi_done_if_complete(conn, db, uid)
         
-        from .common import award_lengkapi_agra
         await award_lengkapi_agra(conn, db, uid, field_key, profile, context, update.message.chat_id)
         
         await db.set_onboarding_step(conn, uid, None)
@@ -551,7 +603,6 @@ async def track_group_activity(
     db = _db(context)
     u = update.effective_user
     try:
-        import time
         now = time.time()
         cache = context.bot_data.setdefault("group_activity_cache", {})
         cache_key = (u.id, update.effective_chat.id)
@@ -584,8 +635,7 @@ async def track_group_activity(
                 chat_id=update.effective_chat.id
             )
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error in track_group_activity: {e}")
+        log.error(f"Error in track_group_activity: {e}")
 
 async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -614,7 +664,6 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except ImportError:
         pass
         
-    from bot.settings import is_admin_elevated
     is_authorized = False
     if PETINGGI_GID and update.effective_chat.id == PETINGGI_GID:
         is_authorized = True
@@ -643,42 +692,74 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     # If they DID use #balas, validate everything and give errors if it fails
     reply = update.message.reply_to_message
-    if not reply:
-        await update.message.reply_text("⚠️ Anda harus me-reply pesan (yang diforward dari user) untuk menggunakan #balas.")
-        return
-        
-    if not reply.from_user or reply.from_user.id != context.bot.id:
-        await update.message.reply_text("⚠️ Anda harus me-reply pesan yang dikirim oleh bot ini.")
-        return
-        
-    bot_text = reply.text or reply.caption or ""
-    matches = re.findall(r"#ID_(\d+)", bot_text)
-    if not matches:
+    raw_balas = reply_match.group(1).strip()
+    
+    target_id = None
+    target_desc = ""
+    reply_text = raw_balas
+    
+    # 1. Cek jika mereply pesan bot yang memiliki #ID_...
+    if reply and reply.from_user and reply.from_user.id == context.bot.id:
+        bot_text = reply.text or reply.caption or ""
+        matches = re.findall(r"#ID_(\d+)", bot_text)
+        if matches:
+            target_id = int(matches[0])
+            target_desc = f"user #{target_id}"
+
+    # 2. Cek jika target diberikan secara eksplisit: #balas @username <pesan> atau #balas <ID> <pesan>
+    if not target_id and raw_balas:
+        parts = raw_balas.split(maxsplit=1)
+        potential_target = parts[0]
+        if potential_target.startswith("@") or potential_target.isdigit():
+            conn = _conn(context)
+            db = _db(context)
+            resolved_id, resolved_desc = await resolve_target_user(conn, db, potential_target)
+            if resolved_id:
+                target_id = resolved_id
+                target_desc = resolved_desc
+                reply_text = parts[1].strip() if len(parts) > 1 else ""
+
+    if not target_id:
+        if not reply:
+            await update.message.reply_text(
+                "⚠️ Anda harus me-reply pesan (yang diforward dari user) untuk menggunakan #balas,\n"
+                "atau sertakan target: #balas @username <pesan> / #balas <ID> <pesan>"
+            )
+            return
+            
+        if not reply.from_user or reply.from_user.id != context.bot.id:
+            await update.message.reply_text("⚠️ Anda harus me-reply pesan yang dikirim oleh bot ini.")
+            return
+            
         await update.message.reply_text("⚠️ Gagal: Tidak dapat menemukan #ID_ user pada pesan yang direply. Pastikan pesan tersebut memiliki format ID.")
         return
         
-    target_id = int(matches[0])
-    reply_text = reply_match.group(1).strip()
-    
-    if not reply_text and update.message.text:
+    has_media = bool(
+        update.message.photo
+        or update.message.video
+        or update.message.document
+        or update.message.audio
+        or update.message.voice
+        or update.message.animation
+        or update.message.sticker
+        or update.message.video_note
+    )
+    if not reply_text and not has_media:
         await update.message.reply_text("⚠️ Isi balasan tidak boleh kosong atau sertakan media. Gunakan format: #balas <pesan>")
         return
         
     try:
-        if update.message.text:
-            # Use parse_mode=None to prevent HTML parsing crashes if admin types < or >
-            await context.bot.send_message(chat_id=target_id, text=reply_text, parse_mode=None)
-        else:
-            await update.message.copy(
-                chat_id=target_id,
-                caption=reply_text,
-                parse_mode=None
-            )
-        await update.message.reply_text("✅ Balasan berhasil dikirim ke user.")
+        await send_message_or_media_to_target(
+            bot=context.bot,
+            target_id=target_id,
+            message=update.message,
+            text_or_caption=reply_text,
+            source_message=None,
+        )
+        await update.message.reply_text(f"✅ Balasan berhasil dikirim ke {target_desc or f'user #{target_id}'}.")
     except Exception as e:
         await update.message.reply_text(f"Gagal mengirim balasan: {e}")
 
-from telegram import ChatMember
 async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.my_chat_member:
         return
@@ -717,18 +798,20 @@ async def global_profile_tracker(update: Update, context: ContextTypes.DEFAULT_T
     if cache.get(u.id) == current_info:
         return  # No changes detected, skip hitting the database entirely
         
-    cache[u.id] = current_info
-        
     conn = _conn(context)
     db = _db(context)
     
-    await db.sync_user_basic_info(
-        conn,
-        telegram_id=u.id,
-        username=u.username,
-        first_name=u.first_name,
-        last_name=u.last_name
-    )
+    try:
+        await db.sync_user_basic_info(
+            conn,
+            telegram_id=u.id,
+            username=u.username,
+            first_name=u.first_name,
+            last_name=u.last_name
+        )
+        cache[u.id] = current_info
+    except Exception as e:
+        log.warning("Gagal sync user basic info (telegram_id=%s): %s", u.id, e)
 
 async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.chat_member:
@@ -757,7 +840,6 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user = new_member.user
             
             # Replace placeholder if any
-            import html
             first_name_esc = html.escape(user.first_name or "")
             greeting = greeting.replace("{name}", first_name_esc)
             if "{username}" in greeting:
@@ -771,8 +853,7 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     parse_mode="HTML"
                 )
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).error("Failed to send greeting message in chat %s: %s", chat.id, e)
+                log.error("Failed to send greeting message in chat %s: %s", chat.id, e)
 
 async def on_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.chat_join_request:

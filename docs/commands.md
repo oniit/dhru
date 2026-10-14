@@ -10,7 +10,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
 
 ## Akademik & Kelas
-- `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu.
+- `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu (sesi manual otomatis ditutup oleh background job setelah 2 jam).
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 
 ## Sosial & Gamifikasi (Agra)
@@ -25,6 +25,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
+- `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
 - `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
@@ -35,11 +36,16 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
 - `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
 - `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
-- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `publik`).
+- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purva`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm).
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
 - `/acc_charyarthi <user_id> [1|2]` — (Owner/Admin) Menerima pelamar Chāryārthī menjadi staf internal pada divisi pilihan 1 atau 2, dan mengirimkan notifikasi instruksi tanda tangan `/kontrak`.
 - `/reject_charyarthi <user_id>` — (Owner/Admin) Menolak pelamar Chāryārthī, me-rollback role ke `public`, dan mengirimkan pesan apresiasi sopan.
 - `/setting_charyarthi` — (Owner/Admin) Menu interaktif tombol toggle (✅/❌) saklar pendaftaran Chāryārthī master switch dan per divisi yang dibuka.
+- `/soal [divisi]` / `/soal_divisi` — (Owner/Admin/SDM/Staf Internal) Menu interaktif pemilihan divisi dan pengelolaan soal tes studi kasus calon staf Chāryārthī. ID divisi yang tersedia: `dekan`, `guru_besar`, `dosen`, `coach`, `pembina`, `editor`, `hrd`, `sarpras`, `mpps`, `pfp`, `pr`.
+- `/setsoal <divisi>\n1. Soal 1\n2. Soal 2...` — (Owner/Admin/SDM/Staf Internal) Mengatur seluruh daftar soal divisi sekaligus secara cepat via copy-paste.
+- `/tambah_soal <divisi> <pertanyaan>` — (Owner/Admin/SDM/Staf Internal) Menambahkan 1 soal baru pada urutan terakhir divisi.
+- `/hapus_soal <divisi> <no_soal>` — (Owner/Admin/SDM/Staf Internal) Menghapus soal pada nomor urut tertentu dan mengurutkan ulang sisanya.
+- `/reset_soal <divisi>` — (Owner/Admin/SDM/Staf Internal) Mengosongkan seluruh soal tes untuk divisi tersebut.
 - `/broadcast` — Mengirimkan pesan siaran ke semua saluran, bot _chats_, atau anggota fakultas tertentu.
 - `/trigger` — Memanajemen daftar _auto-reply_ khusus berbasis kata kunci.
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.
@@ -50,6 +56,13 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Ekstra
 - `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTS/KIC) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.
+- `/kontrak` — Manajemen kontrak kerja staf internal:
+  - `/kontrak saya` — Meninjau draf (staf baru) atau melihat kontrak kerja aktif staf.
+  - `/kontrak ttd` — Mengunggah foto tanda tangan digital baru.
+  - `/kontrak sahkan` — Mengesahkan dan menerbitkan draf kontrak kerja staf baru.
+  - `/kontrak renew` — Memperbarui kontrak kerja untuk periode berikutnya (tersedia mulai H-7 sebelum masa kontrak berakhir atau jika telah kedaluwarsa).
+  - `/kontrak all` — (Admin/Owner) Menampilkan daftar semua staf internal beserta status kontrak, nomor ID, termin ke-N, dan tanggal bergabung.
+  - `/kontrak check <@username/id>` — (Admin/Owner) Melihat gambar kontrak dan rincian teks riwayat lengkap penandatanganan kontrak staf.
 
 ## Mini Games
 - `/settings_game` — (Owner/Admin Grup) Membuka menu interaktif untuk mengaktifkan/menonaktifkan game tertentu di grup ini. Game yang dinonaktifkan tidak dapat dimainkan.
@@ -71,3 +84,10 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
 - `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.
 - `/hasil <game_name>` — Menampilkan skor akhir dari sesi game terakhir jika tertinggal.
+
+## Promosi & Verifikasi
+- `/lpm <link>` — Mengirimkan link pesan promosi di grup publik untuk divalidasi sistem (memberikan reward +1 Agra jika valid).
+- `/story <link>` — Mengirimkan link bukti repost Story Telegram untuk divalidasi.
+- `/link_kerja` — Menghasilkan kode OTP untuk menautkan akun cadangan (Akun Kerja) ke akun utama.
+- `/cek_akun_kerja` — Melihat daftar akun kerja yang tertaut ke akun utama.
+- `/promo` — (Owner) Membuka menu konfigurasi syarat kata kunci LPM dan link postingan Story.

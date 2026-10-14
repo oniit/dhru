@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import html
 import urllib.parse
 from typing import TYPE_CHECKING
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Message
 from telegram.ext import ContextTypes
 
 from bot.database import (
@@ -16,6 +17,7 @@ from bot.database import (
     ROLE_BEM,
     ROLE_MABA,
     ROLE_CHARYARTHI,
+    ROLE_PURVA,
 )
 from bot.settings import (
     CHOICES,
@@ -46,6 +48,7 @@ def role_display(role: str) -> str:
         ROLE_STUDENT: "Shishya",
         ROLE_MABA: "Pravesi",
         ROLE_CHARYARTHI: "Chāryārthī",
+        ROLE_PURVA: "Purvashishya",
     }.get(role, role)
 
 
@@ -156,7 +159,13 @@ def classes_for_staff_faculty(faculty_id: str) -> list[str]:
 def get_user_jabatans(profile: dict | None) -> list[str]:
     if not profile:
         return []
-    return normalize_multi_choice_value(profile.get("position_detail"))
+    jabs = list(normalize_multi_choice_value(profile.get("position_detail")))
+    bem_pos = profile.get("bem_position")
+    if bem_pos:
+        for b in normalize_multi_choice_value(bem_pos):
+            if b not in jabs:
+                jabs.append(b)
+    return jabs
 
 
 def is_dekan_profile(profile: dict | None) -> bool:
@@ -206,6 +215,14 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
     ids = []
     if "d_dosen" in jabs or "d_guru_besar" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("teaching_classes")))
+        if "d_dosen" in jabs:
+            s_major = (profile.get("staff_major") or "").strip()
+            if s_major:
+                for item in CHOICES.get("classes", []):
+                    if item.get("majors") == s_major:
+                        cid = str(item.get("id") or "")
+                        if cid:
+                            ids.append(cid)
     if "d_coach" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("club_enrolled")))
     if "p_panitia_ospek" in jabs:
@@ -321,7 +338,7 @@ def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
             elif key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM):
                 out.append(key)
         else:
-            if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM):
+            if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM, ROLE_PURVA):
                 continue
             if key == "position" and role not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
                 continue
@@ -457,6 +474,10 @@ def format_profile_card(
                     return choice_label("positions", highest_pos)
                 return "—"
             return choice_label("positions", raw)
+
+        if key == "teaching_classes":
+            cids = lecturer_class_ids(profile)
+            return multi_choice_labels("classes", cids) if cids else "—"
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)
         if not fdef:
@@ -637,4 +658,186 @@ async def get_active_charyarthi_divisions(db, conn) -> list[tuple[str, str]]:
         if val == "1":
             active_divs.append((div_id, div_lbl))
     return active_divs
+
+
+async def resolve_target_user(
+    conn: aiosqlite.Connection,
+    db: Database,
+    target_arg: str,
+) -> tuple[int | None, str]:
+    """
+    Resolve target user dari string argumen (bisa numeric Telegram ID, @username, atau username tanpa @).
+    Mencari dari:
+    1. Numeric ID langsung
+    2. Tabel users
+    3. Tabel group_seen_users
+    4. IPC Userbot (userbot_requests) jika belum ditemukan
+    
+    Mengembalikan tuple (target_id, display_name).
+    """
+    target_arg = target_arg.strip()
+    if not target_arg:
+        return None, ""
+
+    # 1. Numeric ID
+    if target_arg.isdigit() or (target_arg.startswith("-") and target_arg[1:].isdigit()):
+        tid = int(target_arg)
+        u = await db.get_user(conn, tid)
+        if u:
+            un = f"@{u['username']}" if u.get("username") else f"ID {tid}"
+            name = u.get("first_name") or un
+            return tid, f"{name} ({un})"
+        return tid, f"ID {tid}"
+
+    # 2. Username
+    clean_un = target_arg.lstrip("@").lower()
+    
+    # 2a. Tabel users
+    u = await db.get_user_by_username_or_id(conn, f"@{clean_un}")
+    if not u:
+        cur = await conn.execute("SELECT * FROM users WHERE lower(username) = ?", (clean_un,))
+        u = await cur.fetchone()
+        
+    if u:
+        name = u.get("first_name") or f"@{u.get('username', clean_un)}"
+        return u["telegram_id"], f"{name} (@{u.get('username', clean_un)})"
+
+    # 2b. Tabel group_seen_users
+    try:
+        cur = await conn.execute(
+            "SELECT telegram_id, first_name, username FROM group_seen_users WHERE lower(username) = ? LIMIT 1",
+            (clean_un,)
+        )
+        seen_row = await cur.fetchone()
+        if seen_row:
+            name = seen_row.get("first_name") or f"@{clean_un}"
+            return seen_row["telegram_id"], f"{name} (@{clean_un})"
+    except Exception:
+        pass
+
+    # 2c. Fallback IPC Userbot
+    try:
+        req_id = await db.create_userbot_request(conn, "0", f"RESOLVE:{clean_un}")
+        for _ in range(10):  # Tunggu maksimal 5 detik
+            await asyncio.sleep(0.5)
+            req_row = await db.get_userbot_request(conn, req_id)
+            if req_row and req_row["status"] == "DONE":
+                res_dict = json.loads(req_row["result"])
+                if clean_un in res_dict:
+                    resolved_id = int(res_dict[clean_un])
+                    return resolved_id, f"@{clean_un} (ID {resolved_id})"
+                break
+            elif req_row and req_row["status"] == "ERROR":
+                break
+    except Exception as e:
+        import logging
+        logging.getLogger("bot").warning("Gagal query IPC userbot saat resolve: %s", e)
+
+    return None, target_arg
+
+
+async def send_message_or_media_to_target(
+    bot,
+    target_id: int,
+    message: Message,
+    text_or_caption: str = "",
+    source_message: Message = None,
+) -> bool:
+    """
+    Kirim teks atau media (foto/video/dokumen/audio/voice/stiker/video note) ke target_id secara polos.
+    Jika source_message ada (pesan yang direply), salin source_message tersebut.
+    Jika tidak, gunakan message itu sendiri.
+    """
+    msg_to_copy = source_message if source_message else message
+    
+    # Periksa apakah ada media di msg_to_copy
+    has_media = bool(
+        msg_to_copy.photo
+        or msg_to_copy.video
+        or msg_to_copy.document
+        or msg_to_copy.audio
+        or msg_to_copy.voice
+        or msg_to_copy.animation
+        or msg_to_copy.sticker
+        or msg_to_copy.video_note
+    )
+    
+    if not has_media:
+        # Teks murni
+        if source_message:
+            text_to_send = text_or_caption if text_or_caption else (source_message.text or "")
+        else:
+            text_to_send = text_or_caption
+        if text_to_send:
+            await bot.send_message(chat_id=target_id, text=text_to_send, parse_mode=None)
+        return True
+
+    # Jika media adalah stiker atau video_note (tidak mendukung caption di Telegram)
+    if msg_to_copy.sticker or msg_to_copy.video_note:
+        await msg_to_copy.copy(chat_id=target_id)
+        if text_or_caption:
+            await bot.send_message(chat_id=target_id, text=text_or_caption, parse_mode=None)
+        return True
+
+    # Jika media mendukung caption (photo, video, doc, audio, voice, animation)
+    if source_message:
+        caption_to_send = text_or_caption if text_or_caption else (source_message.caption or "")
+    else:
+        caption_to_send = text_or_caption if text_or_caption else ""
+
+    await msg_to_copy.copy(chat_id=target_id, caption=caption_to_send, parse_mode=None)
+    return True
+
+
+async def render_charyarthi_quiz_view(uid: int, div_id: str, conn, db) -> tuple[str, InlineKeyboardMarkup]:
+    from bot.settings import get_division_label
+    questions = await db.get_charyarthi_questions(conn, div_id)
+    answers = await db.get_charyarthi_answers(conn, uid, div_id)
+    div_lbl = get_division_label(div_id)
+    total_q = len(questions)
+    answered_count = sum(1 for q in questions if q["id"] in answers and answers[q["id"]].strip())
+
+    text = (
+        f"🏛 <b>Tes Khusus Divisi: {html.escape(div_lbl)}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "Silakan jawab pertanyaan studi kasus/esai di bawah ini dengan nyaman.\n"
+        "💡 <i>Anda bebas memilih urutan nomor, jawaban otomatis tersimpan, dan dapat diedit kapan saja sebelum submit.</i>\n\n"
+        f"📊 <b>Progres:</b> {answered_count}/{total_q} Soal Terisi\n\n"
+    )
+    for q in questions:
+        qid = q["id"]
+        q_order = q["question_order"]
+        q_text = q["question_text"]
+        short_q = q_text if len(q_text) <= 45 else q_text[:42] + "..."
+        is_done = qid in answers and answers[qid].strip()
+        status_icon = "✅" if is_done else "⏳"
+        text += f"<b>{q_order}.</b> {html.escape(short_q)} [{status_icon}]\n"
+
+    text += "\n━━━━━━━━━━━━━━━━━━━\n<i>Klik nomor soal di bawah untuk mulai menjawab atau mengubah:</i>"
+
+    buttons = []
+    row = []
+    for q in questions:
+        qid = q["id"]
+        q_order = q["question_order"]
+        is_done = qid in answers and answers[qid].strip()
+        mark = "✅ " if is_done else "✏️ "
+        row.append(InlineKeyboardButton(f"{mark}Soal {q_order}", callback_data=f"charyarthi:ans_q:{div_id}:{qid}"))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    if answered_count > 0:
+        buttons.append([InlineKeyboardButton("👁 Pratinjau Semua Jawaban", callback_data=f"charyarthi:preview:{div_id}")])
+
+    if answered_count == total_q and total_q > 0:
+        buttons.append([InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")])
+    else:
+        buttons.append([InlineKeyboardButton(f"⏳ Belum Lengkap ({answered_count}/{total_q})", callback_data="charyarthi:not_ready")])
+
+    buttons.append([InlineKeyboardButton("❌ Batal Pendaftaran", callback_data="charyarthi:cancel")])
+    return text, InlineKeyboardMarkup(buttons)
+
 

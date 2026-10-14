@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, MessageReactionHandler, filters
 
@@ -52,6 +54,13 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("reload", commands.cmd_reload))
     application.add_handler(CommandHandler("pull", commands.cmd_pull))
     application.add_handler(CommandHandler("export_photos", commands.cmd_export_photos))
+    application.add_handler(
+        MessageHandler(
+            filters.Regex(re.compile(r"^/chat(?:@\w+)?(?:\s|$)", re.IGNORECASE))
+            | filters.CaptionRegex(re.compile(r"^/chat(?:@\w+)?(?:\s|$)", re.IGNORECASE)),
+            commands.cmd_chat,
+        )
+    )
     
     # Routers
     application.add_handler(CommandHandler("presensi", attendance.cmd_presensi_router))
@@ -62,6 +71,7 @@ def register_all(application: Application, db: Database) -> None:
     # Games
     application.add_handler(CommandHandler("settings_game", games.cmd_settings_game))
     application.add_handler(CallbackQueryHandler(games.on_settings_callback, pattern="^gamesettings:"))
+    application.add_handler(CallbackQueryHandler(kontrak.cb_kontrak, pattern=r"^kontrak:"))
     application.add_handler(CommandHandler("atur", games.cmd_atur))
     application.add_handler(CommandHandler("hapus_setting", games.cmd_hapus_setting))
     application.add_handler(CommandHandler("cek_setting", games.cmd_cek_setting))
@@ -82,6 +92,12 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("reject_charyarthi", commands.cmd_reject_charyarthi))
     application.add_handler(CommandHandler("setting_charyarthi", commands.cmd_setting_charyarthi))
     application.add_handler(CommandHandler("settings_charyarthi", commands.cmd_setting_charyarthi))
+    application.add_handler(CommandHandler("soal", commands.cmd_soal))
+    application.add_handler(CommandHandler("soal_divisi", commands.cmd_soal))
+    application.add_handler(CommandHandler("setsoal", commands.cmd_setsoal))
+    application.add_handler(CommandHandler("tambah_soal", commands.cmd_tambah_soal))
+    application.add_handler(CommandHandler("hapus_soal", commands.cmd_hapus_soal))
+    application.add_handler(CommandHandler("reset_soal", commands.cmd_reset_soal))
     application.add_handler(CommandHandler("setgreeting", commands.cmd_set_greeting))
     application.add_handler(CommandHandler("greeting", commands.cmd_greeting))
     application.add_handler(CommandHandler("broadcast", broadcast.cmd_broadcast))

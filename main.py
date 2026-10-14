@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from telegram.ext import Application
+from telegram.ext import Application, ContextTypes
 
 from bot.database import Database
 from bot.handlers import setup_handlers
@@ -65,6 +65,10 @@ async def post_shutdown(application: Application) -> None:
         log.info("Koneksi database ditutup.")
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.error("Exception saat memproses update: %s", context.error, exc_info=context.error)
+
+
 def main() -> None:
     if not BOT_TOKEN:
         raise SystemExit(
@@ -83,6 +87,7 @@ def main() -> None:
         .build()
     )
     application.bot_data["db"] = db
+    application.add_error_handler(error_handler)
     from bot.jobs import setup_jobs
     setup_jobs(application)
     setup_handlers(application, db)
