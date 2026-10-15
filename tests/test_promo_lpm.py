@@ -25,27 +25,45 @@ async def test_verify_lpm_link_embed_real_link():
             raw_profile={}
         )
 
+        mock_html = """
+        <div class="tgme_widget_message_author accent_color">
+            <a class="tgme_widget_message_author_name" href="https://t.me/placiox">
+                <span dir="auto">क eral</span>
+            </a>&nbsp;in&nbsp;
+            <a class="tgme_widget_message_owner_name" href="https://t.me/sirkuse">
+                <span dir="auto">tes lpm</span>
+            </a>
+        </div>
+        <div class="tgme_widget_message_text js-message_text" dir="auto">dhruva</div>
+        """
         link = "https://t.me/sirkuse/27"
-        is_valid, status_code, err_msg = await verify_lpm_link_embed(
-            conn, db, user_id=user_id, link=link, lpm_keyword="dhruva"
-        )
-        assert is_valid is True
-        assert status_code == "VALID"
-        assert err_msg is None
 
-        # Test with wrong keyword
-        is_valid_wrong_kw, status_wrong, err_wrong = await verify_lpm_link_embed(
-            conn, db, user_id=user_id, link=link, lpm_keyword="nonexistentkeyword999"
-        )
-        assert is_valid_wrong_kw is False
-        assert status_wrong == "NO_KEYWORD"
+        from unittest.mock import patch, MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = mock_html
 
-        # Test with non-matching sender
-        is_valid_wrong_sender, status_sender, err_sender = await verify_lpm_link_embed(
-            conn, db, user_id=99999999, link=link, lpm_keyword="dhruva"
-        )
-        assert is_valid_wrong_sender is False
-        assert status_sender in ("USER_NOT_FOUND", "SENDER_MISMATCH")
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
+            is_valid, status_code, err_msg = await verify_lpm_link_embed(
+                conn, db, user_id=user_id, link=link, lpm_keyword="dhruva"
+            )
+            assert is_valid is True
+            assert status_code == "VALID"
+            assert err_msg is None
+
+            # Test with wrong keyword
+            is_valid_wrong_kw, status_wrong, err_wrong = await verify_lpm_link_embed(
+                conn, db, user_id=user_id, link=link, lpm_keyword="nonexistentkeyword999"
+            )
+            assert is_valid_wrong_kw is False
+            assert status_wrong == "NO_KEYWORD"
+
+            # Test with non-matching sender
+            is_valid_wrong_sender, status_sender, err_sender = await verify_lpm_link_embed(
+                conn, db, user_id=99999999, link=link, lpm_keyword="dhruva"
+            )
+            assert is_valid_wrong_sender is False
+            assert status_sender in ("USER_NOT_FOUND", "SENDER_MISMATCH")
     finally:
         await conn.close()
 
@@ -84,7 +102,10 @@ async def test_lpm_cmd_interactive_responses():
         context.bot_data = {"db": db, "conn": conn}
         context.args = [link]
 
-        await lpm_cmd(update, context)
+        from unittest.mock import patch
+        with patch("bot.handlers.promo.verify_lpm_link_embed", new_callable=AsyncMock) as mock_verify:
+            mock_verify.return_value = (True, "VALID", None)
+            await lpm_cmd(update, context)
 
         # Verify initial waiting message was sent
         update.message.reply_text.assert_called_once()

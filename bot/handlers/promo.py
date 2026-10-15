@@ -167,11 +167,22 @@ async def verify_lpm_link_embed(
     author_link_m = re.search(r'class="tgme_widget_message_author_name[^"]*"[^>]*href="https?://t\.me/([^"/]+)"', html_content)
     if author_link_m:
         author_username = author_link_m.group(1).lower().lstrip("@")
+    else:
+        user_avatar_m = re.search(r'class="tgme_widget_message_user[^"]*"[^>]*href="https?://t\.me/([^"/]+)"', html_content)
+        if not user_avatar_m:
+            user_avatar_m = re.search(r'<div class="tgme_widget_message_user"[^>]*>\s*<a href="https?://t\.me/([^"/]+)"', html_content)
+        if user_avatar_m:
+            author_username = user_avatar_m.group(1).lower().lstrip("@")
 
-    author_elem_m = re.search(r'<[a-zA-Z0-9]+ class="tgme_widget_message_author_name[^"]*"[^>]*>(.*?)</[a-zA-Z0-9]+>', html_content, re.DOTALL)
-    if author_elem_m:
-        raw_author_name = author_elem_m.group(1)
-        author_name = html.unescape(re.sub(r'<[^>]+>', '', raw_author_name)).strip().lower()
+    author_block_m = re.search(r'class="tgme_widget_message_author\s+accent_color"[^>]*>(.*?)</div>', html_content, re.DOTALL)
+    if author_block_m:
+        block_content = author_block_m.group(1).split("&nbsp;in&nbsp;")[0]
+        author_name = html.unescape(re.sub(r'<[^>]+>', '', block_content)).strip().lower()
+    else:
+        author_elem_m = re.search(r'<[a-zA-Z0-9]+ class="tgme_widget_message_author_name[^"]*"[^>]*>(.*?)</[a-zA-Z0-9]+>', html_content, re.DOTALL)
+        if author_elem_m:
+            raw_author_name = author_elem_m.group(1)
+            author_name = html.unescape(re.sub(r'<[^>]+>', '', raw_author_name)).strip().lower()
 
     user_row = await db.get_user(conn, user_id)
     if not user_row:
@@ -221,6 +232,11 @@ async def verify_lpm_link_embed(
                 break
 
     if not is_sender_valid:
+        if not author_username and not author_name:
+            # Post embed was retrieved and keyword matched, but Telegram embed anonymized/hid the author details.
+            # Fallback to NETWORK_ERROR so lpm_cmd sets status to PENDING for background MTProto userbot verification.
+            return False, "NETWORK_ERROR", None
+
         return False, "SENDER_MISMATCH", (
             "Pengirim pesan bukan akun utamamu dan bukan dari Akun Kerja yang sudah ditautkan.\n\n"
             "<i>💡 Catatan: Jika promosi dikirim menggunakan akun cadangan (clone/work account), "
