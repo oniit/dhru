@@ -90,8 +90,14 @@ async def _apply_generated_profile_fields(
             cid = str(item.get("id") or "").strip()
             if not cid:
                 continue
+            if cid == "ospek_maba":
+                continue
+            if cid.startswith("umum_"):
+                if major_id:
+                    enrolled_class_ids.add(cid)
+                continue
             item_major = str(item.get("majors") or "").strip()
-            if not item_major or (major_id and item_major == major_id):
+            if major_id and item_major == major_id:
                 enrolled_class_ids.add(cid)
 
     sks_total = 0
@@ -2020,23 +2026,58 @@ class Database:
         ukm_id: str | None = None,
         name_substring: str | None = None,
     ) -> list[int]:
-        cur = await conn.execute("SELECT telegram_id, profile_json FROM users")
+        cur = await conn.execute("SELECT telegram_id, role, profile_json FROM users")
         rows = await cur.fetchall()
         out: list[int] = []
         for r in rows:
             p = json.loads(r["profile_json"] or "{}")
-            if faculty_id and p.get("faculty") != faculty_id:
-                continue
-            if major_id and p.get("major") != major_id:
-                continue
+            role = r["role"]
+            if faculty_id:
+                u_fac = str(p.get("faculty") or p.get("staff_faculty") or "").strip()
+                if u_fac != faculty_id:
+                    continue
+            if major_id:
+                u_maj = str(p.get("major") or p.get("staff_major") or "").strip()
+                if u_maj != major_id:
+                    continue
             if class_id:
+                user_classes: set[str] = set()
                 raw = p.get("class_enrolled")
-                enrolled: list[str] = []
                 if isinstance(raw, list):
-                    enrolled = [str(x) for x in raw if x is not None and str(x).strip()]
+                    user_classes.update(str(x) for x in raw if x is not None and str(x).strip())
                 elif isinstance(raw, str) and raw.strip():
-                    enrolled = [raw.strip()]
-                if class_id not in enrolled:
+                    user_classes.add(raw.strip())
+                
+                s_major = str(p.get("major") or "").strip()
+                for item in CHOICES.get("classes", []):
+                    cid = str(item.get("id") or "").strip()
+                    if not cid:
+                        continue
+                    if cid == "ospek_maba":
+                        if role == ROLE_MABA:
+                            user_classes.add(cid)
+                        continue
+                    if cid.startswith("umum_"):
+                        if s_major:
+                            user_classes.add(cid)
+                        continue
+                    if s_major and str(item.get("majors") or "").strip() == s_major:
+                        user_classes.add(cid)
+                
+                raw_teach = p.get("teaching_classes")
+                if isinstance(raw_teach, list):
+                    user_classes.update(str(x) for x in raw_teach if x is not None and str(x).strip())
+                elif isinstance(raw_teach, str) and raw_teach.strip():
+                    user_classes.add(raw_teach.strip())
+                
+                staff_maj = str(p.get("staff_major") or "").strip()
+                if staff_maj:
+                    for item in CHOICES.get("classes", []):
+                        cid = str(item.get("id") or "").strip()
+                        if str(item.get("majors") or "").strip() == staff_maj:
+                            user_classes.add(cid)
+                
+                if class_id not in user_classes:
                     continue
             if ukm_id:
                 raw = p.get("club_enrolled")

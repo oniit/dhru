@@ -176,24 +176,31 @@ def dean_faculty_id(profile: dict | None) -> str:
     return ((profile or {}).get("staff_faculty") or "").strip()
 
 
-def student_enrolled_class_ids(profile: dict | None) -> list[str]:
+def student_enrolled_class_ids(profile: dict | None, role: str = "") -> list[str]:
     """ID seluruh kelas yang diambil mahasiswa (gabungan manual class_enrolled dan otomatis dari major + Kuliah Umum)."""
     if not profile:
         return []
     out = set(normalize_multi_choice_value(profile.get("class_enrolled")))
     major = str(profile.get("major") or "").strip()
-    if major:
-        for item in CHOICES.get("classes", []):
-            cid = str(item.get("id") or "").strip()
-            if not cid:
-                continue
-            item_major = str(item.get("majors") or "").strip()
-            if not item_major or item_major == major:
+    for item in CHOICES.get("classes", []):
+        cid = str(item.get("id") or "").strip()
+        if not cid:
+            continue
+        if cid == "ospek_maba":
+            if role == ROLE_MABA:
                 out.add(cid)
+            continue
+        if cid.startswith("umum_"):
+            if major:
+                out.add(cid)
+            continue
+        item_major = str(item.get("majors") or "").strip()
+        if major and item_major == major:
+            out.add(cid)
     return list(out)
 
 
-def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
+def user_in_dean_faculty_scope(p: dict, faculty_id: str, role: str = "") -> bool:
     """User muncul di /daftar saat difilter dekan fakultas ini."""
     fid = (faculty_id or "").strip()
     if not fid:
@@ -206,9 +213,16 @@ def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
     if not fac_classes:
         return False
     teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
+    s_major = (p.get("staff_major") or "").strip()
+    if s_major:
+        for item in CHOICES.get("classes", []):
+            if item.get("majors") == s_major:
+                cid = str(item.get("id") or "")
+                if cid:
+                    teaching.add(cid)
     if teaching & fac_classes:
         return True
-    enrolled = set(student_enrolled_class_ids(p))
+    enrolled = set(student_enrolled_class_ids(p, role=role))
     if enrolled & fac_classes:
         return True
     return False
@@ -232,14 +246,13 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
     ids = []
     if "d_dosen" in jabs or "d_guru_besar" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("teaching_classes")))
-        if "d_dosen" in jabs:
-            s_major = (profile.get("staff_major") or "").strip()
-            if s_major:
-                for item in CHOICES.get("classes", []):
-                    if item.get("majors") == s_major:
-                        cid = str(item.get("id") or "")
-                        if cid:
-                            ids.append(cid)
+        s_major = (profile.get("staff_major") or "").strip()
+        if s_major:
+            for item in CHOICES.get("classes", []):
+                if item.get("majors") == s_major:
+                    cid = str(item.get("id") or "")
+                    if cid:
+                        ids.append(cid)
     if "d_coach" in jabs:
         ids.extend(normalize_multi_choice_value(profile.get("club_enrolled")))
     if "p_panitia_ospek" in jabs:
@@ -247,11 +260,18 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
     return list(dict.fromkeys(ids))
 
 
-def user_in_lecturer_scope(p: dict, class_ids: list[str]) -> bool:
+def user_in_lecturer_scope(p: dict, class_ids: list[str], role: str = "") -> bool:
     if not class_ids:
         return False
-    enrolled = set(student_enrolled_class_ids(p))
+    enrolled = set(student_enrolled_class_ids(p, role=role))
     teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
+    s_major = (p.get("staff_major") or "").strip()
+    if s_major:
+        for item in CHOICES.get("classes", []):
+            if item.get("majors") == s_major:
+                cid = str(item.get("id") or "")
+                if cid:
+                    teaching.add(cid)
     club_enrolled = set(normalize_multi_choice_value(p.get("club_enrolled")))
     target_classes = set(class_ids)
     return bool((enrolled | teaching | club_enrolled) & target_classes)
@@ -272,12 +292,12 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
     ids = []
     has_access = False
     
-    if "d_dosen" in jabatans or "d_guru_besar" in jabatans:
+    # Dosen, Guru Besar, Coach, Panitia Ospek
+    lec_classes = lecturer_class_ids(p)
+    if is_lecturer_profile(p) and lec_classes:
         has_access = True
-        ids.extend(normalize_multi_choice_value(p.get("teaching_classes")))
-    if "d_coach" in jabatans:
-        has_access = True
-        ids.extend(normalize_multi_choice_value(p.get("club_enrolled")))
+        ids.extend(lec_classes)
+        
     if "d_dekan" in jabatans and dean_faculty_id(p):
         has_access = True
         ids.extend(classes_for_staff_faculty(dean_faculty_id(p)))

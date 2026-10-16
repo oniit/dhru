@@ -15,6 +15,7 @@ from bot.database import (
     ROLE_STUDENT,
     ROLE_INTERNAL,
     ROLE_BEM,
+    ROLE_MABA,
 )
 from bot.settings import (
     CHOICES,
@@ -26,9 +27,11 @@ from bot.timefmt import TZ, format_local_time, format_time_only
 
 from .common import (
     can_report,
+    lecturer_class_ids,
     normalize_multi_choice_value,
     presence_allowed_class_ids,
     profile_from_row,
+    student_enrolled_class_ids,
     user_row,
 )
 
@@ -59,22 +62,30 @@ def _class_label(class_id: str) -> str:
     return class_id
 
 
-def get_automatic_classes(profile: dict) -> list[str]:
-    major = profile.get("major")
+def get_automatic_classes(profile: dict, role: str = "") -> list[str]:
+    major = (profile.get("major") or "").strip()
     auto = []
     for item in CHOICES.get("classes", []):
-        cid = item.get("id")
-        m = item.get("majors")
-        if not m:
-            auto.append(cid)
-        elif m == major:
+        cid = str(item.get("id") or "").strip()
+        if not cid:
+            continue
+        if cid == "ospek_maba":
+            if role == ROLE_MABA:
+                auto.append(cid)
+            continue
+        if cid.startswith("umum_"):
+            if major:
+                auto.append(cid)
+            continue
+        m = str(item.get("majors") or "").strip()
+        if major and m == major:
             auto.append(cid)
     return auto
 
 
-def classes_for_presensi(profile: dict) -> list[str]:
-    enrolled = get_automatic_classes(profile)
-    teaching = normalize_multi_choice_value(profile.get("teaching_classes"))
+def classes_for_presensi(profile: dict, role: str = "") -> list[str]:
+    enrolled = student_enrolled_class_ids(profile, role=role)
+    teaching = lecturer_class_ids(profile)
     clubs = normalize_multi_choice_value(profile.get("club_enrolled"))
     return list(dict.fromkeys(enrolled + teaching + clubs))
 
@@ -441,7 +452,7 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Ketik /start dulu.")
         return
     profile = profile_from_row(row)
-    user_classes = classes_for_presensi(profile)
+    user_classes = classes_for_presensi(profile, row["role"])
     
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
@@ -872,7 +883,7 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
         return
         
     profile = profile_from_row(row)
-    user_classes = classes_for_presensi(profile)
+    user_classes = classes_for_presensi(profile, row["role"])
     
     if action == "sh":
         if sess["class_id"] == "staff_auto":

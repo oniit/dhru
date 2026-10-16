@@ -3868,7 +3868,13 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
     was_filtered = False
     original_match_count = len(matching)
-    if not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids)):
+    
+    apply_scope = not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids))
+    if apply_scope and lec_mode and not (dean_mode and dean_fid):
+        if kind in ("dosen", "charya", "charyarthi", "publik", "purva"):
+            apply_scope = False
+
+    if apply_scope:
         was_filtered = True
         kept: list[tuple[str, str | None, int]] = []
         for name, un, tid in matching:
@@ -3876,11 +3882,12 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if not r:
                 continue
             p = json.loads(r["profile_json"] or "{}")
+            r_role = r.get("role", "")
             
             in_scope = False
-            if dean_mode and dean_fid and user_in_dean_faculty_scope(p, dean_fid):
+            if dean_mode and dean_fid and user_in_dean_faculty_scope(p, dean_fid, role=r_role):
                 in_scope = True
-            if not in_scope and lec_mode and lec_cids and user_in_lecturer_scope(p, lec_cids):
+            if not in_scope and lec_mode and lec_cids and user_in_lecturer_scope(p, lec_cids, role=r_role):
                 in_scope = True
                 
             if in_scope:
@@ -4461,7 +4468,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if len(parts) > 1:
         possible_type = parts[1].lower()
-        if possible_type in ("role", "fakultas", "jurusan", "ukm", "kelas"):
+        if possible_type in ("role", "fakultas", "jurusan", "ukm", "kelas", "kelompok"):
             if len(parts) > 2:
                 filter_type = possible_type
                 filter_val = parts[2].lower()
@@ -4500,13 +4507,15 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 match = True
             elif filter_type == "charyarthi" and u_role == ROLE_CHARYARTHI:
                 match = True
-            elif filter_type == "fakultas" and str(u_prof.get("faculty", "")).lower() == filter_val:
+            elif filter_type == "fakultas" and (str(u_prof.get("faculty", "")).lower() == filter_val or str(u_prof.get("staff_faculty", "")).lower() == filter_val):
                 match = True
-            elif filter_type == "jurusan" and str(u_prof.get("major", "")).lower() == filter_val:
+            elif filter_type == "jurusan" and (str(u_prof.get("major", "")).lower() == filter_val or str(u_prof.get("staff_major", "")).lower() == filter_val):
+                match = True
+            elif filter_type == "kelompok" and str(u_prof.get("maba_group", "")).lower() == filter_val:
                 match = True
             elif filter_type == "umum":
-                enrolled = student_enrolled_class_ids(u_prof)
-                teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
+                enrolled = student_enrolled_class_ids(u_prof, role=u_role)
+                teaching = lecturer_class_ids(u_prof)
                 if any(str(x).lower().startswith("umum_") for x in enrolled + teaching):
                     match = True
             elif filter_type == "ukm":
@@ -4514,8 +4523,8 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 if filter_val in [str(x).lower() for x in enrolled]:
                     match = True
             elif filter_type == "kelas":
-                enrolled = student_enrolled_class_ids(u_prof)
-                teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
+                enrolled = student_enrolled_class_ids(u_prof, role=u_role)
+                teaching = lecturer_class_ids(u_prof)
                 if filter_val in [str(x).lower() for x in enrolled + teaching]:
                     match = True
             
@@ -5394,23 +5403,53 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
-    if not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids)):
+    was_filtered = False
+    original_match_count = len(parsed_users)
+
+    apply_scope = not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids))
+    if apply_scope and lec_mode and not (dean_mode and dean_fid):
+        if kind in ("dosen", "charya", "charyarthi", "publik", "purva"):
+            apply_scope = False
+
+    if apply_scope:
+        was_filtered = True
         kept = []
         for u in parsed_users:
             r = next((x for x in all_rows if x["telegram_id"] == u["tid"]), None)
             if not r:
                 continue
             p = json.loads(r["profile_json"] or "{}")
+            r_role = r.get("role", "")
             
             in_scope = False
-            if dean_mode and dean_fid and user_in_dean_faculty_scope(p, dean_fid):
+            if dean_mode and dean_fid and user_in_dean_faculty_scope(p, dean_fid, role=r_role):
                 in_scope = True
-            if not in_scope and lec_mode and lec_cids and user_in_lecturer_scope(p, lec_cids):
+            if not in_scope and lec_mode and lec_cids and user_in_lecturer_scope(p, lec_cids, role=r_role):
                 in_scope = True
                 
             if in_scope:
                 kept.append(u)
         parsed_users = kept
+
+    if not parsed_users:
+        if was_filtered and original_match_count > 0:
+            scope_items = []
+            if dean_mode and dean_fid:
+                scope_items.append(f"Fakultas: {choice_label('faculties', dean_fid)}")
+            if lec_mode and lec_cids:
+                c_lbls = [choice_label('classes', c) for c in lec_cids]
+                scope_items.append(f"Kelas Ajar: {', '.join(c_lbls)}")
+            scope_str = " | ".join(scope_items) if scope_items else "Lingkup wewenang Anda"
+            msg = (
+                f"<b>{title}</b>\n\n"
+                f"⚠️ <i>Tidak ada pengguna di dalam lingkup wewenang Anda.</i>\n\n"
+                f"💡 <b>Catatan:</b> Data ini ada di sistem ({original_match_count} pengguna), "
+                f"namun Anda dibatasi hanya untuk melihat pengguna di lingkup Anda ({scope_str})."
+            )
+            await update.message.reply_text(msg)
+            return
+        await update.message.reply_text(f"{title}\n\nKosong.")
+        return
         
     # Sort by closest birthday
     parsed_users.sort(key=lambda x: x["dist"])
