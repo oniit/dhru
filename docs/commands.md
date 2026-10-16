@@ -37,8 +37,9 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
 - `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
 - `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
-- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purva`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm).
+- `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purva`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm). Menyesuaikan otomatis dengan wewenang Dosen/Dekan dan menyertakan staf pada filter fakultas/jurusan.
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
+- `/all [role|fakultas|jurusan|ukm|kelas|kelompok <val>]` — (Admin/Staf) Mention massal (_tagall_) anggota grup sesuai filter yang ditentukan.
 - `/acc_charyarthi <user_id> [1|2]` — (Owner/Admin) Menerima pelamar Chāryārthī menjadi staf internal pada divisi pilihan 1 atau 2, dan mengirimkan notifikasi instruksi tanda tangan `/kontrak`.
 - `/reject_charyarthi <user_id>` — (Owner/Admin) Menolak pelamar Chāryārthī, me-rollback role ke `public`, dan mengirimkan pesan apresiasi sopan.
 - `/setting_charyarthi` — (Owner/Admin) Menu interaktif tombol toggle (✅/❌) saklar pendaftaran Chāryārthī master switch dan per divisi yang dibuka.

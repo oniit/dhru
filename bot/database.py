@@ -2076,6 +2076,16 @@ class Database:
                         cid = str(item.get("id") or "").strip()
                         if str(item.get("majors") or "").strip() == staff_maj:
                             user_classes.add(cid)
+
+                jabs = set(p.get("position_detail") or [])
+                if "p_panitia_ospek" in jabs:
+                    user_classes.add("ospek_maba")
+                if "d_coach" in jabs:
+                    raw_club = p.get("club_enrolled")
+                    if isinstance(raw_club, list):
+                        user_classes.update(str(x) for x in raw_club if x is not None and str(x).strip())
+                    elif isinstance(raw_club, str) and raw_club.strip():
+                        user_classes.add(raw_club.strip())
                 
                 if class_id not in user_classes:
                     continue

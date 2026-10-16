@@ -3833,7 +3833,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         title = f"Daftar — {choice_label('faculties', fid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
-            if p.get("faculty") == fid:
+            if p.get("faculty") == fid or p.get("staff_faculty") == fid:
                 push_row(r, p)
     elif kind == "jurusan" and len(parts) > kind_idx + 1:
         mid = parts[kind_idx + 1].lower()
@@ -3847,8 +3847,8 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         title = f"Daftar — Kelas {choice_label('classes', cid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
-            enrolled = student_enrolled_class_ids(p)
-            teaching = normalize_multi_choice_value(p.get("teaching_classes"))
+            enrolled = student_enrolled_class_ids(p, role=r.get("role", ""))
+            teaching = lecturer_class_ids(p)
             if cid in enrolled or cid in teaching:
                 push_row(r, p)
     elif kind == "ukm" and len(parts) > kind_idx + 1:
@@ -3870,8 +3870,10 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     original_match_count = len(matching)
     
     apply_scope = not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids))
-    if apply_scope and lec_mode and not (dean_mode and dean_fid):
-        if kind in ("dosen", "charya", "charyarthi", "publik", "purva"):
+    if apply_scope:
+        if kind in ("publik", "charyarthi", "calon", "pelamar"):
+            apply_scope = False
+        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purva"):
             apply_scope = False
 
     if apply_scope:
@@ -5407,8 +5409,10 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     original_match_count = len(parsed_users)
 
     apply_scope = not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids))
-    if apply_scope and lec_mode and not (dean_mode and dean_fid):
-        if kind in ("dosen", "charya", "charyarthi", "publik", "purva"):
+    if apply_scope:
+        if kind in ("publik", "charyarthi", "calon", "pelamar"):
+            apply_scope = False
+        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purva"):
             apply_scope = False
 
     if apply_scope:

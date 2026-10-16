@@ -483,17 +483,18 @@ def format_profile_card(
         if key == "agra_total":
             return f"{agra:,}".replace(",", ".")
         if key == "auto_class_enrolled":
-            major = profile.get("major")
+            major = (profile.get("major") or "").strip()
+            role = row["role"]
             auto = []
-            for item in CHOICES.get("classes", []):
-                cid = item.get("id")
-                if str(cid).startswith("umum_"):
-                    continue
-                if cid == "ospek_maba" and row["role"] != ROLE_MABA:
-                    continue
-                m = item.get("majors")
-                if not m or m == major:
-                    auto.append(cid)
+            if role == ROLE_MABA:
+                auto.append("ospek_maba")
+            elif major:
+                for item in CHOICES.get("classes", []):
+                    cid = str(item.get("id") or "").strip()
+                    if not cid or cid.startswith("umum_") or cid == "ospek_maba":
+                        continue
+                    if str(item.get("majors") or "").strip() == major:
+                        auto.append(cid)
             return multi_choice_labels("classes", auto) if auto else "—"
         if key == "position":
             raw = profile.get("position")

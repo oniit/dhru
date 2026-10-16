@@ -30,6 +30,7 @@ from .common import (
     lecturer_class_ids,
     normalize_multi_choice_value,
     profile_from_row,
+    student_enrolled_class_ids,
     user_row,
     get_user_jabatans,
 )
@@ -69,22 +70,10 @@ def _task_class_ids_for_lecturer(profile: dict) -> list[str]:
 
 
 def _student_enrolled_class_ids(profile: dict, role: str) -> list[str]:
-    """Semua kelas yang diikuti Shishya (otomatis dari jurusan + manual)."""
-    major = profile.get("major")
-    auto = []
-    for item in CHOICES.get("classes", []):
-        cid = item.get("id")
-        
-        # Sembunyikan ospek_maba jika role bukan maba
-        if cid == "ospek_maba" and role != ROLE_MABA:
-            continue
-            
-        m = item.get("majors")
-        if not m or m == major:
-            auto.append(str(cid))
-    enrolled = normalize_multi_choice_value(profile.get("class_enrolled"))
+    """Semua kelas yang diikuti Shishya/Pravesi (otomatis dari jurusan + ospek maba + manual + UKM)."""
+    enrolled = student_enrolled_class_ids(profile, role=role)
     club = normalize_multi_choice_value(profile.get("club_enrolled"))
-    return list(dict.fromkeys(auto + enrolled + club))
+    return list(dict.fromkeys(enrolled + club))
 
 
 def _submission_status_emoji(status: str) -> str:

@@ -72,3 +72,33 @@ def test_lecturer_class_ids_and_scope():
     assert user_in_lecturer_scope(prof_student_major_sf, ["tf"]) is True
     assert user_in_lecturer_scope(prof_student_major_sf, ["kd"]) is False
 
+
+def test_maba_and_student_enrolled_class_ids():
+    from bot.handlers.common import student_enrolled_class_ids, user_in_dean_faculty_scope
+    from bot.handlers.tugas import _student_enrolled_class_ids
+    from bot.database import ROLE_MABA, ROLE_STUDENT
+
+    # MABA only gets ospek_maba, never umum or major classes
+    maba_prof = {"join_reason": "mau belajar"}
+    maba_classes = student_enrolled_class_ids(maba_prof, role=ROLE_MABA)
+    assert set(maba_classes) == {"ospek_maba"}
+
+    # MABA in tugas dashboard only gets ospek_maba (+ club if any)
+    maba_tugas_classes = _student_enrolled_class_ids(maba_prof, role=ROLE_MABA)
+    assert set(maba_tugas_classes) == {"ospek_maba"}
+
+    # Student with major gets umum and major classes, never ospek_maba
+    student_prof = {"major": "sf", "faculty": "fib"}
+    student_classes = student_enrolled_class_ids(student_prof, role=ROLE_STUDENT)
+    assert "df" in student_classes
+    assert "tf" in student_classes
+    assert "umum_kk" in student_classes
+    assert "umum_pd" in student_classes
+    assert "ospek_maba" not in student_classes
+
+    # Dekan scope test with staff_faculty
+    dekan_staff_prof = {"staff_faculty": "fib"}
+    assert user_in_dean_faculty_scope(dekan_staff_prof, "fib") is True
+    assert user_in_dean_faculty_scope(dekan_staff_prof, "fmipa") is False
+
+
