@@ -176,6 +176,23 @@ def dean_faculty_id(profile: dict | None) -> str:
     return ((profile or {}).get("staff_faculty") or "").strip()
 
 
+def student_enrolled_class_ids(profile: dict | None) -> list[str]:
+    """ID seluruh kelas yang diambil mahasiswa (gabungan manual class_enrolled dan otomatis dari major + Kuliah Umum)."""
+    if not profile:
+        return []
+    out = set(normalize_multi_choice_value(profile.get("class_enrolled")))
+    major = str(profile.get("major") or "").strip()
+    if major:
+        for item in CHOICES.get("classes", []):
+            cid = str(item.get("id") or "").strip()
+            if not cid:
+                continue
+            item_major = str(item.get("majors") or "").strip()
+            if not item_major or item_major == major:
+                out.add(cid)
+    return list(out)
+
+
 def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
     """User muncul di /daftar saat difilter dekan fakultas ini."""
     fid = (faculty_id or "").strip()
@@ -191,7 +208,7 @@ def user_in_dean_faculty_scope(p: dict, faculty_id: str) -> bool:
     teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
     if teaching & fac_classes:
         return True
-    enrolled = set(normalize_multi_choice_value(p.get("class_enrolled")))
+    enrolled = set(student_enrolled_class_ids(p))
     if enrolled & fac_classes:
         return True
     return False
@@ -233,7 +250,7 @@ def lecturer_class_ids(profile: dict | None) -> list[str]:
 def user_in_lecturer_scope(p: dict, class_ids: list[str]) -> bool:
     if not class_ids:
         return False
-    enrolled = set(normalize_multi_choice_value(p.get("class_enrolled")))
+    enrolled = set(student_enrolled_class_ids(p))
     teaching = set(normalize_multi_choice_value(p.get("teaching_classes")))
     club_enrolled = set(normalize_multi_choice_value(p.get("club_enrolled")))
     target_classes = set(class_ids)

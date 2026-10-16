@@ -62,3 +62,13 @@ def test_lecturer_class_ids_and_scope():
         "club_enrolled": ["um"]
     }
     assert user_in_lecturer_scope(prof_other, target_classes) is False
+
+    # 7. Student with major 'sf' (Dasar Fotografi 'df', Teknik Fotografi 'tf')
+    # Lecturer teaching 'df'
+    prof_student_major_sf = {
+        "major": "sf"
+    }
+    assert user_in_lecturer_scope(prof_student_major_sf, ["df"]) is True
+    assert user_in_lecturer_scope(prof_student_major_sf, ["tf"]) is True
+    assert user_in_lecturer_scope(prof_student_major_sf, ["kd"]) is False
+

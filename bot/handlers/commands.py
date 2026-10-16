@@ -78,6 +78,7 @@ from .common import (
     can_daftar_as_lecturer,
     lecturer_class_ids,
     user_in_lecturer_scope,
+    student_enrolled_class_ids,
     can_manage_agra,
     can_assign_roles,
     can_approve_profile,
@@ -3839,14 +3840,14 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         title = f"Daftar — Jurusan {choice_label('majors', mid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
-            if p.get("major") == mid:
+            if p.get("major") == mid or p.get("staff_major") == mid:
                 push_row(r, p)
     elif kind == "kelas" and len(parts) > kind_idx + 1:
         cid = parts[kind_idx + 1].lower()
         title = f"Daftar — Kelas {choice_label('classes', cid)}"
         for r in all_rows:
             p = json.loads(r["profile_json"] or "{}")
-            enrolled = normalize_multi_choice_value(p.get("class_enrolled"))
+            enrolled = student_enrolled_class_ids(p)
             teaching = normalize_multi_choice_value(p.get("teaching_classes"))
             if cid in enrolled or cid in teaching:
                 push_row(r, p)
@@ -3865,7 +3866,10 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
 
     is_global_admin = row["role"] in (ROLE_OWNER, ROLE_ADMIN)
+    was_filtered = False
+    original_match_count = len(matching)
     if not is_global_admin and ((dean_mode and dean_fid) or (lec_mode and lec_cids)):
+        was_filtered = True
         kept: list[tuple[str, str | None, int]] = []
         for name, un, tid in matching:
             r = next((x for x in all_rows if int(x["telegram_id"]) == tid), None)
@@ -3882,6 +3886,29 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if in_scope:
                 kept.append((name, un, tid))
         matching = kept
+
+    # Jika kosong karena terpotong batasan wewenang/scope
+    if not matching:
+        if was_filtered and original_match_count > 0:
+            scope_items = []
+            if dean_mode and dean_fid:
+                scope_items.append(f"Fakultas: {choice_label('faculties', dean_fid)}")
+            if lec_mode and lec_cids:
+                c_lbls = [choice_label('classes', c) for c in lec_cids]
+                scope_items.append(f"Kelas Ajar: {', '.join(c_lbls)}")
+            scope_str = " | ".join(scope_items) if scope_items else "Lingkup wewenang Anda"
+            msg = (
+                f"<b>{title}</b>\n\n"
+                f"⚠️ <i>Tidak ada pengguna di dalam lingkup wewenang Anda.</i>\n\n"
+                f"💡 <b>Catatan:</b> Data ini ada di sistem ({original_match_count} pengguna), "
+                f"namun Anda dibatasi hanya untuk melihat pengguna di lingkup Anda ({scope_str})."
+            )
+            await update.message.reply_text(msg)
+            return
+
+    # Beri catatan header jika data difilter oleh batasan lingkup
+    if was_filtered and original_match_count > len(matching):
+        title = f"{title}\n<i>(Dibatasi lingkup Anda: {len(matching)} dari {original_match_count} total)</i>"
 
     # Removed alphabetical sort to preserve the SQL order (created_at ASC)
     out_lines = _daftar_format_lines(matching, show_telegram_id=show_telegram_id)
@@ -4478,7 +4505,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             elif filter_type == "jurusan" and str(u_prof.get("major", "")).lower() == filter_val:
                 match = True
             elif filter_type == "umum":
-                enrolled = normalize_multi_choice_value(u_prof.get("class_enrolled", []))
+                enrolled = student_enrolled_class_ids(u_prof)
                 teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
                 if any(str(x).lower().startswith("umum_") for x in enrolled + teaching):
                     match = True
@@ -4487,7 +4514,7 @@ async def cmd_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 if filter_val in [str(x).lower() for x in enrolled]:
                     match = True
             elif filter_type == "kelas":
-                enrolled = normalize_multi_choice_value(u_prof.get("class_enrolled", []))
+                enrolled = student_enrolled_class_ids(u_prof)
                 teaching = normalize_multi_choice_value(u_prof.get("teaching_classes", []))
                 if filter_val in [str(x).lower() for x in enrolled + teaching]:
                     match = True
