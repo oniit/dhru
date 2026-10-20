@@ -239,6 +239,13 @@ def is_lecturer_profile(profile: dict | None) -> bool:
     return "d_dosen" in jabs or "d_guru_besar" in jabs or "d_coach" in jabs or "p_panitia_ospek" in jabs
 
 
+def is_acharyata_profile(profile: dict | None) -> bool:
+    if not profile:
+        return False
+    jabs = get_user_jabatans(profile)
+    return "d_pembina" in jabs or "pembina" in jabs or ((profile.get("position") or "").strip() == "pembina")
+
+
 def lecturer_class_ids(profile: dict | None) -> list[str]:
     if not profile:
         return []
@@ -305,7 +312,7 @@ def presence_allowed_class_ids(role: str, profile: dict | None) -> list[str] | N
         has_access = True
         ids.extend(["staff_auto", "staff_manual"])
         
-    if role == ROLE_BEM:
+    if role == ROLE_BEM or is_acharyata_profile(p):
         has_access = True
         ids.append("bem_manual")
         

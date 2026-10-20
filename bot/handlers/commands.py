@@ -5124,15 +5124,8 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     total_requested = len(valid_targets) + len(not_found) + len(admin_targets)
     is_group = update.effective_chat.type in ("group", "supergroup")
     
-    groups = []
-    if not is_group:
-        groups = await db.list_active_bot_chats(conn)
-        if not groups:
-            await update.message.reply_text("⚠️ Bot belum dimasukkan ke grup manapun.")
-            return
-
-    if is_group or len(groups) == 1:
-        chat_id = update.effective_chat.id if is_group else groups[0][0]
+    if is_group:
+        chat_id = update.effective_chat.id
         
         if total_requested == 1 and len(valid_targets) == 1:
             await _do_kick(update, context, chat_id, valid_targets[0]["id"], valid_targets[0]["name"], is_group)
@@ -5160,19 +5153,48 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if admin_targets:
                 summary += f"⛔ Ditolak (Admin): {', '.join(admin_targets)}\n"
                 
-            if is_group:
-                await context.bot.send_message(chat_id=chat_id, text=summary, parse_mode="HTML")
-            else:
-                await update.effective_message.reply_text(summary, parse_mode="HTML")
+            await context.bot.send_message(chat_id=chat_id, text=summary, parse_mode="HTML")
     else:
-        # Multi-group PM case
+        # PM case
+        all_groups = await db.list_active_bot_chats(conn)
+        if not all_groups:
+            await update.message.reply_text("⚠️ Bot belum dimasukkan ke grup manapun.")
+            return
+
         if len(valid_targets) > 1 or total_requested > 1:
             await update.message.reply_text("⛔ Fitur multi-kick lewat PM untuk multi-grup tidak didukung. Tolong gunakan perintah ini langsung di dalam grup.")
             return
             
+        if not valid_targets:
+            summary = ""
+            if not_found:
+                summary += f"❓ Tidak Ditemukan ({len(not_found)}): {', '.join(not_found)}\n"
+            if admin_targets:
+                summary += f"⛔ Ditolak (Admin): {', '.join(admin_targets)}\n"
+            await update.message.reply_text(summary or "❌ Target tidak valid.", parse_mode="HTML")
+            return
+
         target = valid_targets[0]
+        import asyncio
+        async def _check_member(c_id: int):
+            try:
+                m = await context.bot.get_chat_member(chat_id=c_id, user_id=target["id"])
+                return m.status not in ("left", "kicked")
+            except Exception:
+                return False
+
+        checks = await asyncio.gather(*[_check_member(c_id) for c_id, _ in all_groups])
+        target_groups = [all_groups[i] for i, in_group in enumerate(checks) if in_group]
+
+        if not target_groups:
+            await update.message.reply_text(
+                f"⚠️ <b>{html.escape(target['name'])}</b> tidak ditemukan di grup manapun yang terhubung dengan bot.",
+                parse_mode="HTML"
+            )
+            return
+
         keyboard = []
-        for c_id, c_title in groups:
+        for c_id, c_title in target_groups:
             keyboard.append([InlineKeyboardButton(c_title, callback_data=f"kick:{c_id}:{target['id']}")])
         keyboard.append([InlineKeyboardButton("Batal", callback_data="kick:cancel:0")])
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -5243,6 +5265,16 @@ async def on_kick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         
     conn = _conn(context)
     db = context.application.bot_data["db"]
+
+    caller_id = query.from_user.id
+    caller_row = await user_row(conn, db, caller_id)
+    caller_prof = profile_from_row(caller_row) if caller_row else {}
+    pos = caller_prof.get("position_detail")
+    is_sekre = "d_sekre" in pos if isinstance(pos, list) else pos == "d_sekre"
+    if not (is_admin_elevated(caller_id) or is_sekre):
+        await query.edit_message_text("⛔ Anda tidak memiliki izin untuk melakukan tindakan ini.")
+        return
+
     t_row = await user_row(conn, db, target_id)
     t_name = t_row["first_name"] if t_row else "User"
     

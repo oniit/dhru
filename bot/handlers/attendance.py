@@ -27,6 +27,7 @@ from bot.timefmt import TZ, format_local_time, format_time_only
 
 from .common import (
     can_report,
+    is_acharyata_profile,
     lecturer_class_ids,
     normalize_multi_choice_value,
     presence_allowed_class_ids,
@@ -386,6 +387,19 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Sesi ini di luar lingkup presensi kamu.",
         )
         return
+
+    if sess["class_id"] == "event_bebas":
+        from bot.settings import is_admin_elevated
+        opened_by = int(sess.get("opened_by") or 0)
+        if (
+            row["role"] not in (ROLE_OWNER, ROLE_ADMIN)
+            and not is_admin_elevated(update.effective_user.id)
+            and opened_by != update.effective_user.id
+        ):
+            await update.message.reply_text(
+                "Hanya pembuat sesi atau Admin/Owner yang dapat menutup presensi umum ini."
+            )
+            return
         
     if sess["class_id"] == "staff_auto" and sess["opened_by"] == 0:
         await update.message.reply_text(
@@ -456,7 +470,7 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
-    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER) or is_acharyata_profile(profile):
         user_classes.append("bem_manual")
     if row["role"] != "public":
         user_classes.append("event_bebas")
@@ -491,7 +505,7 @@ async def _record_hadir(
     sess = await cur.fetchone()
     if not sess or sess["closed_at"] is not None:
         return False, "Sesi tidak valid atau sudah ditutup.", False
-    if sess["opened_by"] == uid and sess["class_id"] not in ("staff_manual", "bem_manual", "event_bebas"):
+    if int(sess.get("opened_by") or 0) == uid and sess["class_id"] not in ("staff_manual", "bem_manual", "event_bebas"):
         return False, "Anda tidak perlu mengisi presensi untuk sesi yang Anda buka sendiri.", False
     if (
         sess["class_id"] not in user_classes
@@ -722,7 +736,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     can_rekap = can_rekap_hadir_session(row, profile, sess["class_id"])
     if sess["class_id"] in ("staff_manual", "staff_auto") and row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         can_rekap = True
-    if sess["class_id"] == "bem_manual" and row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+    if sess["class_id"] == "bem_manual" and (row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER) or is_acharyata_profile(profile)):
         can_rekap = True
     if sess["class_id"] == "event_bebas" and row["role"] != "public":
         can_rekap = True
@@ -900,7 +914,7 @@ async def cb_attendance_action(update: Update, context: ContextTypes.DEFAULT_TYP
             
     if row["role"] in (ROLE_INTERNAL, ROLE_ADMIN, ROLE_OWNER):
         user_classes.append("staff_manual")
-    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER):
+    if row["role"] in (ROLE_BEM, ROLE_ADMIN, ROLE_OWNER) or is_acharyata_profile(profile):
         user_classes.append("bem_manual")
     if row["role"] != "public":
         user_classes.append("event_bebas")

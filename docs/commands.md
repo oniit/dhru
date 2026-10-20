@@ -11,7 +11,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/cancel` atau `/batal` — Membatalkan proses pengisian data atau interaksi aktif dan kembali ke kondisi awal.
 
 ## Akademik & Kelas
-- `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis kelas tertentu (sesi manual otomatis ditutup oleh background job setelah 2 jam).
+- `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis sesi tertentu (Mata Kuliah, Charya, Yaksa/BEM, dan Umum; sesi manual otomatis ditutup setelah 2 jam). Pembina BEM (Āchāryata) memiliki hak akses membuka, menghadiri, dan merekap Presensi Yaksa. Penutupan sesi Presensi Umum dibatasi ketat hanya untuk pembuat sesi atau Admin/Owner.
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 
 ## Sosial & Gamifikasi (Agra)
@@ -29,6 +29,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.
 - `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
+- `/kick <@username|ID>` — (Owner/Admin/Sekre) Mengeluarkan target dari grup. Jika dijalankan di dalam grup, langsung mengeluarkan anggota dari grup tersebut. Jika dijalankan via PM (private chat bot), bot akan secara dinamis mengecek keanggotaan target dan hanya menampilkan daftar tombol grup di mana target tersebut benar-benar bergabung.
 - `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
 - `/admin_data <username>` — Membuka menu pengeditan paksa terhadap profil pengguna (Bypass persetujuan).
