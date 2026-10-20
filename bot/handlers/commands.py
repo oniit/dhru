@@ -4707,29 +4707,43 @@ async def cmd_pindah_data(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn = _conn(context)
     db = _db(context)
     row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] != ROLE_OWNER:
+    if not is_owner(update.effective_user.id) and (not row or row["role"] != ROLE_OWNER):
         await update.message.reply_text("Hanya owner yang bisa memindahkan data.")
         return
         
-    if len(context.args) < 2:
-        await update.message.reply_text("Format: <code>/pindah_data &lt;id_lama|@username_lama&gt; &lt;id_baru|@username_baru&gt;</code>")
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "Format: <code>/pindah_data &lt;id_lama|@username_lama&gt; &lt;id_baru|@username_baru&gt;</code>\n\n"
+            "<i>Catatan: Jangan sertakan tanda kurung siku &lt; &gt; saat mengetik perintah.</i>"
+        )
         return
         
-    old_query = context.args[0]
-    new_query = context.args[1]
+    old_raw = context.args[0].strip().strip("<>")
+    new_raw = context.args[1].strip().strip("<>")
     
-    old_user = await db.get_user_by_username_or_id(conn, old_query)
+    # 1. Resolve user lama
+    old_id, old_display = await resolve_target_user(conn, db, old_raw)
+    if not old_id:
+        await update.message.reply_text(f"User lama <code>{html.escape(old_raw)}</code> tidak ditemukan di database.")
+        return
+        
+    old_user = await db.get_user(conn, old_id)
     if not old_user:
-        await update.message.reply_text(f"User lama {old_query} tidak ditemukan di database.")
+        await update.message.reply_text(f"User lama <code>{html.escape(old_raw)}</code> belum terdaftar di database.")
         return
         
-    new_user = await db.get_user_by_username_or_id(conn, new_query)
-    new_id = int(new_user["telegram_id"]) if new_user else (int(new_query) if new_query.isdigit() else None)
-    
+    # 2. Resolve user baru
+    new_id, new_display = await resolve_target_user(conn, db, new_raw)
     if not new_id:
-        await update.message.reply_text(f"User baru {new_query} tidak ditemukan. Jika belum pernah /start, harus pakai ID berupa angka.")
-        return
-        
+        if new_raw.isdigit():
+            new_id = int(new_raw)
+        else:
+            await update.message.reply_text(
+                f"User baru <code>{html.escape(new_raw)}</code> tidak ditemukan.\n"
+                "Jika akun baru belum pernah <code>/start</code> bot, silakan gunakan ID angka Telegram akun baru tersebut."
+            )
+            return
+            
     old_id = int(old_user["telegram_id"])
     if old_id == new_id:
         await update.message.reply_text("ID lama dan baru sama!")
@@ -4737,9 +4751,11 @@ async def cmd_pindah_data(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
     success = await db.migrate_user_data(conn, old_id, new_id)
     if success:
-        await update.message.reply_text(f"Berhasil memindahkan data dari <code>{old_query}</code> ke <code>{new_query}</code>.")
+        await update.message.reply_text(
+            f"✅ Berhasil memindahkan data dari <code>{html.escape(str(old_id))}</code> ke <code>{html.escape(str(new_id))}</code>."
+        )
     else:
-        await update.message.reply_text("Gagal memindahkan data.")
+        await update.message.reply_text("❌ Gagal memindahkan data.")
 
 async def cmd_cek_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:

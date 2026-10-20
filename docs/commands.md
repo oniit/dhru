@@ -32,6 +32,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
 - `/admin_data <username>` — Membuka menu pengeditan paksa terhadap profil pengguna (Bypass persetujuan).
+- `/pindah_data <id_lama|@username_lama> <id_baru|@username_baru>` — (Khusus Owner) Memindahkan seluruh data profil, peran/role, saldo Agra, riwayat presensi, tugas, dll dari akun lama ke akun baru.
 - `/orreset_user <id> <tipe>`: (Owner) Reset data profil user (onboarding, rank, dll).
 - `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.

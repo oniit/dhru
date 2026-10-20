@@ -2174,9 +2174,9 @@ class Database:
         if not old_user:
             return False # user lama tidak ditemukan
             
-        username_new = new_user["username"] if new_user else None
-        first_name_new = new_user["first_name"] if new_user else None
-        last_name_new = new_user["last_name"] if new_user else None
+        username_final = new_user["username"] if new_user and new_user["username"] is not None else old_user["username"]
+        first_name_final = new_user["first_name"] if new_user and new_user["first_name"] is not None else old_user["first_name"]
+        last_name_final = new_user["last_name"] if new_user and new_user["last_name"] is not None else old_user["last_name"]
         
         if new_user:
             # Delete new_id's existing operational data to avoid UNIQUE constraint conflicts
@@ -2190,22 +2190,33 @@ class Database:
             await conn.execute("DELETE FROM task_assignments WHERE created_by = ?", (new_id,))
             await conn.execute("DELETE FROM audit_log WHERE actor_id = ?", (new_id,))
             await conn.execute("DELETE FROM group_seen_users WHERE telegram_id = ?", (new_id,))
+            await conn.execute("DELETE FROM linked_accounts WHERE main_user_id = ? OR promo_user_id = ?", (new_id, new_id))
+            await conn.execute("DELETE FROM user_chat_stats WHERE user_id = ?", (new_id,))
+            await conn.execute("DELETE FROM charyarthi_answers WHERE telegram_id = ?", (new_id,))
+            await conn.execute("DELETE FROM promo_verifications WHERE user_id = ?", (new_id,))
+            await conn.execute("DELETE FROM manosraya_history WHERE sender_id = ?", (new_id,))
             
             await conn.execute("DELETE FROM users WHERE telegram_id = ?", (new_id,))
 
-        # Now migrate old_id to new_id
+        # 1. Masukkan new_id ke users (duplikasi data dari old_id dengan data identitas new_id)
+        # Dengan adanya new_id di users, tabel-tabel anak dapat di-update tanpa melanggar Foreign Key.
         await conn.execute(
             """
-            UPDATE users SET 
-                telegram_id = ?, 
-                username = ?, 
-                first_name = ?, 
-                last_name = ?
-            WHERE telegram_id = ?
+            INSERT INTO users (
+                telegram_id, username, first_name, last_name, language_code, 
+                is_premium, is_bot, raw_profile_json, role, profile_json, 
+                onboarding_step, created_at, updated_at
+            )
+            SELECT 
+                ?, ?, ?, ?, language_code, 
+                is_premium, is_bot, raw_profile_json, role, profile_json, 
+                onboarding_step, created_at, ?
+            FROM users WHERE telegram_id = ?
             """,
-            (new_id, username_new, first_name_new, last_name_new, old_id)
+            (new_id, username_final, first_name_final, last_name_final, time.time(), old_id)
         )
 
+        # 2. Update semua tabel relasi (child tables) dari old_id ke new_id
         await conn.execute("UPDATE profile_change_requests SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
         await conn.execute("UPDATE agra_ledger SET target_telegram_id = ? WHERE target_telegram_id = ?", (new_id, old_id))
         await conn.execute("UPDATE agra_ledger SET actor_telegram_id = ? WHERE actor_telegram_id = ?", (new_id, old_id))
@@ -2215,6 +2226,17 @@ class Database:
         await conn.execute("UPDATE task_submissions SET student_id = ? WHERE student_id = ?", (new_id, old_id))
         await conn.execute("UPDATE audit_log SET actor_id = ? WHERE actor_id = ?", (new_id, old_id))
         await conn.execute("UPDATE group_seen_users SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE menfess_history SET sender_id = ? WHERE sender_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE menfess_history SET receiver_id = ? WHERE receiver_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE manosraya_history SET sender_id = ? WHERE sender_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE promo_verifications SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE linked_accounts SET main_user_id = ? WHERE main_user_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE linked_accounts SET promo_user_id = ? WHERE promo_user_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE user_chat_stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE charyarthi_answers SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        
+        # 3. Hapus old_id dari users setelah tidak ada lagi tabel yang mereferensikannya
+        await conn.execute("DELETE FROM users WHERE telegram_id = ?", (old_id,))
         
         await conn.commit()
         return True
