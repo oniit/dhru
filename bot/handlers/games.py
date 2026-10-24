@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 import bot.games.kata_rahasia as kata_rahasia
 import bot.games.kantong_rempah as kantong_rempah
 import bot.games.tahan_dulu as tahan_dulu
+import bot.games.caksoria as caksoria
 import bot.games.adu_react as adu_react
 import bot.games.tujuh_pusaka as tujuh_pusaka
 import bot.games.ketik_angka as ketik_angka
@@ -21,6 +22,7 @@ AVAILABLE_GAMES = {
     "kata_rahasia": "Kata Rahasia",
     "kantong_rempah": "Kantong Rempah",
     "tahan_dulu": "Tahan Dulu",
+    "caksoria": "Caksoria",
     "adu_react": "Adu React",
     "tujuh_pusaka": "Tujuh Pusaka",
     "ketik_angka": "Ketik Angka",
@@ -129,6 +131,8 @@ async def cmd_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await kata_rahasia.atur_kata_rahasia(update, context, db, conn, setting_name, args_text)
     elif game_name == "tahan_dulu":
         await tahan_dulu.atur_tahan_dulu(update, context, db, conn, setting_name, args_text)
+    elif game_name == "caksoria":
+        await caksoria.atur_caksoria(update, context, db, conn, setting_name, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
 
@@ -201,6 +205,7 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "• <code>/bermain kata_rahasia &lt;setting&gt;</code> — Tebak kata berkelompok\n"
             "• <code>/bermain kantong_rempah [menit]</code> — Tebak total rempah (via PC)\n"
             "• <code>/bermain tahan_dulu [detik]</code> — Adu cepat / reflex\n"
+            "• <code>/bermain caksoria [detik]</code> — Refleks kata bertempo (30 detik)\n"
             "• <code>/bermain adu_react</code> — Balapan banyak-banyakan react\n"
             "• <code>/bermain tujuh_pusaka</code> — Card battle vs Bot\n"
             "• <code>/bermain ketik_angka</code> — Lomba adu cepat ketik angka/huruf\n",
@@ -229,6 +234,9 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif game_name == "tahan_dulu":
         args_text = " ".join(args[2:])
         await tahan_dulu.mulai_tahan_dulu(update, context, db, conn, args_text)
+    elif game_name == "caksoria":
+        args_text = " ".join(args[2:])
+        await caksoria.mulai_caksoria(update, context, db, conn, args_text)
     elif game_name == "adu_react":
         args_text = " ".join(args[2:])
         await adu_react.mulai_adu_react(update, context, db, conn, args_text)
@@ -266,6 +274,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await kantong_rempah.status_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.status_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "caksoria":
+        await caksoria.status_caksoria(update, context, db, conn, session)
     elif game_name == "adu_react":
         await adu_react.status_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
@@ -309,6 +319,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await kantong_rempah.berhenti_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.berhenti_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "caksoria":
+        await caksoria.berhenti_caksoria(update, context, db, conn, session)
     elif game_name == "adu_react":
         await adu_react.berhenti_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
@@ -344,6 +356,8 @@ async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await kantong_rempah.hasil_kantong_rempah(update, context, db, conn, session)
     elif game_name == "tahan_dulu":
         await tahan_dulu.hasil_tahan_dulu(update, context, db, conn, session)
+    elif game_name == "caksoria":
+        await caksoria.hasil_caksoria(update, context, db, conn, session)
     elif game_name == "adu_react":
         await adu_react.hasil_adu_react(update, context, db, conn, session)
     elif game_name == "tujuh_pusaka":
@@ -379,6 +393,12 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
         text = update.message.text or update.message.caption or ""
         if text.strip():
             await tahan_dulu.proses_pesan_tahan_dulu(update, context, db, conn, session)
+        return False
+    elif game_name == "caksoria":
+        # Caksoria intercepts ANY text message during WAITING phase
+        text = update.message.text or update.message.caption or ""
+        if text.strip():
+            await caksoria.proses_pesan_caksoria(update, context, db, conn, session)
         return False
     elif game_name == "tujuh_pusaka":
         # Tujuh pusaka has commands like /ikut, /mulai_game, /pusaka that start with /

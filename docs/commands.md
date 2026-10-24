@@ -79,6 +79,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
   - *Kata Rahasia:* `/bermain kata_rahasia <setting>`
   - *Kantong Rempah:* `/bermain kantong_rempah [menit_setor] [menit_tebak]`
   - *Tahan Dulu:* `/bermain tahan_dulu [nama_setting] [delay_detik]`
+  - *Caksoria:* `/bermain caksoria [nama_setting] [delay_detik]`
   - *Adu React:* `/bermain adu_react`
   - *Tujuh Pusaka:* `/bermain tujuh_pusaka`
   - *Ketik Angka:* `/bermain ketik_angka [max_pemenang]`
