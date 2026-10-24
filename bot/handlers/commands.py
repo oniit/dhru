@@ -50,6 +50,7 @@ from bot.settings import (
     MABA_GROUP_GIDS,
     MABA_GROUP_NAMES,
     KELOMPOK_GID,
+    SDM_CH_ID,
     SDM_GID,
     get_charyarthi_divisions,
     get_division_label,
@@ -91,6 +92,7 @@ from .common import (
     send_message_or_media_to_target,
     build_maba_verification_text,
     render_charyarthi_quiz_view,
+    render_charyarthi_quiz_preview_page,
     get_user_jabatans,
     presence_allowed_class_ids,
 )
@@ -369,6 +371,58 @@ async def cmd_maba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await db.set_onboarding_step(conn, u.id, "MABA_NAME")
     await update.message.reply_text(
         "Ketikkan Nama Lengkap Anda:"
+    )
+
+
+async def cmd_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Command untuk memulai formulir pendaftaran Charyarthi (calon staf)."""
+    if not update.effective_user or not update.message:
+        return
+    u = update.effective_user
+    conn = _conn(context)
+    db = _db(context)
+
+    is_open = await is_charyarthi_oprec_open(db, conn)
+    active_divs = await get_active_charyarthi_divisions(db, conn)
+    if not is_open or not active_divs:
+        await update.message.reply_text("Pendaftaran Charya saat ini sedang ditutup atau belum ada divisi yang dibuka.")
+        return
+
+    user_r = await user_row(conn, db, u.id)
+    if user_r:
+        if user_r["role"] == ROLE_CHARYARTHI:
+            await update.message.reply_text("Anda sudah terdaftar sebagai Chāryārthī (dalam antrean seleksi).")
+            return
+        if user_r["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+            await update.message.reply_text("Anda sudah berstatus Charya / Petinggi.")
+            return
+        if user_r["role"] in (ROLE_STUDENT, ROLE_MABA, ROLE_BEM):
+            await update.message.reply_text("Mahasiswa aktif belum dapat melamar menjadi staf. Anda harus menjadi alumni terlebih dahulu.")
+            return
+
+    prof = profile_from_row(user_r) if user_r else {}
+    if prof.get("application_status") == "REJECTED":
+        await db.set_profile_partial(conn, u.id, {"application_status": None})
+        prof["application_status"] = None
+
+    if prof.get("full_name"):
+        await db.set_onboarding_step(conn, u.id, "CHARYARTHI_REASON")
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")]])
+        await update.message.reply_text(
+            f"Pendaftaran Chāryārthī (Calon Staf).\n\nNama Lengkap: <b>{html.escape(prof['full_name'])}</b> (Sudah terisi)\n\nSilakan ketikkan <b>Alasan Anda Mendaftar Menjadi Staf</b>:",
+            parse_mode="HTML",
+            reply_markup=cancel_kb
+        )
+        return
+
+    await db.set_onboarding_step(conn, u.id, "CHARYARTHI_NAME")
+    cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="charyarthi:cancel")]])
+    await update.message.reply_text(
+        "🏛 <b>Pendaftaran Chāryārthī (Calon Staf)</b>\n\n"
+        "Selamat datang di formulir pendaftaran calon staf Dhruva.\n"
+        "Silakan ketikkan <b>Nama Lengkap</b> Anda:",
+        reply_markup=cancel_kb,
+        parse_mode="HTML"
     )
 
 
@@ -1073,6 +1127,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     return
 
             prof = profile_from_row(user_r) if user_r else {}
+            if prof.get("application_status") == "REJECTED":
+                await db.set_profile_partial(conn, uid, {"application_status": None})
+                prof["application_status"] = None
+
             if prof.get("full_name"):
                 await db.set_onboarding_step(conn, uid, "CHARYARTHI_REASON")
                 await q.answer()
@@ -1098,6 +1156,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         elif action == "cancel":
             await db.set_onboarding_step(conn, uid, None)
+            await db.set_profile_partial(conn, uid, {
+                "target_division_1": None,
+                "target_division_2": None,
+                "charyarthi_reason": None,
+                "application_status": None,
+            })
+            await db.clear_charyarthi_user_answers(conn, uid)
             await q.answer("Pendaftaran Charya dibatalkan.")
             buttons = []
             is_open = await is_charyarthi_oprec_open(db, conn)
@@ -1206,7 +1271,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "━━━━━━━━━━━━━━━━━━━\n\n"
             )
             if cur_ans:
-                msg_text += f"<i>Jawaban Anda saat ini:</i>\n<blockquote>{html.escape(cur_ans)}</blockquote>\n\n"
+                if len(cur_ans) > 2000:
+                    ans_disp = html.escape(cur_ans[:2000]) + f"\n\n<i>... [teks dipotong di pratinjau, tersimpan lengkap {len(cur_ans)} karakter]</i>"
+                else:
+                    ans_disp = html.escape(cur_ans)
+                msg_text += f"<i>Jawaban Anda saat ini:</i>\n<blockquote>{ans_disp}</blockquote>\n\n"
             msg_text += "Silakan ketikkan jawaban Anda di bawah ini dan kirimkan ke bot:"
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")]])
             await q.answer()
@@ -1228,27 +1297,84 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             questions = await db.get_charyarthi_questions(conn, div_id)
             answers = await db.get_charyarthi_answers(conn, uid, div_id)
             div_lbl = get_division_label(div_id)
-            prev_text = f"👁 <b>Pratinjau Jawaban Tes ({html.escape(div_lbl)})</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+            prev_lines = [f"👁 <b>Pratinjau Jawaban Tes ({html.escape(div_lbl)})</b>\n━━━━━━━━━━━━━━━━━━━\n"]
             for q_item in questions:
                 qid = q_item["id"]
                 q_order = q_item["question_order"]
                 q_txt = q_item["question_text"]
-                ans = answers.get(qid, "<i>(Belum diisi)</i>")
-                prev_text += f"<b>{q_order}. {html.escape(q_txt)}</b>\n<blockquote>{html.escape(ans)}</blockquote>\n\n"
-            prev_text += "━━━━━━━━━━━━━━━━━━━\n<i>Anda dapat kembali untuk mengubah jawaban atau lanjut ke pendaftaran.</i>"
+                ans_raw = answers.get(qid, "")
+                if not ans_raw.strip():
+                    ans_disp = "<i>(Belum diisi)</i>"
+                elif len(ans_raw) > 1200:
+                    ans_disp = html.escape(ans_raw[:1200]) + f"\n<i>... [dipotong di ringkasan, tersimpan {len(ans_raw)} karakter]</i>"
+                else:
+                    ans_disp = html.escape(ans_raw)
+                prev_lines.append(f"<b>{q_order}. {html.escape(q_txt)}</b>\n<blockquote>{ans_disp}</blockquote>\n")
+            prev_lines.append("━━━━━━━━━━━━━━━━━━━\n<i>Anda dapat kembali untuk mengubah jawaban atau lanjut ke pendaftaran.</i>")
+            prev_text = "\n".join(prev_lines)
+
             total_q = len(questions)
             answered_count = sum(1 for q_item in questions if q_item["id"] in answers and answers[q_item["id"]].strip())
+
+            # Jika teks gabungan melebihi batas aman telegram (3500 karakter), otomatis alihkan ke pratinjau per soal
+            if len(prev_text) > 3500 and total_q > 0:
+                p_text, p_kb = await render_charyarthi_quiz_preview_page(uid, div_id, 0, conn, db)
+                await q.answer()
+                await q.edit_message_text(p_text, reply_markup=p_kb, parse_mode="HTML")
+                return
+
             ready_btn = (
                 InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")
                 if (total_q == 0 or answered_count == total_q)
                 else InlineKeyboardButton(f"⏳ Belum Lengkap ({answered_count}/{total_q})", callback_data="charyarthi:not_ready")
             )
-            kb = InlineKeyboardMarkup([
+            buttons_prev = [
+                [InlineKeyboardButton("📄 Lihat Per Nomor Soal", callback_data=f"charyarthi:prev_q:{div_id}:0")],
                 [InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")],
                 [ready_btn]
+            ]
+            await q.answer()
+            await q.edit_message_text(prev_text, reply_markup=InlineKeyboardMarkup(buttons_prev), parse_mode="HTML")
+            return
+
+        elif action == "prev_q":
+            parts = data.split(":")
+            div_id = parts[2]
+            p_idx = int(parts[3]) if len(parts) > 3 else 0
+            p_text, p_kb = await render_charyarthi_quiz_preview_page(uid, div_id, p_idx, conn, db)
+            await q.answer()
+            await q.edit_message_text(p_text, reply_markup=p_kb, parse_mode="HTML")
+            return
+
+        elif action == "noop":
+            await q.answer()
+            return
+
+        elif action == "reset_confirm":
+            parts = data.split(":")
+            div_id = parts[2]
+            div_lbl = get_division_label(div_id)
+            warn_text = (
+                "⚠️ <b>Konfirmasi Reset Jawaban Tes</b>\n"
+                "━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Apakah Anda yakin ingin menghapus <b>seluruh jawaban tes</b> untuk divisi <b>{html.escape(div_lbl)}</b>?\n\n"
+                "⚠️ Tindakan ini akan mengosongkan semua jawaban yang telah Anda ketik dan tidak dapat dibatalkan."
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🗑 Ya, Hapus Semua Jawaban", callback_data=f"charyarthi:do_reset:{div_id}")],
+                [InlineKeyboardButton("🔙 Batal (Kembali)", callback_data=f"charyarthi:back_quiz:{div_id}")]
             ])
             await q.answer()
-            await q.edit_message_text(prev_text, reply_markup=kb, parse_mode="HTML")
+            await q.edit_message_text(warn_text, reply_markup=kb, parse_mode="HTML")
+            return
+
+        elif action == "do_reset":
+            parts = data.split(":")
+            div_id = parts[2]
+            await db.clear_charyarthi_user_answers(conn, uid, div_id)
+            await q.answer("✅ Seluruh jawaban tes divisi Anda berhasil dihapus/direset.", show_alert=True)
+            dash_text, dash_kb = await render_charyarthi_quiz_view(uid, div_id, conn, db)
+            await q.edit_message_text(dash_text, reply_markup=dash_kb, parse_mode="HTML")
             return
 
         elif action == "not_ready":
@@ -1351,17 +1477,24 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             user_sub_r = await user_row(conn, db, uid)
             prof_sub = profile_from_row(user_sub_r) if user_sub_r else {}
             d1_sub = prof_sub.get("target_division_1")
-            if d1_sub:
-                q_sub_list = await db.get_charyarthi_questions(conn, d1_sub)
-                if q_sub_list:
-                    ans_sub_dict = await db.get_charyarthi_answers(conn, uid, d1_sub)
-                    ans_count = sum(1 for q_item in q_sub_list if q_item["id"] in ans_sub_dict and ans_sub_dict[q_item["id"]].strip())
-                    if ans_count < len(q_sub_list):
-                        await q.answer(
-                            f"❌ Soal tes divisi Anda belum lengkap ({ans_count}/{len(q_sub_list)} terisi). Harap selesaikan tes sebelum submit!",
-                            show_alert=True
-                        )
-                        return
+            if not d1_sub:
+                await q.answer("❌ Anda belum memilih divisi. Silakan pilih divisi terlebih dahulu.", show_alert=True)
+                return
+
+            if user_sub_r and (user_sub_r["role"] == ROLE_CHARYARTHI or prof_sub.get("application_status") in ("PENDING", "ACCEPTED")):
+                await q.answer("Pendaftaran Anda sudah dikirim sebelumnya dan sedang dalam proses peninjauan.", show_alert=True)
+                return
+
+            q_sub_list = await db.get_charyarthi_questions(conn, d1_sub)
+            if q_sub_list:
+                ans_sub_dict = await db.get_charyarthi_answers(conn, uid, d1_sub)
+                ans_count = sum(1 for q_item in q_sub_list if q_item["id"] in ans_sub_dict and ans_sub_dict[q_item["id"]].strip())
+                if ans_count < len(q_sub_list):
+                    await q.answer(
+                        f"❌ Soal tes divisi Anda belum lengkap ({ans_count}/{len(q_sub_list)} terisi). Harap selesaikan tes sebelum submit!",
+                        show_alert=True
+                    )
+                    return
 
             promo_count = await db.count_valid_promos(conn, uid)
             if promo_count < 1:
@@ -1398,7 +1531,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             d1_lbl = get_division_label(d1_id)
             d2_lbl = get_division_label(d2_id) if d2_id else None
 
-            reason = html.escape(str(prof.get("charyarthi_reason", "-")))
+            raw_reason = str(prof.get("charyarthi_reason", "-"))
+            if len(raw_reason) > 600:
+                reason = html.escape(raw_reason[:600]) + "..."
+            else:
+                reason = html.escape(raw_reason)
+
             msg_admin = (
                 "📑 <b>PENDAFTARAN CHARYA (CALON STAF)</b>\n"
                 "━━━━━━━━━━━━━━━━━━\n"
@@ -1428,16 +1566,35 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
             if PENDAFTAR_CH_ID:
                 try:
-                    await context.bot.send_message(
+                    sent_pendaftar = await context.bot.send_message(
                         chat_id=PENDAFTAR_CH_ID,
                         text=msg_admin,
                         reply_markup=InlineKeyboardMarkup(admin_buttons),
                         parse_mode="HTML"
                     )
+                    if len(raw_reason) > 600:
+                        reason_esc = html.escape(raw_reason)
+                        if len(reason_esc) > 3200:
+                            reason_esc = reason_esc[:3200] + "\n\n<i>... [teks dipotong di channel, tersimpan lengkap di database]</i>"
+                        reason_msg = f"📝 <b>Alasan Mendaftar Lengkap — {nama}:</b>\n<blockquote>{reason_esc}</blockquote>"
+                        try:
+                            await context.bot.send_message(
+                                chat_id=PENDAFTAR_CH_ID,
+                                text=reason_msg,
+                                reply_to_message_id=sent_pendaftar.message_id,
+                                parse_mode="HTML"
+                            )
+                        except Exception:
+                            await context.bot.send_message(
+                                chat_id=PENDAFTAR_CH_ID,
+                                text=reason_msg,
+                                parse_mode="HTML"
+                            )
                 except Exception as e:
                     log.warning("Gagal mengirim info pendaftar charya ke %s: %s", PENDAFTAR_CH_ID, e)
 
-            if SDM_GID:
+            sdm_target = SDM_CH_ID or SDM_GID
+            if sdm_target:
                 try:
                     questions = await db.get_charyarthi_questions(conn, d1_id) if d1_id else []
                     answers = await db.get_charyarthi_answers(conn, uid, d1_id) if d1_id else {}
@@ -1455,23 +1612,57 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                             "<i>Lihat lembar jawaban pada balasan pesan di bawah:</i>"
                         )
                         sent_sdm_msg = await context.bot.send_message(
-                            chat_id=SDM_GID,
+                            chat_id=sdm_target,
                             text=sdm_header,
                             parse_mode="HTML"
                         )
 
                         # Kirim lembar jawaban terstruktur (anti limit 4096 teks)
-                        ans_blocks = []
-                        cur_block = f"📝 <b>LEMBAR JAWABAN TES DIVISI ({d1_lbl})</b>\n👤 <b>Pelamar:</b> {nama} (<code>{uid}</code>)\n━━━━━━━━━━━━━━━━━━\n\n"
+                        # Memecah jawaban panjang ke sub-chunk agar tidak pernah melebihi 3500 karakter
+                        entries = []
                         for q_item in questions:
                             qid = q_item["id"]
                             q_o = q_item["question_order"]
                             q_t = q_item["question_text"]
                             ans_t = answers.get(qid, "-")
-                            entry = f"<b>{q_o}. {html.escape(q_t)}</b>\n<blockquote>{html.escape(ans_t)}</blockquote>\n\n"
-                            if len(cur_block) + len(entry) > 3800:
+
+                            if len(ans_t) <= 1800:
+                                ans_subparts = [ans_t]
+                            else:
+                                ans_subparts = []
+                                cur_p = ""
+                                for l in ans_t.splitlines(keepends=True):
+                                    if len(cur_p) + len(l) > 1800:
+                                        if cur_p:
+                                            ans_subparts.append(cur_p)
+                                            cur_p = ""
+                                        while len(l) > 1800:
+                                            ans_subparts.append(l[:1800])
+                                            l = l[1800:]
+                                        cur_p = l
+                                    else:
+                                        cur_p += l
+                                if cur_p:
+                                    ans_subparts.append(cur_p)
+
+                            for idx_p, sub_p in enumerate(ans_subparts):
+                                sub_p_esc = html.escape(sub_p)
+                                if len(sub_p_esc) > 2800:
+                                    sub_p_esc = sub_p_esc[:2750] + "..."
+                                if idx_p == 0:
+                                    entries.append(f"<b>{q_o}. {html.escape(q_t)}</b>\n<blockquote>{sub_p_esc}</blockquote>\n\n")
+                                else:
+                                    entries.append(f"<b>{q_o}. (Lanjutan Jawaban)</b>\n<blockquote>{sub_p_esc}</blockquote>\n\n")
+
+                        ans_blocks = []
+                        header_first = f"📝 <b>LEMBAR JAWABAN TES DIVISI ({d1_lbl})</b>\n👤 <b>Pelamar:</b> {nama} (<code>{uid}</code>)\n━━━━━━━━━━━━━━━━━━\n\n"
+                        header_cont = f"📝 <b>LEMBAR JAWABAN (Lanjutan) — {nama}</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+
+                        cur_block = header_first
+                        for entry in entries:
+                            if len(cur_block) + len(entry) > 3400:
                                 ans_blocks.append(cur_block)
-                                cur_block = f"📝 <b>LEMBAR JAWABAN (Lanjutan) — {nama}</b>\n━━━━━━━━━━━━━━━━━━\n\n" + entry
+                                cur_block = header_cont + entry
                             else:
                                 cur_block += entry
                         if cur_block:
@@ -1480,19 +1671,39 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         for blk in ans_blocks:
                             try:
                                 await context.bot.send_message(
-                                    chat_id=SDM_GID,
+                                    chat_id=sdm_target,
                                     text=blk,
                                     reply_to_message_id=sent_sdm_msg.message_id,
                                     parse_mode="HTML"
                                 )
                             except Exception:
-                                await context.bot.send_message(
-                                    chat_id=SDM_GID,
-                                    text=blk,
-                                    parse_mode="HTML"
-                                )
+                                try:
+                                    await context.bot.send_message(
+                                        chat_id=sdm_target,
+                                        text=blk,
+                                        parse_mode="HTML"
+                                    )
+                                except Exception as err_send:
+                                    log.warning("Gagal mengirim blok jawaban charya ke SDM (%s): %s", sdm_target, err_send)
+                    else:
+                        sdm_no_q = (
+                            "📝 <b>PENDAFTARAN CALON STAF (TIM SDM)</b>\n"
+                            "━━━━━━━━━━━━━━━━━━\n"
+                            f"👤 <b>Pelamar:</b> <a href=\"tg://user?id={uid}\">{nama}</a> ({uname})\n"
+                            f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+                            f"📝 <b>Alasan Mendaftar:</b> {reason}\n"
+                            f"🏛 <b>Divisi Dilamar:</b> {d1_lbl}\n"
+                            "💡 <i>(Divisi ini tidak memerlukan tes esai tertulis tambahan)</i>\n"
+                            f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
+                            "━━━━━━━━━━━━━━━━━━"
+                        )
+                        await context.bot.send_message(
+                            chat_id=sdm_target,
+                            text=sdm_no_q,
+                            parse_mode="HTML"
+                        )
                 except Exception as e:
-                    log.warning("Gagal mengirim info jawaban charya ke SDM_GID (%s): %s", SDM_GID, e)
+                    log.warning("Gagal memproses pengiriman jawaban charya ke SDM (%s): %s", sdm_target, e)
             return
 
 
@@ -1585,7 +1796,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             name = prof_t.get("full_name") or row_t["first_name"] or "Pengguna"
 
             await db.set_role(conn, target_uid, ROLE_PUBLIC)
-            await db.set_profile_partial(conn, target_uid, {"application_status": "REJECTED"})
+            await db.set_profile_partial(conn, target_uid, {
+                "application_status": "REJECTED",
+                "target_division_1": None,
+                "target_division_2": None,
+                "charyarthi_reason": None,
+            })
+            await db.clear_charyarthi_user_answers(conn, target_uid)
 
             admin_name = q.from_user.first_name or f"@{q.from_user.username}" or "Admin"
             now_str = format_local_time(time.time())
@@ -1617,7 +1834,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data.startswith("soal:"):
         chat_id = q.message.chat_id if q.message else None
-        is_auth = is_admin_elevated(q.from_user.id) or (SDM_GID and chat_id == SDM_GID) or (PETINGGI_GID and chat_id == PETINGGI_GID)
+        is_auth = (
+            is_admin_elevated(q.from_user.id)
+            or (SDM_CH_ID and chat_id == SDM_CH_ID)
+            or (SDM_GID and chat_id == SDM_GID)
+            or (PETINGGI_GID and chat_id == PETINGGI_GID)
+        )
         if not is_auth:
             conn = _conn(context)
             db = _db(context)
@@ -1635,6 +1857,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         db = _db(context)
         parts = data.split(":")
         sub_act = parts[1]
+
+        if sub_act != "adm_add":
+            u_row = await user_row(conn, db, q.from_user.id)
+            if u_row and (u_row["onboarding_step"] or "").startswith("INPUT_SOAL_ADD:"):
+                await db.set_onboarding_step(conn, q.from_user.id, None)
 
         if sub_act == "adm_menu":
             text_res, kb = await _render_admin_soal_menu(conn, db)
@@ -5817,7 +6044,13 @@ async def cmd_reject_charyarthi(update: Update, context: ContextTypes.DEFAULT_TY
     name = prof_t.get("full_name") or row_t["first_name"] or "Pengguna"
 
     await db.set_role(conn, target_uid, ROLE_PUBLIC)
-    await db.set_profile_partial(conn, target_uid, {"application_status": "REJECTED"})
+    await db.set_profile_partial(conn, target_uid, {
+        "application_status": "REJECTED",
+        "target_division_1": None,
+        "target_division_2": None,
+        "charyarthi_reason": None,
+    })
+    await db.clear_charyarthi_user_answers(conn, target_uid)
 
     await update.message.reply_text(
         f"❌ Lamaran <a href=\"tg://user?id={target_uid}\">{html.escape(name)}</a> telah ditolak dan role di-rollback ke publik.",
@@ -5886,6 +6119,8 @@ async def _can_manage_soal(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     uid = update.effective_user.id if update.effective_user else 0
     if is_admin_elevated(uid):
         return True
+    if SDM_CH_ID and chat_id == SDM_CH_ID:
+        return True
     if SDM_GID and chat_id == SDM_GID:
         return True
     if PETINGGI_GID and chat_id == PETINGGI_GID:
@@ -5953,7 +6188,15 @@ async def _render_admin_division_soal(div_id: str, conn, db) -> tuple[str, Inlin
         text += "<i>(Belum ada soal khusus untuk divisi ini. Pelamar tidak akan ditanya tes esai tambahan.)</i>\n"
     else:
         for q in questions:
-            text += f"<b>{q['question_order']}.</b> {html.escape(q['question_text'])}\n"
+            q_txt = q["question_text"]
+            if len(q_txt) > 140:
+                q_txt = q_txt[:140] + "..."
+            text += f"<b>{q['question_order']}.</b> {html.escape(q_txt)}\n"
+            if len(text) > 3400:
+                rem = len(questions) - q["question_order"]
+                if rem > 0:
+                    text += f"<i>... dan {rem} soal lainnya</i>\n"
+                break
     text += "━━━━━━━━━━━━━━━━━━━\n<i>Pilih tindakan di bawah ini:</i>"
 
     buttons = [

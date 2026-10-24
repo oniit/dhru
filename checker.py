@@ -337,7 +337,7 @@ async def process_pending_links():
                                 f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                                 json={
                                     "chat_id": main_user_id,
-                                    "text": f"❌ Gagal memvalidasi link {link}\n\nSepertinya bukan teks promosi yang sesuai. (Tidak mengandung kata '{lpm_keyword}')"
+                                    "text": f"❌ Gagal memvalidasi link {link}\n\nSepertinya bukan teks promosi yang sesuai. Pastikan Anda menyebarkan postingan promosi yang benar."
                                 }
                             )
                             continue

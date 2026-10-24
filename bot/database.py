@@ -1652,6 +1652,9 @@ class Database:
         cur = await conn.execute("DELETE FROM task_assignments")
         task_assignments = self._rowcount(cur)
 
+        cur = await conn.execute("DELETE FROM charyarthi_answers")
+        charyarthi_answers = self._rowcount(cur)
+
         await conn.commit()
         return {
             "attendance_records": attendance_records,
@@ -1661,6 +1664,7 @@ class Database:
             "audit_log": audit_log,
             "task_submissions": task_submissions,
             "task_assignments": task_assignments,
+            "charyarthi_answers": charyarthi_answers,
         }
 
     async def reset_attendance_all(
@@ -1879,6 +1883,9 @@ class Database:
         cur = await conn.execute("DELETE FROM linked_accounts WHERE main_user_id = ? OR promo_user_id = ?", (telegram_id, telegram_id))
         out["linked_accounts"] = self._rowcount(cur)
 
+        cur = await conn.execute("DELETE FROM charyarthi_answers WHERE telegram_id = ?", (telegram_id,))
+        out["charyarthi_answers"] = self._rowcount(cur)
+
         return out
 
     async def reset_all_users_all_data_except_env(
@@ -1991,6 +1998,12 @@ class Database:
         )
         task_submissions_deleted = self._rowcount(cur)
 
+        cur = await conn.execute(
+            f"DELETE FROM charyarthi_answers WHERE telegram_id IN ({p})",
+            target_ids,
+        )
+        charyarthi_answers_deleted = self._rowcount(cur)
+
         await conn.commit()
 
         return {
@@ -2005,6 +2018,7 @@ class Database:
             "audit_log_deleted": audit_log_deleted,
             "users_profile_reset": users_profile_reset,
             "task_submissions_deleted": task_submissions_deleted,
+            "charyarthi_answers_deleted": charyarthi_answers_deleted,
         }
 
     async def ensure_owner_role(self, conn: aiosqlite.Connection) -> None:
@@ -2839,12 +2853,18 @@ class Database:
         await conn.commit()
 
     async def clear_charyarthi_user_answers(
-        self, conn: aiosqlite.Connection, telegram_id: int
+        self, conn: aiosqlite.Connection, telegram_id: int, division_id: str | None = None
     ) -> None:
-        await conn.execute(
-            "DELETE FROM charyarthi_answers WHERE telegram_id = ?",
-            (telegram_id,)
-        )
+        if division_id:
+            await conn.execute(
+                "DELETE FROM charyarthi_answers WHERE telegram_id = ? AND division_id = ?",
+                (telegram_id, division_id)
+            )
+        else:
+            await conn.execute(
+                "DELETE FROM charyarthi_answers WHERE telegram_id = ?",
+                (telegram_id,)
+            )
         await conn.commit()
 
 

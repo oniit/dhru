@@ -158,8 +158,8 @@ async def verify_lpm_link_embed(
 
     if not lpm_keyword or lpm_keyword.lower() not in msg_text.lower():
         return False, "NO_KEYWORD", (
-            f"Teks pesan tidak memuat kata kunci promosi yang sesuai.\n"
-            f"Wajib memuat kata kunci: <b>{html.escape(lpm_keyword)}</b>"
+            "Pesan di tautan tidak memuat teks/materi promosi resmi yang valid. "
+            "Pastikan Anda menyebarkan postingan promosi yang benar."
         )
 
     author_username = None

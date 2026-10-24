@@ -250,7 +250,10 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if step == "CHARYARTHI_NAME":
-        name = text.title()
+        if not text:
+            await update.message.reply_text("Nama tidak boleh kosong. Silakan ketikkan Nama Lengkap Anda:")
+            return
+        name = text[:100].strip().title()
         await db.set_profile_partial(conn, uid, {"full_name": name})
         await db.set_onboarding_step(conn, uid, "CHARYARTHI_REASON")
         
@@ -264,7 +267,10 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if step == "CHARYARTHI_REASON":
-        reason = text
+        if not text:
+            await update.message.reply_text("Alasan tidak boleh kosong. Silakan ketikkan alasan Anda mendaftar:")
+            return
+        reason = text[:3000].strip()
         await db.set_profile_partial(conn, uid, {"charyarthi_reason": reason})
         await db.set_onboarding_step(conn, uid, None)
 
@@ -299,9 +305,13 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if step.startswith("CHARYARTHI_ANS:"):
         parts = step.split(":", 2)
         if len(parts) == 3:
+            if not text:
+                await update.message.reply_text("Jawaban tidak boleh kosong. Silakan ketikkan jawaban Anda:")
+                return
             div_id = parts[1]
             qid = int(parts[2])
-            await db.save_charyarthi_answer(conn, uid, div_id, qid, text)
+            ans_clean = text[:4000].strip()
+            await db.save_charyarthi_answer(conn, uid, div_id, qid, ans_clean)
             await db.set_onboarding_step(conn, uid, None)
 
             q = await db.get_charyarthi_question_by_id(conn, qid)
@@ -312,14 +322,18 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if step.startswith("INPUT_SOAL_ADD:"):
+        if not text:
+            await update.message.reply_text("Teks soal tidak boleh kosong. Silakan ketikkan pertanyaan:")
+            return
         div_id = step.split(":", 1)[1]
-        await db.add_charyarthi_question(conn, div_id, text)
+        await db.add_charyarthi_question(conn, div_id, text[:1000].strip())
         await db.set_onboarding_step(conn, uid, None)
         from bot.settings import get_division_label
         div_lbl = get_division_label(div_id)
+        clean_alias = div_id[2:] if div_id.startswith("d_") else div_id
         await update.message.reply_text(
             f"✅ <b>Soal baru berhasil ditambahkan untuk divisi {html.escape(div_lbl)}!</b>\n\n"
-            f"Ketik /soal {div_id} untuk melihat daftar soal lengkap.",
+            f"Ketik /soal {clean_alias} untuk melihat daftar soal lengkap.",
             parse_mode="HTML"
         )
         return

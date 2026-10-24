@@ -883,6 +883,7 @@ async def render_charyarthi_quiz_view(uid: int, div_id: str, conn, db) -> tuple[
 
     if answered_count > 0:
         buttons.append([InlineKeyboardButton("👁 Pratinjau Semua Jawaban", callback_data=f"charyarthi:preview:{div_id}")])
+        buttons.append([InlineKeyboardButton("🗑 Reset Jawaban Saya", callback_data=f"charyarthi:reset_confirm:{div_id}")])
 
     if total_q == 0 or answered_count == total_q:
         buttons.append([InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")])
@@ -891,5 +892,67 @@ async def render_charyarthi_quiz_view(uid: int, div_id: str, conn, db) -> tuple[
 
     buttons.append([InlineKeyboardButton("❌ Batal Pendaftaran", callback_data="charyarthi:cancel")])
     return text, InlineKeyboardMarkup(buttons)
+
+
+async def render_charyarthi_quiz_preview_page(
+    uid: int, div_id: str, page_idx: int, conn, db
+) -> tuple[str, InlineKeyboardMarkup]:
+    from bot.settings import get_division_label
+    questions = await db.get_charyarthi_questions(conn, div_id)
+    answers = await db.get_charyarthi_answers(conn, uid, div_id)
+    div_lbl = get_division_label(div_id)
+    total_q = len(questions)
+
+    if total_q == 0:
+        text = f"🏛 <b>Pratinjau Jawaban ({html.escape(div_lbl)})</b>\n\nDivisi ini tidak memiliki pertanyaan tes khusus."
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")]])
+        return text, kb
+
+    page_idx = max(0, min(page_idx, total_q - 1))
+    q_item = questions[page_idx]
+    qid = q_item["id"]
+    q_order = q_item["question_order"]
+    q_txt = q_item["question_text"]
+    ans_raw = answers.get(qid, "")
+
+    if not ans_raw.strip():
+        ans_disp = "<i>(Belum diisi)</i>"
+    elif len(ans_raw) > 2800:
+        ans_disp = html.escape(ans_raw[:2800]) + f"\n\n<i>... [teks dipotong di tampilan pratinjau, tersimpan lengkap {len(ans_raw)} karakter]</i>"
+    else:
+        ans_disp = html.escape(ans_raw)
+
+    text = (
+        f"👁 <b>Pratinjau Jawaban Tes ({html.escape(div_lbl)})</b>\n"
+        f"📄 <b>Soal {q_order} dari {total_q}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<b>Pertanyaan:</b>\n{html.escape(q_txt)}\n\n"
+        f"<b>Jawaban Anda:</b>\n<blockquote>{ans_disp}</blockquote>\n\n"
+        "━━━━━━━━━━━━━━━━━━━"
+    )
+
+    nav_row = []
+    if page_idx > 0:
+        nav_row.append(InlineKeyboardButton("◀️ Soal Sebelumnya", callback_data=f"charyarthi:prev_q:{div_id}:{page_idx - 1}"))
+    nav_row.append(InlineKeyboardButton(f"📌 {page_idx + 1}/{total_q}", callback_data="charyarthi:noop"))
+    if page_idx < total_q - 1:
+        nav_row.append(InlineKeyboardButton("Soal Berikutnya ▶️", callback_data=f"charyarthi:prev_q:{div_id}:{page_idx + 1}"))
+
+    answered_count = sum(1 for q in questions if q["id"] in answers and answers[q["id"]].strip())
+    ready_btn = (
+        InlineKeyboardButton("🚀 Lanjut ke Berkas & Submit", callback_data=f"charyarthi:ready:{div_id}")
+        if (total_q == 0 or answered_count == total_q)
+        else InlineKeyboardButton(f"⏳ Belum Lengkap ({answered_count}/{total_q})", callback_data="charyarthi:not_ready")
+    )
+
+    buttons = []
+    if nav_row:
+        buttons.append(nav_row)
+    buttons.append([InlineKeyboardButton(f"✏️ Ubah Jawaban Soal {q_order}", callback_data=f"charyarthi:ans_q:{div_id}:{qid}")])
+    buttons.append([InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")])
+    buttons.append([ready_btn])
+
+    return text, InlineKeyboardMarkup(buttons)
+
 
 

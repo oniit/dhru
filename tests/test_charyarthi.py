@@ -313,9 +313,10 @@ async def test_both_registrations_forwarding_to_pendaftar_channel():
             assert "Calon Charya Satu" in call_kwargs_c["text"]
             assert "Ingin mengabdi" in call_kwargs_c["text"]
             assert call_kwargs_c["reply_markup"] is not None
-        from bot.settings import SDM_GID
-        if SDM_GID:
-            sdm_calls = [c for c in ctx_charya.bot.send_message.call_args_list if c.kwargs["chat_id"] == SDM_GID]
+        from bot.settings import SDM_CH_ID, SDM_GID
+        sdm_target = SDM_CH_ID or SDM_GID
+        if sdm_target:
+            sdm_calls = [c for c in ctx_charya.bot.send_message.call_args_list if c.kwargs["chat_id"] == sdm_target]
             assert len(sdm_calls) >= 1
             assert "JAWABAN TES DIVISI (TIM SDM)" in sdm_calls[0].kwargs["text"]
             # SDM receives answer sheet only, without applicant decision buttons
@@ -619,6 +620,398 @@ async def test_charyarthi_division_confirmation_and_lock():
             await conn.close()
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_charyarthi_long_answers_preview_and_forwarding():
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import Update, User, CallbackQuery
+    from bot.handlers import commands
+    from bot.handlers.common import render_charyarthi_quiz_preview_page
+    from bot.settings import SDM_CH_ID, SDM_GID, PENDAFTAR_CH_ID
+
+    db = Database()
+    conn = await db.connect()
+    uid = 9911882244
+    div_id = "d_editor"
+
+    try:
+        await db.upsert_user_from_telegram(
+            conn,
+            telegram_id=uid,
+            username="long_ans_user",
+            first_name="Long",
+            last_name="Answer",
+            language_code="id",
+            is_premium=False,
+            is_bot=False,
+            raw_profile={},
+        )
+        await db.clear_charyarthi_questions(conn, div_id)
+        q1_id = await db.add_charyarthi_question(conn, div_id, "Pertanyaan esai pertama?")
+        q2_id = await db.add_charyarthi_question(conn, div_id, "Pertanyaan esai kedua?")
+
+        # Super long answers (> 3000 chars)
+        long_ans1 = "A" * 3200
+        long_ans2 = "B" * 2800
+        await db.save_charyarthi_answer(conn, uid, div_id, q1_id, long_ans1)
+        await db.save_charyarthi_answer(conn, uid, div_id, q2_id, long_ans2)
+
+        # 1. Test render_charyarthi_quiz_preview_page
+        text_p0, kb_p0 = await render_charyarthi_quiz_preview_page(uid, div_id, 0, conn, db)
+        assert len(text_p0) <= 4096
+        assert "Soal 1 dari 2" in text_p0
+        assert "dipotong di tampilan pratinjau" in text_p0
+
+        text_p1, kb_p1 = await render_charyarthi_quiz_preview_page(uid, div_id, 1, conn, db)
+        assert len(text_p1) <= 4096
+        assert "Soal 2 dari 2" in text_p1
+
+        # 2. Test callback charyarthi:preview:{div_id} redirects to paginated preview
+        u = MagicMock(spec=User)
+        u.id = uid
+        u.username = "long_ans_user"
+        u.first_name = "Long"
+
+        q_prev = MagicMock(spec=CallbackQuery)
+        q_prev.data = f"charyarthi:preview:{div_id}"
+        q_prev.from_user = u
+        q_prev.answer = AsyncMock()
+        q_prev.edit_message_text = AsyncMock()
+
+        up_prev = MagicMock(spec=Update)
+        up_prev.callback_query = q_prev
+
+        ctx = MagicMock()
+        ctx.bot = MagicMock()
+        ctx.bot.send_message = AsyncMock()
+        ctx.application = MagicMock()
+        ctx.application.bot_data = {"db": db, "conn": conn}
+
+        await commands.on_callback(up_prev, ctx)
+        q_prev.edit_message_text.assert_called_once()
+        sent_prev_text = q_prev.edit_message_text.call_args.args[0]
+        assert len(sent_prev_text) <= 4096
+        assert "Pertanyaan esai pertama?" in sent_prev_text
+
+        # Test paginated preview callback prev_q:0
+        q_prev_q = MagicMock(spec=CallbackQuery)
+        q_prev_q.data = f"charyarthi:prev_q:{div_id}:0"
+        q_prev_q.from_user = u
+        q_prev_q.answer = AsyncMock()
+        q_prev_q.edit_message_text = AsyncMock()
+        up_prev_q = MagicMock(spec=Update)
+        up_prev_q.callback_query = q_prev_q
+        await commands.on_callback(up_prev_q, ctx)
+        q_prev_q.edit_message_text.assert_called_once()
+        sent_q_text = q_prev_q.edit_message_text.call_args.args[0]
+        assert "Soal 1 dari 2" in sent_q_text
+
+        # 3. Test submitting with long reason and long answers
+        long_reason = "Alasan mendaftar yang sangat panjang dan detail " * 40  # > 1600 chars
+        await db.set_profile_partial(conn, uid, {
+            "full_name": "Long Answer Candidate",
+            "charyarthi_reason": long_reason,
+            "target_division_1": div_id,
+        })
+        await db.add_promo_verification(conn, uid, "https://t.me/grup_lpm/777", promo_type="lpm", status="VALID")
+
+        q_sub = MagicMock(spec=CallbackQuery)
+        q_sub.data = "charyarthi:submit"
+        q_sub.from_user = u
+        q_sub.answer = AsyncMock()
+        q_sub.edit_message_text = AsyncMock()
+
+        up_sub = MagicMock(spec=Update)
+        up_sub.callback_query = q_sub
+
+        sent_msg_mock = MagicMock()
+        sent_msg_mock.message_id = 12345
+        ctx.bot.send_message = AsyncMock(return_value=sent_msg_mock)
+
+        await commands.on_callback(up_sub, ctx)
+
+        # Verify messages sent to SDM target and PENDAFTAR_CH_ID never exceed 4096 chars
+        sdm_target = SDM_CH_ID or SDM_GID
+        for c in ctx.bot.send_message.call_args_list:
+            text_arg = c.kwargs.get("text", "")
+            assert len(text_arg) <= 4096
+
+        if sdm_target:
+            sdm_calls = [c for c in ctx.bot.send_message.call_args_list if c.kwargs.get("chat_id") == sdm_target]
+            assert len(sdm_calls) >= 2  # Header + at least one chunk
+
+        # 4. Test resetting user cleans charyarthi_answers
+        answers_before = await db.get_charyarthi_answers(conn, uid, div_id)
+        assert len(answers_before) == 2
+
+        reset_res = await db.reset_user_all_data(conn, uid)
+        assert reset_res.get("charyarthi_answers") == 2
+
+        answers_after = await db.get_charyarthi_answers(conn, uid, div_id)
+        assert len(answers_after) == 0
+
+    finally:
+        try:
+            await db.clear_charyarthi_questions(conn, div_id)
+            await db.clear_charyarthi_user_answers(conn, uid)
+            await conn.execute("DELETE FROM promo_verifications WHERE user_id = ?", (uid,))
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (uid,))
+            await conn.commit()
+            await conn.close()
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_promo_keyword_not_leaked():
+    from bot.handlers.promo import verify_lpm_link_embed
+    from unittest.mock import patch, MagicMock, AsyncMock
+
+    db = Database()
+    conn = await db.connect()
+    uid = 9911883355
+    secret_keyword = "secret_lpm_token_xyz"
+    link = "https://t.me/grup_test/100"
+
+    try:
+        mock_html = """
+        <div class="tgme_widget_message_author accent_color">
+            <a class="tgme_widget_message_author_name" href="https://t.me/tester">
+                <span>Tester</span>
+            </a>
+        </div>
+        <div class="tgme_widget_message_text js-message_text">Ini adalah pesan biasa tanpa token</div>
+        """
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = mock_html
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_resp):
+            is_valid, status, err_msg = await verify_lpm_link_embed(
+                conn, db, user_id=uid, link=link, lpm_keyword=secret_keyword
+            )
+            assert is_valid is False
+            assert status == "NO_KEYWORD"
+            assert err_msg is not None
+            # Must NOT leak secret_keyword
+            assert secret_keyword not in err_msg
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_charyarthi_deep_qa_edge_cases():
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import Update, User, CallbackQuery, Message
+    from bot.handlers import commands, messages
+    from bot.handlers.commands import _render_admin_division_soal
+    from bot.settings import SDM_CH_ID, SDM_GID, PENDAFTAR_CH_ID
+
+    db = Database()
+    conn = await db.connect()
+    uid_test = 9922334411
+    div_test = "d_pr"  # Biro Humas
+
+    try:
+        # 1. Setup user with previous REJECTED status
+        await db.upsert_user_from_telegram(
+            conn,
+            telegram_id=uid_test,
+            username="qa_charya",
+            first_name="QA",
+            last_name="Tester",
+            language_code="id",
+            is_premium=False,
+            is_bot=False,
+            raw_profile={},
+        )
+        await db.set_profile_partial(conn, uid_test, {
+            "full_name": "QA Applicant",
+            "application_status": "REJECTED"
+        })
+        await db.set_setting(conn, "charyarthi_oprec_open", "1")
+        await db.set_setting(conn, f"charyarthi_div_{div_test}", "1")
+        await conn.commit()
+
+        # 2. Test /charyarthi command cleans REJECTED status and sets step
+        u_mock = MagicMock(spec=User)
+        u_mock.id = uid_test
+        u_mock.username = "qa_charya"
+        u_mock.first_name = "QA"
+
+        msg_mock = MagicMock(spec=Message)
+        msg_mock.text = "/charyarthi"
+        msg_mock.reply_text = AsyncMock()
+
+        up_cmd = MagicMock(spec=Update)
+        up_cmd.effective_user = u_mock
+        up_cmd.message = msg_mock
+
+        ctx_mock = MagicMock()
+        ctx_mock.bot = MagicMock()
+        ctx_mock.bot.send_message = AsyncMock()
+        ctx_mock.application = MagicMock()
+        ctx_mock.application.bot_data = {"db": db, "conn": conn}
+
+        await commands.cmd_charyarthi(up_cmd, ctx_mock)
+        msg_mock.reply_text.assert_called_once()
+
+        u_row = await db.get_user(conn, uid_test)
+        assert u_row["onboarding_step"] == "CHARYARTHI_REASON"
+        prof = profile_from_row(u_row)
+        assert prof.get("application_status") is None  # Cleaned!
+
+        # 3. Test empty input rejection in messages.py
+        empty_msg = MagicMock(spec=Message)
+        empty_msg.text = "   "
+        empty_msg.caption = None
+        empty_msg.photo = []
+        empty_msg.reply_text = AsyncMock()
+
+        up_empty = MagicMock(spec=Update)
+        up_empty.effective_user = u_mock
+        up_empty.effective_chat = MagicMock()
+        up_empty.effective_chat.type = "private"
+        up_empty.message = empty_msg
+
+        await messages.on_private_message(up_empty, ctx_mock)
+        empty_msg.reply_text.assert_called_once()
+        assert "Alasan tidak boleh kosong" in empty_msg.reply_text.call_args.args[0]
+        # Step remains CHARYARTHI_REASON
+        u_row2 = await db.get_user(conn, uid_test)
+        assert u_row2["onboarding_step"] == "CHARYARTHI_REASON"
+
+        # 4. Fill valid reason
+        valid_reason_msg = MagicMock(spec=Message)
+        valid_reason_msg.text = "Alasan mendaftar yang jelas dan bermutu."
+        valid_reason_msg.caption = None
+        valid_reason_msg.photo = []
+        valid_reason_msg.reply_text = AsyncMock()
+
+        up_reason = MagicMock(spec=Update)
+        up_reason.effective_user = u_mock
+        up_reason.effective_chat = MagicMock()
+        up_reason.effective_chat.type = "private"
+        up_reason.message = valid_reason_msg
+
+        await messages.on_private_message(up_reason, ctx_mock)
+        valid_reason_msg.reply_text.assert_called_once()
+        assert "Silakan pilih <b>Divisi</b>" in valid_reason_msg.reply_text.call_args.args[0]
+
+        # 5. Confirm division choice
+        q_conf = MagicMock(spec=CallbackQuery)
+        q_conf.data = f"charyarthi:confirm_div1:{div_test}"
+        q_conf.from_user = u_mock
+        q_conf.answer = AsyncMock()
+        q_conf.edit_message_text = AsyncMock()
+        up_conf = MagicMock(spec=Update)
+        up_conf.callback_query = q_conf
+        await commands.on_callback(up_conf, ctx_mock)
+
+        # 6. Add 1 question for div_test, check preview shows unescaped <i>(Belum diisi)</i>
+        await db.clear_charyarthi_questions(conn, div_test)
+        qid_p = await db.add_charyarthi_question(conn, div_test, "Bagaimana cara menyusun press release?")
+        await db.clear_charyarthi_user_answers(conn, uid_test, div_test)
+
+        q_prev = MagicMock(spec=CallbackQuery)
+        q_prev.data = f"charyarthi:preview:{div_test}"
+        q_prev.from_user = u_mock
+        q_prev.answer = AsyncMock()
+        q_prev.edit_message_text = AsyncMock()
+        up_prev = MagicMock(spec=Update)
+        up_prev.callback_query = q_prev
+
+        await commands.on_callback(up_prev, ctx_mock)
+        q_prev.edit_message_text.assert_called_once()
+        prev_rendered = q_prev.edit_message_text.call_args.args[0]
+        # Must contain unescaped <i>(Belum diisi)</i> and not &lt;i&gt;
+        assert "<blockquote><i>(Belum diisi)</i></blockquote>" in prev_rendered
+        assert "&lt;i&gt;" not in prev_rendered
+
+        # 7. Test INPUT_SOAL_ADD step cleanup on menu navigation by authorized admin
+        from bot.settings import OWNER_ID
+        admin_mock = MagicMock(spec=User)
+        admin_mock.id = OWNER_ID
+        admin_mock.username = "owner"
+        admin_mock.first_name = "Owner"
+
+        await db.upsert_user_from_telegram(
+            conn,
+            telegram_id=OWNER_ID,
+            username="owner",
+            first_name="Owner",
+            last_name="Dhruva",
+            language_code="id",
+            is_premium=False,
+            is_bot=False,
+            raw_profile={},
+        )
+        await db.set_onboarding_step(conn, OWNER_ID, f"INPUT_SOAL_ADD:{div_test}")
+        q_nav = MagicMock(spec=CallbackQuery)
+        q_nav.data = f"soal:adm_div:{div_test}"
+        q_nav.from_user = admin_mock
+        q_nav.answer = AsyncMock()
+        q_nav.edit_message_text = AsyncMock()
+        up_nav = MagicMock(spec=Update)
+        up_nav.callback_query = q_nav
+
+        await commands.on_callback(up_nav, ctx_mock)
+        # Step must be cleared!
+        admin_row_nav = await db.get_user(conn, OWNER_ID)
+        assert admin_row_nav["onboarding_step"] is None
+
+        # 8. Test _render_admin_division_soal with 25 long questions stays <= 4096 chars
+        sample_bulk = [f"Pertanyaan panjang nomor {i} mengenai strategi divisi secara komprehensif..." * 3 for i in range(1, 26)]
+        await db.set_charyarthi_questions_bulk(conn, div_test, sample_bulk)
+        text_admin, kb_admin = await _render_admin_division_soal(div_test, conn, db)
+        assert len(text_admin) <= 4096
+        assert len(text_admin) <= 3800
+
+        # 9. Test submitting candidate for division without essay questions notifies SDM
+        div_empty_q = "d_dekan"
+        await db.clear_charyarthi_questions(conn, div_empty_q)
+        await db.set_profile_partial(conn, uid_test, {
+            "target_division_1": div_empty_q,
+            "target_division_2": None,
+            "charyarthi_reason": "Saya ingin melamar ke dekanat.",
+            "application_status": None,
+        })
+        await db.set_role(conn, uid_test, ROLE_PUBLIC)
+        await db.add_promo_verification(conn, uid_test, "https://t.me/grup_lpm/999", promo_type="lpm", status="VALID")
+
+        q_sub_no_q = MagicMock(spec=CallbackQuery)
+        q_sub_no_q.data = "charyarthi:submit"
+        q_sub_no_q.from_user = u_mock
+        q_sub_no_q.answer = AsyncMock()
+        q_sub_no_q.edit_message_text = AsyncMock()
+        up_sub_no_q = MagicMock(spec=Update)
+        up_sub_no_q.callback_query = q_sub_no_q
+
+        ctx_mock.bot.send_message.reset_mock()
+        ctx_mock.bot.send_message.return_value = MagicMock(message_id=98765)
+
+        await commands.on_callback(up_sub_no_q, ctx_mock)
+
+        sdm_target = SDM_CH_ID or SDM_GID
+        if sdm_target:
+            sdm_calls = [c for c in ctx_mock.bot.send_message.call_args_list if c.kwargs.get("chat_id") == sdm_target]
+            assert len(sdm_calls) == 1
+            assert "PENDAFTARAN CALON STAF (TIM SDM)" in sdm_calls[0].kwargs["text"]
+            assert "tidak memerlukan tes esai tertulis tambahan" in sdm_calls[0].kwargs["text"]
+
+    finally:
+        try:
+            await db.clear_charyarthi_questions(conn, div_test)
+            await db.clear_charyarthi_user_answers(conn, uid_test)
+            await conn.execute("DELETE FROM promo_verifications WHERE user_id = ?", (uid_test,))
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (uid_test,))
+            await conn.commit()
+            await conn.close()
+        except Exception:
+            pass
+
+
 
 
 

@@ -118,8 +118,10 @@ OSPEK_GID = int(_ospek_gid) if _ospek_gid else None
 
 MABA_GROUP_LINK = os.environ.get("MABA_GROUP_LINK", "").strip()
 
+_sdm_ch = os.environ.get("SDM_CH_ID", "").strip()
 _sdm_gid = os.environ.get("SDM_GID", "").strip()
-SDM_GID = int(_sdm_gid) if _sdm_gid else None
+SDM_CH_ID = int(_sdm_ch) if _sdm_ch else (int(_sdm_gid) if _sdm_gid else None)
+SDM_GID = SDM_CH_ID
 
 CHARYARTHI_GFORM_LINK = os.environ.get("CHARYARTHI_GFORM_LINK", "https://forms.gle/").strip()
 _charyarthi_open = os.environ.get("CHARYARTHI_OPREC_OPEN", "1").strip().lower()
