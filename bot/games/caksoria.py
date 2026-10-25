@@ -62,7 +62,7 @@ async def mulai_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
         f"Tahan dulu...\n"
         f"Jangan kirim pesan sebelum <b>{delay_min} detik</b>!\n"
         f"Penerimaan jawaban dibuka selama <b>30 detik</b> setelah waktu tahan.\n"
-        f"{setting_display}\n"
+        #f"{setting_display}\n"
         f"<i>Waktu dimulai dari sekarang!</i>",
         parse_mode="HTML"
     )
@@ -193,8 +193,8 @@ async def job_end_caksoria(context: ContextTypes.DEFAULT_TYPE):
         if lines:
             text += "\n".join(lines) + "\n\n"
             text += "<b>Keterangan:</b>\n"
-            text += "🥳 Sesuai keyword\n"
-            text += "👺 Kecepetan / tidak sesuai format\n\n"
+            text += "🥳 Benar\n"
+            text += "👺 Salah / belum waktunya\n\n"
         else:
             text += "😅 Tidak ada yang berpartisipasi.\n\n"
             
@@ -264,8 +264,8 @@ async def hasil_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
     text = "⏱ <b>Hasil Ronde Caksoria (Terakhir)</b>\n\n"
     text += "\n".join(lines) + "\n\n"
     text += "<b>Keterangan:</b>\n"
-    text += "🥳 Sesuai keyword\n"
-    text += "👺 Kecepetan / tidak sesuai format"
+    text += "🥳 Benar\n"
+    text += "👺 Salah / belum waktunya"
     
     await update.message.reply_text(text, parse_mode="HTML")
 

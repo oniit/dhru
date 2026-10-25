@@ -70,10 +70,10 @@ async def test_caksoria_user_scenario_matching_and_timing():
     - Delay 7 detik
     - Keyword: "halo"
     - User zoldy (5.43s, matches keyword) -> 👺 kecepetan
-    - User dika (8.18s, matches keyword) -> 🥳 sesuai keyword
+    - User dika (8.18s, matches keyword) -> 🥳 Benar
     - User cecil (8.25s, no keyword) -> 👺 tidak sesuai format
     - User bena (9.12s, no keyword) -> 👺 tidak sesuai format
-    - User abel (32.09s, matches keyword) -> 🥳 sesuai keyword
+    - User abel (32.09s, matches keyword) -> 🥳 Benar
     - Window penerimaan 30 detik (delay 7s + 30s = 37s)
     """
     db = Database()
@@ -183,8 +183,8 @@ async def test_caksoria_user_scenario_matching_and_timing():
         assert "👺 cecil: 8.25s" in sent_text
         assert "👺 bena: 9.12s" in sent_text
         assert "🥳 abel: 32.09s" in sent_text
-        assert "🥳 Sesuai keyword" in sent_text
-        assert "👺 Kecepetan / tidak sesuai format" in sent_text
+        assert "🥳 Benar" in sent_text
+        assert "👺 Salah / belum waktunya" in sent_text
         
         # Verifikasi urutan tercepat ke terlambat
         idx_zoldy = sent_text.find("zoldy")
