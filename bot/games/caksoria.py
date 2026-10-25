@@ -61,7 +61,7 @@ async def mulai_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
         f"⏳ <b>GAME: Caksoria</b> ⏳\n\n"
         f"Tahan dulu...\n"
         f"Jangan kirim pesan sebelum <b>{delay_min} detik</b>!\n"
-        f"Penerimaan jawaban dibuka selama <b>30 detik</b> setelah waktu tahan.\n"
+        f"Penerimaan jawaban dibuka selama <b>30 detik</b> setelah waktu tahan.\n\n"
         #f"{setting_display}\n"
         f"<i>Waktu dimulai dari sekarang!</i>",
         parse_mode="HTML"
@@ -190,11 +190,12 @@ async def job_end_caksoria(context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"{e['emoji']} {clean_name}: {e['diff']:.2f}s")
             
         text = "⏱ <b>Hasil Ronde Caksoria</b>\n\n"
+        delay_min = state['delay_min']
         if lines:
             text += "\n".join(lines) + "\n\n"
             text += "<b>Keterangan:</b>\n"
             text += "🥳 Benar\n"
-            text += "👺 Salah / belum waktunya\n\n"
+            text += f"👺 Salah / kurang dari {delay_min} detik\n\n"
         else:
             text += "😅 Tidak ada yang berpartisipasi.\n\n"
             
