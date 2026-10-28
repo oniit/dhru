@@ -1276,7 +1276,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 else:
                     ans_disp = html.escape(cur_ans)
                 msg_text += f"<i>Jawaban Anda saat ini:</i>\n<blockquote>{ans_disp}</blockquote>\n\n"
-            msg_text += "Silakan ketikkan jawaban Anda di bawah ini dan kirimkan ke bot:"
+            msg_text += "Silakan ketikkan jawaban Anda di bawah ini dan kirimkan ke bot (maksimal 4000 karakter):"
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Kembali ke Menu Soal", callback_data=f"charyarthi:back_quiz:{div_id}")]])
             await q.answer()
             await q.edit_message_text(msg_text, reply_markup=kb, parse_mode="HTML")
