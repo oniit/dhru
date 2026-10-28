@@ -129,13 +129,13 @@ position_details:
     label: Sekretaris
     position: sekre
   - id: d_warek1
-    label: WK. Biro Akademik
+    label: Biro Akademik
     position: warek1
   - id: d_warek2
-    label: WK. Biro Umum
+    label: Biro Umum
     position: warek2
   - id: d_warek3
-    label: WK. Biro Eksternal
+    label: Biro Eksternal
     position: warek3
 
   # Acharya (Biro Akademik)
