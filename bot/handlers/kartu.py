@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from io import BytesIO
 
@@ -69,7 +70,8 @@ async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         if role in (ROLE_INTERNAL, "admin", "owner"):
-            png = render_kic_png_bytes(
+            png = await asyncio.to_thread(
+                render_kic_png_bytes,
                 telegram_id=uid,
                 profile=profile,
                 agra=agra,
@@ -78,7 +80,8 @@ async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 photo_bytes=photo_bytes,
             )
         else:
-            png = render_kts_png_bytes(
+            png = await asyncio.to_thread(
+                render_kts_png_bytes,
                 telegram_id=uid,
                 profile=profile,
                 agra=agra,

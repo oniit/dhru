@@ -87,5 +87,8 @@ async def test_purva_sks_banking_and_fields():
         assert prof_final.get("student_id") is None
 
     finally:
-        await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
-        await conn.commit()
+        try:
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
+            await conn.commit()
+        finally:
+            await conn.close()

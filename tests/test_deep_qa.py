@@ -83,6 +83,7 @@ async def test_qa_fix_1_triggers_duplicate_keyword_prevention():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -137,6 +138,7 @@ async def test_qa_fix_2_tugas_cross_class_idor_blocked():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -179,6 +181,7 @@ async def test_qa_fix_3_escaped_html_in_cmd_cek_user():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -228,6 +231,7 @@ async def test_qa_fix_4_attendance_active_session_guard():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -236,11 +240,13 @@ async def test_qa_fix_5_contract_sequence_atomic():
     db = Database()
     conn = await db.connect()
     
-    seq1 = await db.get_next_contract_seq(conn)
-    seq2 = await db.get_next_contract_seq(conn)
-    
-    # VERIFIKASI: seq2 harus tepat seq1 + 1 (tidak duplikat)
-    assert seq2 == seq1 + 1, f"Expected atomic increment, got seq1={seq1}, seq2={seq2}"
+    try:
+        seq1 = await db.get_next_contract_seq(conn)
+        seq2 = await db.get_next_contract_seq(conn)
+        # VERIFIKASI: seq2 harus tepat seq1 + 1 (tidak duplikat)
+        assert seq2 == seq1 + 1, f"Expected atomic increment, got seq1={seq1}, seq2={seq2}"
+    finally:
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -290,6 +296,7 @@ async def test_qa_fix_6_self_approval_blocked():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -328,6 +335,7 @@ async def test_qa_fix_7_menfess_state_loss_protection():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -413,6 +421,7 @@ async def test_qa_bug_8_transfer_negative_and_self():
         await conn.commit()
     except Exception:
         pass
+    await conn.close()
 
 
 @pytest.mark.asyncio
@@ -459,6 +468,9 @@ async def test_cmd_help_all_roles(mock_app):
         assert "Perintah umum" in reply
         assert "Shishya" in reply
     finally:
-        await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
-        await conn.commit()
+        try:
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
+            await conn.commit()
+        finally:
+            await conn.close()
 

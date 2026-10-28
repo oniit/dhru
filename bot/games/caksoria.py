@@ -266,7 +266,8 @@ async def hasil_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
     text += "\n".join(lines) + "\n\n"
     text += "<b>Keterangan:</b>\n"
     text += "🥳 Benar\n"
-    text += "👺 Salah / belum waktunya"
+    delay_min = state.get("delay_min", "?")
+    text += f"👺 Salah / kurang dari {delay_min} detik"
     
     await update.message.reply_text(text, parse_mode="HTML")
 

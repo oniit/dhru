@@ -125,9 +125,16 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 
                 if update.message.text:
                     text_esc = html.escape(update.message.text)
+                    full_msg = f"{header}:\n\n{text_esc}"
+                    if len(full_msg) > 4000:
+                        # Truncate to fit Telegram 4096 char limit
+                        suffix = "\n\n<i>... [pesan dipotong]</i>"
+                        max_text = 4000 - len(header) - 4 - len(suffix)
+                        text_esc = text_esc[:max_text] + suffix
+                        full_msg = f"{header}:\n\n{text_esc}"
                     await context.bot.send_message(
                         chat_id=PETINGGI_GID,
-                        text=f"{header}:\n\n{text_esc}",
+                        text=full_msg,
                         parse_mode="HTML",
                         disable_web_page_preview=True
                     )

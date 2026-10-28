@@ -9,6 +9,7 @@ Karena Turso berjalan melalui HTTP API over internet, koneksi idle TCP keep-aliv
 - **Deteksi Transient Error**: Mengenali error jaringan seperti `aiohttp.ClientError`, `ServerDisconnectedError`, `ClientOSError`, dan timeout.
 - **Auto-Retry Cerdas**: Melakukan retry hingga 3 kali dengan backoff bertahap (`0.3s * attempt`).
 - **Client Re-initialization**: Jika retry pertama masih gagal, koneksi client `libsql_client` akan di-close dan dibuat ulang secara transparan menggunakan URL dan authToken yang tersimpan.
+- **Penanganan Constraint Integrity**: Pada Turso over HTTP (`libsql_client`), pelanggaran `UNIQUE` constraint menimbulkan `KeyError: 'result'` alih-alih `aiosqlite.IntegrityError` standar. Helper `_is_integrity_error(e)` digunakan di layer database untuk menangani kompatibilitas silang antara driver lokal SQLite dan remote Turso secara konsisten.
 
 ---
 

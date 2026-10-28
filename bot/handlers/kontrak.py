@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -241,7 +242,8 @@ async def _render_kontrak_png(
     username_str = f"@{target_username}" if target_username else "—"
 
     try:
-        return render_kontrak_png_bytes(
+        return await asyncio.to_thread(
+            render_kontrak_png_bytes,
             name=name,
             role_detail=role_detail,
             username=username_str,

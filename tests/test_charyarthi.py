@@ -131,8 +131,11 @@ async def test_charyarthi_db_lifecycle():
 
     finally:
         # Cleanup test user from DB
-        await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
-        await conn.commit()
+        try:
+            await conn.execute("DELETE FROM users WHERE telegram_id = ?", (test_uid,))
+            await conn.commit()
+        finally:
+            await conn.close()
 
 
 @pytest.mark.asyncio
@@ -164,12 +167,15 @@ async def test_charyarthi_dynamic_settings():
     active_ids_after = [d[0] for d in active_after]
     assert "d_editor" not in active_ids_after
 
-    # Re-enable d_editor
-    await db.set_setting(conn, "charyarthi_div_d_editor", "1")
-    await conn.commit()
-    active_restored = await get_active_charyarthi_divisions(db, conn)
-    active_ids_restored = [d[0] for d in active_restored]
-    assert "d_editor" in active_ids_restored
+    try:
+        # Re-enable d_editor
+        await db.set_setting(conn, "charyarthi_div_d_editor", "1")
+        await conn.commit()
+        active_restored = await get_active_charyarthi_divisions(db, conn)
+        active_ids_restored = [d[0] for d in active_restored]
+        assert "d_editor" in active_ids_restored
+    finally:
+        await conn.close()
 
 
 @pytest.mark.asyncio
@@ -332,6 +338,7 @@ async def test_both_registrations_forwarding_to_pendaftar_channel():
             await conn.commit()
         except Exception:
             pass
+        await conn.close()
 
 
 @pytest.mark.asyncio

@@ -184,7 +184,7 @@ async def test_caksoria_user_scenario_matching_and_timing():
         assert "👺 bena: 9.12s" in sent_text
         assert "🥳 abel: 32.09s" in sent_text
         assert "🥳 Benar" in sent_text
-        assert "👺 Salah / belum waktunya" in sent_text
+        assert "👺 Salah / kurang dari" in sent_text
         
         # Verifikasi urutan tercepat ke terlambat
         idx_zoldy = sent_text.find("zoldy")

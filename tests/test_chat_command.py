@@ -119,6 +119,7 @@ async def test_cmd_chat_permissions_and_flow():
     db = Database()
     conn = await db.connect()
     
+    old_owner_id = bot.settings.OWNER_ID
     try:
         # Mock bot.settings.OWNER_ID
         bot.settings.OWNER_ID = 999
@@ -198,5 +199,6 @@ async def test_cmd_chat_permissions_and_flow():
         update.message.copy.assert_called_with(chat_id=555, caption="", parse_mode=None)
         assert "Pesan berhasil dikirim" in update.message.reply_text.call_args[0][0]
     finally:
+        bot.settings.OWNER_ID = old_owner_id
         await conn.close()
 

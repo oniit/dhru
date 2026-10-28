@@ -5028,7 +5028,7 @@ async def cmd_orreset_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
         
     if not context.args:
-        await update.message.reply_text("Format: <code>/orreset_user &lt;ID|@username&gt;</code>")
+        await update.message.reply_text("Format: <code>/orreset_user &lt;ID|@username&gt;</code>", parse_mode="HTML")
         return
         
     query = context.args[0]
@@ -5041,9 +5041,9 @@ async def cmd_orreset_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     result = await db.reset_user_all_data(conn, uid)
     if isinstance(result, dict):
         lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
-        await update.message.reply_text("<b>Reset semua data user selesai.</b>\n" + "\n".join(lines))
+        await update.message.reply_text("<b>Reset semua data user selesai.</b>\n" + "\n".join(lines), parse_mode="HTML")
     else:
-        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>")
+        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>", parse_mode="HTML")
 
 async def cmd_orreset_agra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -5056,7 +5056,7 @@ async def cmd_orreset_agra(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
         
     if not context.args:
-        await update.message.reply_text("Format: <code>/orreset_agra &lt;ID|@username&gt;</code>")
+        await update.message.reply_text("Format: <code>/orreset_agra &lt;ID|@username&gt;</code>", parse_mode="HTML")
         return
         
     query = context.args[0]
@@ -5069,9 +5069,9 @@ async def cmd_orreset_agra(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     result = await db.reset_agra_for_user(conn, uid)
     if isinstance(result, dict):
         lines = [f"• {k}: <code>{v}</code>" for k, v in result.items()]
-        await update.message.reply_text("<b>Reset agra user selesai.</b>\n" + "\n".join(lines))
+        await update.message.reply_text("<b>Reset agra user selesai.</b>\n" + "\n".join(lines), parse_mode="HTML")
     else:
-        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>")
+        await update.message.reply_text(f"<b>Reset selesai.</b>\n• count: <code>{result}</code>", parse_mode="HTML")
 
 async def cmd_addtag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:

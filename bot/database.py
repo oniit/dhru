@@ -18,6 +18,24 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
+
+def _is_integrity_error(e: Exception) -> bool:
+    """Check if an exception is a UNIQUE constraint violation.
+
+    Works with both aiosqlite (local) and libsql_client (Turso).
+    Turso raises KeyError('result') instead of aiosqlite.IntegrityError
+    when a UNIQUE constraint is violated.
+    """
+    if isinstance(e, aiosqlite.IntegrityError):
+        return True
+    if isinstance(e, KeyError) and str(e) == "'result'":
+        return True
+    err_str = str(e).lower()
+    if "unique constraint" in err_str or "constraint failed" in err_str:
+        return True
+    return False
+
+
 from bot.settings import ADMIN_IDS, CHOICES, OWNER_ID, GENERATION_CODE
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1183,7 +1201,9 @@ class Database:
                 )
                 await conn.commit()
                 return True, ""
-            except aiosqlite.IntegrityError:
+            except Exception as _exc:
+                if not _is_integrity_error(_exc):
+                    raise
                 # Jika terjadi race condition dan insert gagal krn constraint UNIQUE, coba update
                 cur = await conn.execute(
                     "UPDATE attendance_records SET status = ?, recorded_at = ? WHERE session_id = ? AND telegram_id = ? AND status != ?",
@@ -1525,12 +1545,14 @@ class Database:
             )
             await conn.commit()
             return cur.lastrowid
-        except aiosqlite.IntegrityError as e:
+        except Exception as e:
+            if not _is_integrity_error(e):
+                raise
             # Race condition: row inserted by another request between SELECT and INSERT
             # Retry to let the UPDATE logic handle it (only once)
             if not _retry:
                 return await self.submit_task(conn, task_id=task_id, student_id=student_id, content=content, _retry=True)
-            raise e
+            raise
 
     async def get_submission(
         self, conn: aiosqlite.Connection, submission_id: int
@@ -2433,7 +2455,9 @@ class Database:
             )
             await conn.commit()
             return True
-        except aiosqlite.IntegrityError:
+        except Exception as _exc:
+            if not _is_integrity_error(_exc):
+                raise
             # Already linked
             return False
 
