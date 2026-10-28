@@ -167,15 +167,15 @@ position_details:
     position: sarpras
 
   # Yacharya (Biro Eksternal)
+  - id: d_pr
+    label: Hubungan Masyarakat
+    position: citrayacharya
   - id: d_mpps
     label: MPPS
     position: karyacharya
   - id: d_pfp
     label: PFP
     position: taryacharya
-  - id: d_pr
-    label: Hubungan Masyarakat
-    position: citrayacharya
 
   # Fallback & penugasan khusus
   - id: d_eksternal
