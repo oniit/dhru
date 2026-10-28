@@ -131,7 +131,7 @@ CHARYARTHI_OPREC_OPEN = _charyarthi_open in ("1", "true", "yes")
 def get_charyarthi_divisions() -> list[tuple[str, str]]:
     # Hanya Nayaka (pimpinan tertinggi: Rektor, Warek, Sekretaris) dan penugasan khusus yang dikecualikan dari pendaftaran calon staf
     excluded_ids = {
-        "d_rektor", "d_sekre", "d_warek1", "d_warek2", "d_warek3",
+        "d_rektor", "d_sekre",
         "p_panitia_ospek", "d_eksternal", "d_lain"
     }
     items = []

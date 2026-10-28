@@ -82,11 +82,11 @@ positions:
   - id: sekre
     label: Sachiva सचिव
   - id: warek1
-    label: Pratinidhi I प्रतिनिधि I
+    label: Pratinidhi प्रतिनिधि
   - id: warek2
-    label: Pratinidhi II प्रतिनिधि II
+    label: Pratinidhi प्रतिनिधि
   - id: warek3
-    label: Pratinidhi III प्रतिनिधि III
+    label: Pratinidhi प्रतिनिधि
 
   # Acharya (Biro Akademik)
   - id: dekan
@@ -129,13 +129,13 @@ position_details:
     label: Sekretaris
     position: sekre
   - id: d_warek1
-    label: Wakil Rektor I
+    label: Biro Akademik
     position: warek1
   - id: d_warek2
-    label: Wakil Rektor II
+    label: Biro Umum
     position: warek2
   - id: d_warek3
-    label: Wakil Rektor III
+    label: Biro Eksternal
     position: warek3
 
   # Acharya (Biro Akademik)
@@ -174,13 +174,13 @@ position_details:
     label: PFP
     position: taryacharya
   - id: d_pr
-    label: PR
+    label: Hubungan Masyarakat
     position: citrayacharya
 
   # Fallback & penugasan khusus
   - id: d_eksternal
-    label: Hubungan Eksternal
-    position: karyacharya
+    label: Pihak Eksternal
+    position: charyartha
   - id: d_lain
     label: Lainnya
     position: lainnya
