@@ -112,9 +112,9 @@ positions:
   - id: mpps
     label: Kāryāchārya कार्याचार्य
   - id: pfp
-    label: Taryāchārya तर्याचार्य
+    label: Cityāchārya चित्याचार्य
   - id: pr
-    label: Chitrayāchārya चित्रायाचार्य
+    label: Taryāchārya तर्याचार्य
 
   # Legacy fallback
   - id: lainnya
@@ -129,13 +129,13 @@ position_details:
     label: Sekretaris
     position: sekre
   - id: d_warek1
-    label: Biro Akademik
+    label: WK. Biro Akademik
     position: warek1
   - id: d_warek2
-    label: Biro Umum
+    label: WK. Biro Umum
     position: warek2
   - id: d_warek3
-    label: Biro Eksternal
+    label: WK. Biro Eksternal
     position: warek3
 
   # Acharya (Biro Akademik)
