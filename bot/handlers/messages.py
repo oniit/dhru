@@ -63,6 +63,37 @@ async def _mark_lengkapi_done_if_complete(conn, db, telegram_id: int) -> None:
         await db.set_profile_partial(conn, telegram_id, {LENGKAPI_DONE_KEY: True})
 
 
+def chunk_text_html(text: str, max_len: int = 3500) -> list[str]:
+    """Split text into chunks such that html.escape(chunk) <= max_len.
+    Preserves line breaks and does not split mid-character.
+    """
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    current = ""
+    for line in text.splitlines(keepends=True):
+        if len(html.escape(current + line)) <= max_len:
+            current += line
+        else:
+            if current:
+                chunks.append(current)
+                current = ""
+            if len(html.escape(line)) <= max_len:
+                current = line
+            else:
+                for char in line:
+                    if len(html.escape(current + char)) <= max_len:
+                        current += char
+                    else:
+                        if current:
+                            chunks.append(current)
+                        current = char
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 async def on_private_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.message.photo:
         return
@@ -124,20 +155,37 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     header = f"#ID_{uid} <a href='tg://user?id={uid}'>{first_name_esc}</a>"
                 
                 if update.message.text:
-                    text_esc = html.escape(update.message.text)
-                    full_msg = f"{header}:\n\n{text_esc}"
-                    if len(full_msg) > 4000:
-                        # Truncate to fit Telegram 4096 char limit
-                        suffix = "\n\n<i>... [pesan dipotong]</i>"
-                        max_text = 4000 - len(header) - 4 - len(suffix)
-                        text_esc = text_esc[:max_text] + suffix
-                        full_msg = f"{header}:\n\n{text_esc}"
-                    await context.bot.send_message(
-                        chat_id=PETINGGI_GID,
-                        text=full_msg,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True
-                    )
+                    raw_text = update.message.text
+                    raw_escaped = html.escape(raw_text)
+                    single_msg = f"{header}:\n\n{raw_escaped}"
+                    if len(single_msg) <= 3900:
+                        await context.bot.send_message(
+                            chat_id=PETINGGI_GID,
+                            text=single_msg,
+                            parse_mode="HTML",
+                            disable_web_page_preview=True
+                        )
+                    else:
+                        chunks = chunk_text_html(raw_text, max_len=3500)
+                        total_chunks = len(chunks)
+                        if total_chunks > 0:
+                            first_text = f"{header} (1/{total_chunks}):\n\n{html.escape(chunks[0])}"
+                            first_msg = await context.bot.send_message(
+                                chat_id=PETINGGI_GID,
+                                text=first_text,
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                            reply_id = getattr(first_msg, "message_id", None)
+                            for idx, chunk in enumerate(chunks[1:], start=2):
+                                cont_text = f"<i>[Lanjutan #ID_{uid} ({idx}/{total_chunks})]:</i>\n\n{html.escape(chunk)}"
+                                await context.bot.send_message(
+                                    chat_id=PETINGGI_GID,
+                                    text=cont_text,
+                                    parse_mode="HTML",
+                                    disable_web_page_preview=True,
+                                    reply_to_message_id=reply_id
+                                )
                 elif update.message.sticker or update.message.video_note:
                     copied_msg = await update.message.copy(chat_id=PETINGGI_GID)
                     await context.bot.send_message(
