@@ -53,3 +53,15 @@ Jangan pernah meninggalkan _workspace_ dalam keadaan fitur baru sudah selesai ta
 - Selalu tinjau file konfigurasi skema (seperti `profile_fields.yaml` atau `choices.yaml`) untuk memastikan perbaikanmu secara logika selaras dengan aturan bisnis aplikasi (contoh: jangan membuat *bypass* akses untuk *Student* jika *Student* tidak diizinkan memiliki akses tersebut sejak dari skema awal).
 - Jika laporan dari *user* ambigu atau kurang spesifik (misalnya: "Saya tidak bisa hadir"), **JANGAN** langsung berasumsi bahwa itu disebabkan oleh pekerjaan/ *task* mu sebelumnya. Selidiki konteksnya (contoh: "Di jenis sesi apa kamu tidak bisa hadir?") atau uji *semua* tipe sesi (kelas utama, UKM, staf, event) sebelum menyimpulkan letak masalah.
 - Validasi dahulu apakah error tersebut *benar-benar* *bug* atau memang merupakan batasan sistem (*intended behavior*). Jangan membuat perbaikan/modifikasi pada *core file* jika sistem ternyata sudah berjalan benar.
+
+## Aturan: Efisiensi Pembacaan Database & Perlindungan Kuota Turso (Read Optimization)
+
+**Deskripsi**: Remote database Turso mengenakan kuota berbasis jumlah baris yang dibaca (*rows read*). Kueri tanpa index (*Full Table Scan*) atau *polling loop* berfrekuensi tinggi dapat membakar ratusan juta *rows read* dalam beberapa hari dan memicu pemblokiran akun (*quota exceeded*). Agen AI wajib selalu mempertimbangkan dan memilih cara paling efisien saat berinteraksi dengan basis data.
+
+**INSTRUKSI WAJIB BAGI AGEN AI:**
+- **Wajib Menggunakan Index**: Setiap tabel yang memiliki kolom status/antrean (misal: `status = 'PENDING'`), kolom relasi, atau kolom yang sering digunakan dalam klausa `WHERE` WAJIB memiliki `INDEX` yang sesuai di skema DDL (`bot/database.py`). Jangan pernah membiarkan kueri periodik melakukan *Full Table Scan*.
+- **Cegah Tight-Loop Polling**: Dilarang membuat loop *polling* tanpa jeda yang wajar. Jika membuat background worker (seperti `checker.py` atau jobs queue), gunakan *adaptive polling / backoff*: jika ada antrean data, proses dengan jeda wajar (1-2 detik); jika antrean kosong (*idle*), jeda diperpanjang (minimal 3-5 detik atau lebih) untuk menekan jumlah request.
+- **Strategi Read Minim & In-Memory Cache**:
+  - Gunakan *in-memory cache* atau *debounce* (seperti `profile_cache` di `global_profile_tracker`) untuk operasi yang dipanggil berulang pada setiap pesan update pengguna. Jangan melakukan kueri SELECT ke database jika data di memori belum berubah.
+  - Hindari `SELECT *` jika hanya membutuhkan `COUNT(*)`, ID, atau kolom tertentu.
+  - Saat merancang fitur baru yang membaca database, **selalu pertimbangkan dampak konsumsi read Turso terlebih dahulu dan pilih arsitektur yang paling hemat kuota**.

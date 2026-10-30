@@ -111,18 +111,22 @@ async def process_userbot_requests(conn):
                     log.error(f"Error resolving usernames via userbot: {e}")
                     await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
                     await conn.commit()
+        return len(pending_rows)
     except Exception as e:
         log.error(f"Error in process_userbot_requests: {e}")
+        return 0
 
 async def process_pending_links():
     db = Database()
     conn = await db.connect()
     
     while True:
+        pending_count = 0
         try:
             # Get pending verifications
             cur = await conn.execute("SELECT * FROM promo_verifications WHERE status = 'PENDING'")
             pending_rows = await cur.fetchall()
+            pending_count = len(pending_rows)
             
             for row in pending_rows:
                 req_id = row["id"]
@@ -398,10 +402,15 @@ async def process_pending_links():
             log.error(f"Database error in checker loop: {e}")
             
         # Process userbot requests
-        await process_userbot_requests(conn)
+        userbot_count = await process_userbot_requests(conn)
             
-        # Polling delay
-        await asyncio.sleep(2)
+        # Adaptive polling delay:
+        # Jika ada antrean yang diproses, segera loop kembali (1s) agar antrean cepat selesai.
+        # Jika idle (tidak ada antrean), jeda 3.5 detik untuk menghemat kueri ke Turso.
+        if pending_count > 0 or userbot_count > 0:
+            await asyncio.sleep(1)
+        else:
+            await asyncio.sleep(3.5)
 
 async def main():
     log.info("Starting Pyrogram Checker...")

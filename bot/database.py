@@ -425,6 +425,26 @@ CREATE TABLE IF NOT EXISTS charyarthi_answers (
     updated_at REAL NOT NULL,
     UNIQUE (telegram_id, division_id, question_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_users_username_lower ON users(lower(username));
+CREATE INDEX IF NOT EXISTS idx_group_seen_username_lower ON group_seen_users(lower(username));
+CREATE INDEX IF NOT EXISTS idx_group_seen_chat_bot ON group_seen_users(chat_id, is_bot, last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_promo_status ON promo_verifications(status);
+CREATE INDEX IF NOT EXISTS idx_promo_link ON promo_verifications(link);
+CREATE INDEX IF NOT EXISTS idx_promo_user_status ON promo_verifications(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_userbot_requests_status ON userbot_requests(status);
+CREATE INDEX IF NOT EXISTS idx_broadcast_jobs_status ON broadcast_jobs(status, id);
+CREATE INDEX IF NOT EXISTS idx_attendance_sessions_class_closed ON attendance_sessions(class_id, closed_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_sessions_closed_opened ON attendance_sessions(closed_at, opened_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_sessions_opened_by ON attendance_sessions(opened_by);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_user ON attendance_records(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_task_open ON task_assignments(is_open, created_at);
+CREATE INDEX IF NOT EXISTS idx_game_sessions_active ON game_sessions(chat_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_id);
+CREATE INDEX IF NOT EXISTS idx_linked_accounts_promo ON linked_accounts(promo_user_id);
+CREATE INDEX IF NOT EXISTS idx_bot_chats_active_type ON bot_chats(is_active, type);
+CREATE INDEX IF NOT EXISTS idx_charyarthi_q_div_order ON charyarthi_questions(division_id, question_order);
+CREATE INDEX IF NOT EXISTS idx_agra_actor ON agra_ledger(actor_telegram_id);
 """
 
 class AiosqliteRowMock:

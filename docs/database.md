@@ -11,6 +11,27 @@ Karena Turso berjalan melalui HTTP API over internet, koneksi idle TCP keep-aliv
 - **Client Re-initialization**: Jika retry pertama masih gagal, koneksi client `libsql_client` akan di-close dan dibuat ulang secara transparan menggunakan URL dan authToken yang tersimpan.
 - **Penanganan Constraint Integrity**: Pada Turso over HTTP (`libsql_client`), pelanggaran `UNIQUE` constraint menimbulkan `KeyError: 'result'` alih-alih `aiosqlite.IntegrityError` standar. Helper `_is_integrity_error(e)` digunakan di layer database untuk menangani kompatibilitas silang antara driver lokal SQLite dan remote Turso secara konsisten.
 
+### Efisiensi Pembacaan & Optimasi Index (Read Optimization)
+Turso memberlakukan kuota berbasis jumlah baris yang dibaca (*rows read*). Tanpa index, kueri filter (seperti pencarian status pending atau pencarian username) memicu *Full Table Scan*, yang dapat menghabiskan kuota ratusan juta pembacaan jika di-poll secara rutin.
+Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi index terdedikasi:
+- `idx_users_username_lower`: Index fungsional `lower(username)` pada tabel `users`.
+- `idx_group_seen_username_lower`: Index fungsional `lower(username)` pada `group_seen_users`.
+- `idx_group_seen_chat_bot`: Index komposit `(chat_id, is_bot, last_seen_at)`.
+- `idx_promo_status`, `idx_promo_link`, `idx_promo_user_status`: Index pada tabel `promo_verifications`.
+- `idx_userbot_requests_status`: Index pada `userbot_requests(status)` untuk mempercepat IPC polling tanpa membaca baris tabel secara penuh.
+- `idx_broadcast_jobs_status`: Index pada `broadcast_jobs(status, id)`.
+- `idx_attendance_sessions_class_closed`, `idx_attendance_sessions_closed_opened`, `idx_attendance_sessions_opened_by`: Index status sesi presensi.
+- `idx_attendance_records_user`: Index pada `attendance_records(telegram_id)`.
+- `idx_task_open`: Index pada `task_assignments(is_open, created_at)`.
+- `idx_game_sessions_active`: Index pada `game_sessions(chat_id, is_active)`.
+- `idx_audit_log_actor`: Index pada `audit_log(actor_id)`.
+- `idx_linked_accounts_promo`: Index pada `linked_accounts(promo_user_id)`.
+- `idx_bot_chats_active_type`: Index pada `bot_chats(is_active, type)`.
+- `idx_charyarthi_q_div_order`: Index pada `charyarthi_questions(division_id, question_order)`.
+- `idx_agra_actor`: Index pada `agra_ledger(actor_telegram_id)`.
+
+Selain index, worker background (seperti `checker.py`) menggunakan *adaptive polling*: jika antrean kosong (*idle*), interval sleep dinaikkan menjadi 3.5 detik; jika ada antrean yang diproses, interval turun ke 1 detik agar proses berlangsung cepat.
+
 ---
 
 ## Tabel Utama & Struktur Data
