@@ -95,6 +95,9 @@ from .common import (
     render_charyarthi_quiz_preview_page,
     get_user_jabatans,
     presence_allowed_class_ids,
+    render_greeting_message,
+    sanitize_telegram_html,
+    validate_greeting_html,
 )
 
 MULTI_UD_KEY = "multi_select"
@@ -5789,84 +5792,265 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         await msg.edit_text(f"Terjadi kesalahan sistem:\n<pre>{str(e)}</pre>", parse_mode="HTML")
 
+async def build_greeting_help_text(
+    conn: aiosqlite.Connection,
+    db: Database,
+    user_id: int,
+    is_bot_admin: bool,
+    context: ContextTypes.DEFAULT_TYPE | None = None
+) -> str:
+    text = (
+        "ℹ️ <b>Panduan Pesan Selamat Datang (/setgreeting)</b>\n\n"
+        "<b>Format Penggunaan:</b>\n"
+        "• <b>Di dalam grup:</b>\n"
+        "  <code>/setgreeting &lt;pesan&gt;</code> (mengatur grup saat ini)\n"
+        "  <code>/setgreeting off</code> (mematikan greeting di grup saat ini)\n"
+        "• <b>Remote (dari PM Bot atau grup lain):</b>\n"
+        "  <code>/setgreeting &lt;chat_id&gt; &lt;pesan&gt;</code>\n"
+        "  <code>/setgreeting &lt;chat_id&gt; off</code>\n"
+        "• <b>Cek pesan aktif:</b>\n"
+        "  <code>/greeting</code> (di grup) atau <code>/greeting &lt;chat_id&gt;</code>\n\n"
+        "<b>Placeholder yang Didukung:</b>\n"
+        "• <code>{name}</code> atau <code>{full_name}</code> - Nama lengkap member baru\n"
+        "• <code>{first_name}</code> - Nama depan\n"
+        "• <code>{last_name}</code> - Nama belakang\n"
+        "• <code>{username}</code> - @username (jika tidak ada akan diganti nama)\n"
+        "• <code>{mention}</code> - Tag/mention langsung ke profil member (klikable)\n"
+        "• <code>{chat_title}</code> - Nama grup saat ini\n"
+        "• <code>{id}</code> - Telegram User ID member baru\n\n"
+        "<b>Format Teks (HTML Telegram):</b>\n"
+        "• <b>Tebal:</b> <code>&lt;b&gt;teks&lt;/b&gt;</code>\n"
+        "• <i>Miring:</i> <code>&lt;i&gt;teks&lt;/i&gt;</code>\n"
+        "• <u>Garis bawah:</u> <code>&lt;u&gt;teks&lt;/u&gt;</code>\n"
+        "• <s>Coret:</s> <code>&lt;s&gt;teks&lt;/s&gt;</code>\n"
+        "• <a href=\"https://t.me\">Link:</a> <code>&lt;a href=\"https://...\"&gt;label&lt;/a&gt;</code>\n"
+        "• <code>Monospace:</code> <code>&lt;code&gt;teks&lt;/code&gt;</code>\n"
+        "• Spoiler: <code>&lt;tg-spoiler&gt;teks&lt;/tg-spoiler&gt;</code>\n\n"
+        "<b>Contoh Pesan:</b>\n"
+        "<code>/setgreeting Halo {mention}! 👋\n"
+        "Selamat datang di <b>{chat_title}</b>.\n"
+        "Silakan baca aturan di <a href=\"https://t.me/c/123/1\">Pesan Tersemat</a> ya!</code>\n"
+    )
+    chats = await db.list_active_bot_chats(conn, chat_type="group")
+    if chats:
+        group_lines = []
+        for cid, title in chats[:15]:
+            can_show = is_bot_admin
+            if not can_show and context:
+                try:
+                    m = await context.bot.get_chat_member(cid, user_id)
+                    if m.status in ("creator", "administrator"):
+                        can_show = True
+                except Exception:
+                    pass
+            if can_show:
+                t_esc = html.escape(title or "Grup")
+                group_lines.append(f"• <b>{t_esc}</b>: <code>{cid}</code>")
+        if group_lines:
+            text += "\n<b>📋 Daftar Grup yang Dapat Anda Atur:</b>\n" + "\n".join(group_lines) + "\n"
+    return text
+
+
 async def cmd_set_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.effective_chat:
         return
-        
+
     chat = update.effective_chat
-    if chat.type not in ("group", "supergroup"):
-        await update.message.reply_text("❌ Perintah ini hanya bisa digunakan di grup.")
-        return
-        
+    user = update.effective_user
     conn = _conn(context)
     db = _db(context)
-    
-    row = await user_row(conn, db, update.effective_user.id)
-    # Check if admin of bot or admin of the group
-    is_authorized = False
-    if row and row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
-        is_authorized = True
-    else:
-        member = await chat.get_member(update.effective_user.id)
-        if member.status in ("creator", "administrator"):
-            is_authorized = True
-            
-    if not is_authorized:
-        await update.message.reply_text("❌ Anda tidak memiliki izin untuk mengatur pesan selamat datang di grup ini.")
+
+    row = await user_row(conn, db, user.id)
+    is_bot_admin = (row and row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL)) or is_owner(user.id)
+
+    raw_text = (update.message.text or update.message.caption or "").strip()
+    cmd_parts = raw_text.split(None, 1)
+    args_str = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+    if not args_str or args_str.lower() in ("help", "bantuan", "?"):
+        help_msg = await build_greeting_help_text(conn, db, user.id, is_bot_admin, context)
+        await update.message.reply_text(help_msg, parse_mode="HTML")
         return
-        
-    args = update.message.text.split(None, 1)
-    if len(args) < 2:
+
+    first_token = args_str.split(None, 1)[0]
+    target_chat_id = None
+    greeting_input = None
+
+    try:
+        val = int(first_token)
+        if val < 0:
+            target_chat_id = val
+            remainder = args_str.split(None, 1)[1].strip() if len(args_str.split(None, 1)) > 1 else ""
+            greeting_input = remainder
+    except ValueError:
+        target_chat_id = None
+
+    if target_chat_id is None:
+        if chat.type in ("group", "supergroup"):
+            target_chat_id = chat.id
+            greeting_input = args_str
+        else:
+            await update.message.reply_text(
+                "⚠️ Di <b>Private Chat</b>, mohon sertakan ID grup tujuan:\n\n"
+                "• <code>/setgreeting &lt;chat_id&gt; &lt;pesan&gt;</code>\n"
+                "• <code>/setgreeting &lt;chat_id&gt; off</code>\n\n"
+                "<i>Ketik <code>/setgreeting help</code> untuk panduan lengkap & daftar ID grup.</i>",
+                parse_mode="HTML"
+            )
+            return
+
+    if not greeting_input:
         await update.message.reply_text(
-            "Gunakan format: /setgreeting <pesan>\n"
-            "Gunakan /setgreeting off untuk mematikan fitur ini.\n\n"
-            "Placeholder yang didukung:\n"
-            "{name} - Nama lengkap anggota baru\n"
-            "{username} - Username (jika tidak ada akan diganti nama)\n"
-            "Contoh:\n"
-            "/setgreeting Halo {name}, selamat datang di grup ini!"
+            f"⚠️ Anda belum menyertakan pesan selamat datang atau kata <code>off</code> untuk grup <code>{target_chat_id}</code>.\n\n"
+            f"Contoh:\n"
+            f"• <code>/setgreeting {target_chat_id} Halo {{name}}!</code>\n"
+            f"• <code>/setgreeting {target_chat_id} off</code>",
+            parse_mode="HTML"
         )
         return
-        
-    greeting = args[1].strip()
-    
-    if greeting.lower() == "off":
-        await db.update_greeting_message(conn, chat.id, None)
-        await update.message.reply_text("✅ Pesan selamat datang dimatikan untuk grup ini.")
+
+    # Check permission for target_chat_id
+    is_authorized = is_bot_admin
+    if not is_authorized:
+        try:
+            member = await context.bot.get_chat_member(target_chat_id, user.id)
+            if member.status in ("creator", "administrator"):
+                is_authorized = True
+        except Exception as e:
+            log.debug("Failed get_chat_member for %s in %s: %s", user.id, target_chat_id, e)
+
+    if not is_authorized:
+        await update.message.reply_text(
+            "❌ Anda tidak memiliki izin untuk mengatur pesan selamat datang di grup ini.\n"
+            "<i>(Khusus Admin/Creator grup tersebut atau Bot Admin).</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Resolve chat title
+    chat_title = None
+    chat_info = await db.get_bot_chat(conn, target_chat_id)
+    if chat_info and chat_info["title"]:
+        chat_title = chat_info["title"]
     else:
-        await db.update_greeting_message(conn, chat.id, greeting)
-        await update.message.reply_text(f"✅ Pesan selamat datang berhasil diatur menjadi:\n\n{greeting}")
+        try:
+            tg_c = await context.bot.get_chat(target_chat_id)
+            chat_title = tg_c.title or str(target_chat_id)
+        except Exception:
+            chat_title = f"Grup {target_chat_id}"
+
+    # Handle OFF
+    if greeting_input.lower() == "off":
+        await db.update_greeting_message(conn, target_chat_id, None, title=chat_title)
+        await update.message.reply_text(
+            f"✅ Pesan selamat datang <b>dimatikan</b> untuk grup <b>{html.escape(chat_title)}</b> (<code>{target_chat_id}</code>).",
+            parse_mode="HTML"
+        )
+        return
+
+    # Sanitize and validate HTML
+    sanitized = sanitize_telegram_html(greeting_input)
+    is_valid, err_msg = validate_greeting_html(sanitized)
+    if not is_valid:
+        await update.message.reply_text(
+            f"❌ <b>Format pesan selamat datang tidak valid:</b>\n"
+            f"• {err_msg}\n\n"
+            f"<i>Pastikan tag HTML Anda tertutup dengan benar. Ketik <code>/setgreeting help</code> untuk panduan format.</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Save to database
+    await db.update_greeting_message(conn, target_chat_id, sanitized, title=chat_title)
+
+    # Preview
+    preview = render_greeting_message(sanitized, user, chat_title)
+    await update.message.reply_text(
+        f"✅ <b>Pesan selamat datang berhasil diatur untuk grup:</b>\n"
+        f"<b>{html.escape(chat_title)}</b> (<code>{target_chat_id}</code>)\n\n"
+        f"<b>Pratinjau Tampilan:</b>\n"
+        f"────────────────────\n"
+        f"{preview}\n"
+        f"────────────────────",
+        parse_mode="HTML"
+    )
+
 
 async def cmd_greeting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not update.effective_chat:
         return
-        
+
     chat = update.effective_chat
-    if chat.type not in ("group", "supergroup"):
-        await update.message.reply_text("❌ Perintah ini hanya bisa digunakan di grup.")
-        return
-        
+    user = update.effective_user
     conn = _conn(context)
     db = _db(context)
-    
-    chat_data = await db.get_bot_chat(conn, chat.id)
+
+    raw_text = (update.message.text or update.message.caption or "").strip()
+    cmd_parts = raw_text.split(None, 1)
+    target_arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+    target_chat_id = None
+    if target_arg:
+        try:
+            val = int(target_arg.split()[0])
+            if val < 0:
+                target_chat_id = val
+        except ValueError:
+            target_chat_id = None
+
+    if target_chat_id is None:
+        if chat.type in ("group", "supergroup"):
+            target_chat_id = chat.id
+        else:
+            await update.message.reply_text(
+                "⚠️ Di <b>Private Chat</b>, sertakan ID grup yang ingin dicek:\n"
+                "<code>/greeting &lt;chat_id&gt;</code>\n\n"
+                "<i>Ketik <code>/setgreeting help</code> untuk melihat daftar grup.</i>",
+                parse_mode="HTML"
+            )
+            return
+
+    # Check permission if remote
+    row = await user_row(conn, db, user.id)
+    is_bot_admin = (row and row["role"] in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL)) or is_owner(user.id)
+    if not is_bot_admin and chat.id != target_chat_id:
+        try:
+            m = await context.bot.get_chat_member(target_chat_id, user.id)
+            if m.status in ("left", "kicked"):
+                await update.message.reply_text("❌ Anda bukan anggota grup tersebut.")
+                return
+        except Exception:
+            await update.message.reply_text("❌ Tidak dapat memverifikasi keanggotaan Anda di grup tersebut.")
+            return
+
+    chat_data = await db.get_bot_chat(conn, target_chat_id)
+    chat_title = chat_data["title"] if (chat_data and chat_data["title"]) else None
+    if not chat_title:
+        try:
+            tg_c = await context.bot.get_chat(target_chat_id)
+            chat_title = tg_c.title or str(target_chat_id)
+        except Exception:
+            chat_title = f"Grup {target_chat_id}"
+
     if chat_data and chat_data["greeting_message"]:
         greeting = chat_data["greeting_message"]
-        # Dummy replace
-        first_name_esc = html.escape(update.effective_user.first_name or "")
-        greeting_preview = greeting.replace("{name}", first_name_esc)
-        if "{username}" in greeting:
-            username = f"@{html.escape(update.effective_user.username)}" if update.effective_user.username else first_name_esc
-            greeting_preview = greeting_preview.replace("{username}", username)
+        preview = render_greeting_message(greeting, user, chat_title)
         await update.message.reply_text(
-            f"ℹ️ Pesan selamat datang yang aktif saat ini:\n\n{greeting_preview}\n\n"
-            f"<i>(Untuk mengubah ketik /setgreeting)</i>",
+            f"ℹ️ <b>Pesan selamat datang aktif untuk grup:</b>\n"
+            f"<b>{html.escape(chat_title)}</b> (<code>{target_chat_id}</code>)\n\n"
+            f"<b>Teks Asli (Template):</b>\n"
+            f"<code>{html.escape(greeting)}</code>\n\n"
+            f"<b>Pratinjau Tampilan:</b>\n"
+            f"────────────────────\n"
+            f"{preview}\n"
+            f"────────────────────\n\n"
+            f"<i>(Untuk mengubah: ketik /setgreeting. Untuk panduan lengkap: /setgreeting help)</i>",
             parse_mode="HTML"
         )
     else:
         await update.message.reply_text(
-            "ℹ️ Belum ada pesan selamat datang yang diatur di grup ini.\n\n"
-            "<i>(Untuk mengubah ketik /setgreeting &lt;pesan&gt;)</i>",
+            f"ℹ️ Belum ada pesan selamat datang yang diatur untuk grup <b>{html.escape(chat_title)}</b> (<code>{target_chat_id}</code>).\n\n"
+            f"<i>(Untuk mengatur ketik <code>/setgreeting &lt;pesan&gt;</code> atau <code>/setgreeting help</code>)</i>",
             parse_mode="HTML"
         )
 

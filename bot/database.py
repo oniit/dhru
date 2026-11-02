@@ -1472,11 +1472,18 @@ class Database:
         return await cur.fetchone()
 
     async def update_greeting_message(
-        self, conn: aiosqlite.Connection, chat_id: int, greeting_message: str | None
+        self, conn: aiosqlite.Connection, chat_id: int, greeting_message: str | None, title: str | None = None
     ) -> None:
         await conn.execute(
-            "UPDATE bot_chats SET greeting_message = ?, updated_at = ? WHERE chat_id = ?",
-            (greeting_message, time.time(), chat_id)
+            """
+            INSERT INTO bot_chats (chat_id, type, title, is_active, greeting_message, updated_at)
+            VALUES (?, 'supergroup', ?, 1, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                greeting_message = excluded.greeting_message,
+                updated_at = excluded.updated_at,
+                title = CASE WHEN excluded.title IS NOT NULL AND excluded.title != '' THEN excluded.title ELSE bot_chats.title END
+            """,
+            (chat_id, title or "", greeting_message, time.time())
         )
         await conn.commit()
 

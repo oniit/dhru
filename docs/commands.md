@@ -54,8 +54,8 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/broadcast` — Mengirimkan pesan siaran ke semua saluran, bot _chats_, atau anggota fakultas tertentu.
 - `/trigger` — Memanajemen daftar _auto-reply_ khusus berbasis kata kunci.
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.
-- `/setgreeting [pesan|off]` — (Owner/Admin) Mengatur pesan sambutan khusus grup. Mendukung placeholder `{name}` dan `{username}`.
-- `/greeting` — Menampilkan pesan sambutan yang sedang aktif di grup.
+- `/setgreeting [chat_id] <pesan|off|help>` — (Owner/Admin Bot & Admin Grup) Mengatur atau mematikan pesan sambutan grup. Dapat dijalankan langsung di dalam grup target (`/setgreeting <pesan>`) atau secara remote dari PM bot / grup lain (`/setgreeting <chat_id> <pesan>`). Mendukung placeholder `{name}`, `{full_name}`, `{first_name}`, `{last_name}`, `{username}`, `{mention}`, `{chat_title}`, `{id}` serta format HTML Telegram (`<b>`, `<i>`, `<u>`, `<s>`, `<a>`, `<code>`, dll). Ketik `/setgreeting help` untuk panduan lengkap & daftar ID grup.
+- `/greeting [chat_id]` — Menampilkan pesan sambutan yang sedang aktif untuk grup saat ini atau grup target tertentu secara remote.
 - `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTS dan KIC dalam satu file `.zip`.
 - `/fix` — (Owner/Admin) Menjalankan validasi massal dan rekapitulasi ulang terhadap semua data profil *user* di *database* secara asinkron.
 

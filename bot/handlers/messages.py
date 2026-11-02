@@ -33,6 +33,7 @@ from .common import (
     resolve_target_user,
     send_message_or_media_to_target,
     render_charyarthi_quiz_view,
+    render_greeting_message,
 )
 from .kartu import STEP_KARTU_PHOTO, on_foto
 
@@ -907,22 +908,24 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if chat_data and chat_data["greeting_message"]:
             greeting = chat_data["greeting_message"]
             user = new_member.user
-            
-            # Replace placeholder if any
-            first_name_esc = html.escape(user.first_name or "")
-            greeting = greeting.replace("{name}", first_name_esc)
-            if "{username}" in greeting:
-                username_esc = f"@{html.escape(user.username)}" if user.username else first_name_esc
-                greeting = greeting.replace("{username}", username_esc)
-                
+            chat_title = chat.title or (chat_data["title"] if "title" in chat_data.keys() else "")
+            rendered = render_greeting_message(greeting, user, chat_title)
+
             try:
                 await context.bot.send_message(
                     chat_id=chat.id,
-                    text=greeting,
+                    text=rendered,
                     parse_mode="HTML"
                 )
             except Exception as e:
-                log.error("Failed to send greeting message in chat %s: %s", chat.id, e)
+                log.error("Failed to send greeting message in chat %s (HTML): %s", chat.id, e)
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat.id,
+                        text=rendered
+                    )
+                except Exception as e2:
+                    log.error("Failed to send fallback plain text greeting in chat %s: %s", chat.id, e2)
 
 async def on_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.chat_join_request:

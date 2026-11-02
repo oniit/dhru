@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import html
+from html.parser import HTMLParser
+import re
 import urllib.parse
 from typing import TYPE_CHECKING
 
@@ -953,6 +955,139 @@ async def render_charyarthi_quiz_preview_page(
     buttons.append([ready_btn])
 
     return text, InlineKeyboardMarkup(buttons)
+
+
+# ── Greeting Formatting & Validation Helpers ─────────────────────────
+
+ALLOWED_TELEGRAM_HTML_TAGS = {
+    "b", "strong", "i", "em", "u", "ins", "s", "strike", "del",
+    "span", "tg-spoiler", "a", "code", "pre", "blockquote", "tg-emoji"
+}
+
+
+class TelegramHTMLValidator(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.stack: list[str] = []
+        self.errors: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]):
+        tag_lower = tag.lower()
+        if tag_lower not in ALLOWED_TELEGRAM_HTML_TAGS:
+            self.errors.append(f"Tag &lt;{tag}&gt; tidak didukung oleh format Telegram.")
+        if tag_lower == "a":
+            has_href = any(k.lower() == "href" and v for k, v in attrs)
+            if not has_href:
+                self.errors.append('Tag &lt;a&gt; harus memiliki atribut href (contoh: &lt;a href="https://..."&gt;).')
+        self.stack.append(tag_lower)
+
+    def handle_endtag(self, tag: str):
+        tag_lower = tag.lower()
+        if not self.stack:
+            self.errors.append(f"Tag penutup &lt;/{tag}&gt; tidak memiliki tag pembuka.")
+        elif self.stack[-1] == tag_lower:
+            self.stack.pop()
+        else:
+            self.errors.append(f"Tag &lt;/{tag}&gt; tidak cocok dengan tag &lt;{self.stack[-1]}&gt; yang belum ditutup.")
+
+    def validate(self, text: str) -> tuple[bool, str | None]:
+        try:
+            self.feed(text)
+            if self.stack:
+                self.errors.append(f"Tag pembuka &lt;{self.stack[-1]}&gt; belum ditutup.")
+        except Exception as e:
+            self.errors.append(f"Sintaks HTML tidak valid: {e}")
+
+        if self.errors:
+            return False, "\n• ".join(self.errors)
+        return True, None
+
+
+def sanitize_telegram_html(text: str) -> str:
+    """
+    Auto-escapes bare '&' that are not part of an existing valid HTML entity,
+    making it resilient to Telegram parse errors without breaking intended formatting.
+    """
+    return re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
+
+
+def render_greeting_message(
+    template: str,
+    user: any,
+    chat_title: str | None = None
+) -> str:
+    """
+    Renders greeting template with user and chat placeholders.
+    Supported placeholders:
+    - {name} / {full_name}: Full name (or first name)
+    - {first_name}: First name
+    - {last_name}: Last name
+    - {username}: @username if present, else name
+    - {mention}: Clickable HTML link to user profile
+    - {chat_title} / {title}: Title of group chat
+    - {id} / {user_id}: Telegram user ID
+    """
+    first_name_raw = getattr(user, "first_name", "") or ""
+    first_name = str(first_name_raw) if not isinstance(first_name_raw, str) else first_name_raw
+
+    last_name_raw = getattr(user, "last_name", "") or ""
+    last_name = str(last_name_raw) if not isinstance(last_name_raw, str) else last_name_raw
+
+    full_name_raw = getattr(user, "full_name", "") or ""
+    if full_name_raw and isinstance(full_name_raw, str):
+        full_name = full_name_raw
+    else:
+        full_name = f"{first_name} {last_name}".strip()
+
+    username_raw = getattr(user, "username", "") or ""
+    username = str(username_raw) if (username_raw and not isinstance(username_raw, str)) else (username_raw or "")
+
+    user_id = getattr(user, "id", 0)
+
+    first_name_esc = html.escape(first_name)
+    last_name_esc = html.escape(last_name)
+    full_name_esc = html.escape(full_name or first_name)
+    user_id_str = str(user_id)
+    chat_title_esc = html.escape(str(chat_title or ""))
+
+    if username:
+        username_esc = f"@{html.escape(username)}"
+    else:
+        username_esc = full_name_esc or first_name_esc
+
+    mention_label = full_name_esc or first_name_esc or "Member"
+    mention_html = f'<a href="tg://user?id={user_id}">{mention_label}</a>'
+
+    rendered = template
+    rendered = rendered.replace("{name}", full_name_esc)
+    rendered = rendered.replace("{full_name}", full_name_esc)
+    rendered = rendered.replace("{first_name}", first_name_esc)
+    rendered = rendered.replace("{last_name}", last_name_esc)
+    rendered = rendered.replace("{username}", username_esc)
+    rendered = rendered.replace("{mention}", mention_html)
+    rendered = rendered.replace("{id}", user_id_str)
+    rendered = rendered.replace("{user_id}", user_id_str)
+    rendered = rendered.replace("{chat_title}", chat_title_esc)
+    rendered = rendered.replace("{title}", chat_title_esc)
+    return rendered
+
+
+def validate_greeting_html(template: str) -> tuple[bool, str | None]:
+    """
+    Validates greeting HTML template using a dummy user context.
+    Returns (is_valid, error_message).
+    """
+    class _DummyUser:
+        id = 123456789
+        first_name = "Nama"
+        last_name = "Depan"
+        full_name = "Nama Depan"
+        username = "username"
+
+    test_rendered = render_greeting_message(template, _DummyUser(), chat_title="Nama Grup")
+    validator = TelegramHTMLValidator()
+    return validator.validate(test_rendered)
+
 
 
 
