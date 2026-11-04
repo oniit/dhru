@@ -901,6 +901,8 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         and new_member.is_member
         and not old_member.is_member
     ):
+        if getattr(new_member.user, "is_bot", False):
+            return
         conn = _conn(context)
         db = _db(context)
         

@@ -964,6 +964,8 @@ ALLOWED_TELEGRAM_HTML_TAGS = {
     "span", "tg-spoiler", "a", "code", "pre", "blockquote", "tg-emoji"
 }
 
+HTML_TAG_PATTERN = re.compile(r'</?([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+[^<>]*)?>')
+
 
 class TelegramHTMLValidator(HTMLParser):
     def __init__(self):
@@ -991,6 +993,13 @@ class TelegramHTMLValidator(HTMLParser):
             self.errors.append(f"Tag &lt;/{tag}&gt; tidak cocok dengan tag &lt;{self.stack[-1]}&gt; yang belum ditutup.")
 
     def validate(self, text: str) -> tuple[bool, str | None]:
+        stripped = HTML_TAG_PATTERN.sub('', text)
+        if '<' in stripped:
+            self.errors.append(
+                "Terdapat karakter '&lt;' yang bukan merupakan tag HTML Telegram (misal: emotikon &lt;3). "
+                "Mohon gunakan &amp;lt; atau gunakan fitur tebal/miring bawaan Telegram."
+            )
+
         try:
             self.feed(text)
             if self.stack:
@@ -1008,7 +1017,30 @@ def sanitize_telegram_html(text: str) -> str:
     Auto-escapes bare '&' that are not part of an existing valid HTML entity,
     making it resilient to Telegram parse errors without breaking intended formatting.
     """
-    return re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
+    return re.sub(r'&(?!(?:amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
+
+
+def extract_greeting_source_from_message(message: any) -> tuple[str, bool]:
+    """
+    Extracts command arguments preserving native Telegram formatting (bold, italic, links, etc.)
+    via text_html if available, or falls back to plain message.text.
+    Returns (args_str, has_native_formatting).
+    """
+    entities = getattr(message, "entities", None) or []
+    # Check if user applied Telegram's native formatting UI (bold, italic, link, spoiler, etc.)
+    has_native_formatting = any(
+        getattr(e, "type", "") not in ("bot_command", "mention", "hashtag", "cashtag")
+        for e in entities
+    )
+
+    if has_native_formatting and getattr(message, "text_html", None):
+        raw_source = message.text_html
+    else:
+        raw_source = getattr(message, "text", "") or getattr(message, "caption", "") or ""
+
+    match = re.match(r'^\s*/[a-zA-Z0-9_]+(?:@[a-zA-Z0-9_]+)?(?:\s+(.*)|\s*)?$', raw_source, flags=re.DOTALL)
+    args_str = match.group(1).strip() if (match and match.group(1)) else ""
+    return args_str, has_native_formatting
 
 
 def render_greeting_message(
@@ -1017,12 +1049,13 @@ def render_greeting_message(
     chat_title: str | None = None
 ) -> str:
     """
-    Renders greeting template with user and chat placeholders.
+    Renders greeting template with user and chat placeholders using single-pass regex replacement.
+    Prevents cascading placeholder injection and supports case-insensitive placeholders.
     Supported placeholders:
     - {name} / {full_name}: Full name (or first name)
     - {first_name}: First name
     - {last_name}: Last name
-    - {username}: @username if present, else name
+    - {username}: @username if present, else name (handles @{username} safely)
     - {mention}: Clickable HTML link to user profile
     - {chat_title} / {title}: Title of group chat
     - {id} / {user_id}: Telegram user ID
@@ -1050,26 +1083,35 @@ def render_greeting_message(
     user_id_str = str(user_id)
     chat_title_esc = html.escape(str(chat_title or ""))
 
-    if username:
-        username_esc = f"@{html.escape(username)}"
-    else:
-        username_esc = full_name_esc or first_name_esc
-
     mention_label = full_name_esc or first_name_esc or "Member"
     mention_html = f'<a href="tg://user?id={user_id}">{mention_label}</a>'
 
-    rendered = template
-    rendered = rendered.replace("{name}", full_name_esc)
-    rendered = rendered.replace("{full_name}", full_name_esc)
-    rendered = rendered.replace("{first_name}", first_name_esc)
-    rendered = rendered.replace("{last_name}", last_name_esc)
-    rendered = rendered.replace("{username}", username_esc)
-    rendered = rendered.replace("{mention}", mention_html)
-    rendered = rendered.replace("{id}", user_id_str)
-    rendered = rendered.replace("{user_id}", user_id_str)
-    rendered = rendered.replace("{chat_title}", chat_title_esc)
-    rendered = rendered.replace("{title}", chat_title_esc)
-    return rendered
+    def _replacer(match: re.Match) -> str:
+        has_at_prefix = match.group(0).startswith('@')
+        key = match.group(1).lower()
+
+        if key == "username":
+            if username:
+                return f"@{html.escape(username)}"
+            return full_name_esc or first_name_esc
+
+        lookup = {
+            "name": full_name_esc,
+            "full_name": full_name_esc,
+            "first_name": first_name_esc,
+            "last_name": last_name_esc,
+            "mention": mention_html,
+            "id": user_id_str,
+            "user_id": user_id_str,
+            "chat_title": chat_title_esc,
+            "title": chat_title_esc,
+        }
+        val = lookup.get(key)
+        if val is None:
+            return match.group(0)
+        return f"@{val}" if has_at_prefix else val
+
+    return re.sub(r'@?\{([a-zA-Z0-9_]+)\}', _replacer, template)
 
 
 def validate_greeting_html(template: str) -> tuple[bool, str | None]:

@@ -105,6 +105,112 @@ def test_validate_greeting_html():
     assert ok4 is False
     assert "href" in err4
 
+    ok5, err5 = validate_greeting_html("Halo <b>{name}</b> <3")
+    assert ok5 is False
+    assert "Terdapat karakter" in err5
+
+
+def test_render_greeting_message_single_pass_no_cascade():
+    # User whose name contains a placeholder must not be re-expanded
+    user = DummyUser(uid=123, first_name="Budi {chat_title}", last_name="", username="budi")
+    rendered = render_greeting_message("Halo {first_name} di {chat_title}!", user, chat_title="Grup Keren")
+    assert "Halo Budi {chat_title} di Grup Keren!" in rendered
+
+
+def test_render_greeting_message_handles_at_username():
+    user_with_uname = DummyUser(uid=1, first_name="Budi", last_name="", username="budis")
+    assert render_greeting_message("Halo @{username}!", user_with_uname) == "Halo @budis!"
+    assert render_greeting_message("Halo {username}!", user_with_uname) == "Halo @budis!"
+
+    user_without_uname = DummyUser(uid=2, first_name="Siti", last_name="Rahma", username=None)
+    assert render_greeting_message("Halo @{username}!", user_without_uname) == "Halo Siti Rahma!"
+    assert render_greeting_message("Halo {username}!", user_without_uname) == "Halo Siti Rahma!"
+
+
+def test_cmd_set_greeting_preserves_native_telegram_formatting():
+    from telegram import MessageEntity
+    bot.settings.OWNER_ID = 999
+    update = MagicMock(spec=Update)
+    update.effective_user = MagicMock(id=999, first_name="Owner")
+    update.effective_chat = MagicMock(id=-10055555, type="supergroup", title="Grup Keren")
+    update.message = MagicMock(spec=Message)
+    update.message.reply_text = AsyncMock()
+    # Simulated native bold: user typed /setgreeting Halo {name} and bolded {name}
+    update.message.text = "/setgreeting Halo {name}!"
+    update.message.text_html = "/setgreeting Halo <b>{name}</b>!"
+    update.message.entities = [
+        MessageEntity(MessageEntity.BOT_COMMAND, 0, 12),
+        MessageEntity(MessageEntity.BOLD, 18, 6)
+    ]
+
+    context, mock_db = make_context()
+    run_sync(commands.cmd_set_greeting(update, context))
+
+    mock_db.update_greeting_message.assert_called_once()
+    saved_template = mock_db.update_greeting_message.call_args[0][2]
+    assert "Halo <b>{name}</b>!" in saved_template
+
+
+def test_cmd_set_greeting_help_in_group_does_not_leak_other_groups():
+    bot.settings.OWNER_ID = 999
+    update = MagicMock(spec=Update)
+    update.effective_user = MagicMock(id=999, first_name="Owner")
+    update.effective_chat = MagicMock(id=-10055555, type="supergroup", title="Grup Publik")
+    update.message = AsyncMock(spec=Message)
+    update.message.text = "/setgreeting help"
+    update.message.entities = []
+
+    context, mock_db = make_context()
+    run_sync(commands.cmd_set_greeting(update, context))
+
+    reply = update.message.reply_text.call_args[0][0]
+    assert "Grup Publik" in reply
+    assert "-10055555" in reply
+    # Must NOT leak external bot chats in group chat!
+    assert "Grup Alpha" not in reply
+    assert "-10011111" not in reply
+
+
+def test_cmd_set_greeting_negative_number_not_treated_as_chat_id():
+    bot.settings.OWNER_ID = 999
+    update = MagicMock(spec=Update)
+    update.effective_user = MagicMock(id=999, first_name="Owner")
+    update.effective_chat = MagicMock(id=-10055555, type="supergroup", title="Grup Keren")
+    update.message = AsyncMock(spec=Message)
+    update.message.text = "/setgreeting -10 poin jika melanggar!"
+    update.message.text_html = "/setgreeting -10 poin jika melanggar!"
+    update.message.entities = []
+
+    context, mock_db = make_context()
+    run_sync(commands.cmd_set_greeting(update, context))
+
+    mock_db.update_greeting_message.assert_called_once()
+    # Target chat must remain current group, not -10!
+    assert mock_db.update_greeting_message.call_args[0][1] == -10055555
+    assert "-10 poin jika melanggar!" in mock_db.update_greeting_message.call_args[0][2]
+
+
+def test_on_chat_member_ignores_bot():
+    from telegram import ChatMemberUpdated
+    update = MagicMock(spec=Update)
+    update.chat_member = MagicMock(spec=ChatMemberUpdated)
+    update.chat_member.chat = MagicMock(id=-1009999, title="Grup Baru")
+
+    old_member = MagicMock(status=ChatMember.LEFT)
+    new_member = MagicMock(status=ChatMember.MEMBER)
+    new_member.user = DummyUser(uid=888, first_name="Bot Pembantu", last_name="", username="helper_bot")
+    new_member.user.is_bot = True
+    update.chat_member.old_chat_member = old_member
+    update.chat_member.new_chat_member = new_member
+
+    context, mock_db = make_context()
+    context.bot.send_message = AsyncMock()
+
+    run_sync(messages.on_chat_member(update, context))
+
+    # Send message should NOT be called for bots
+    context.bot.send_message.assert_not_called()
+
 
 def test_cmd_set_greeting_help_guide():
     bot.settings.OWNER_ID = 999
