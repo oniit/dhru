@@ -1768,10 +1768,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             try:
                 msg_dm = (
                     "🎉 <b>Selamat! Anda Dinyatakan LULUS Seleksi Charya!</b>\n\n"
-                    f"Anda resmi diterima sebagai staf internal Dhruva pada divisi <b>{accepted_lbl}</b>.\n\n"
-                    "<b>Langkah Selanjutnya:</b>\n"
-                    "Silakan tanda tangani surat perjanjian kerja dan terbitkan identitas staf Anda dengan mengetik perintah:\n"
-                    "<code>/kontrak</code>"
+                    f"Anda resmi diterima sebagai staf Institut Dhruva Ekāgra pada divisi <b>{accepted_lbl}</b>.\n\n"
+                    "<b>Langkah Selanjutnya</b>, silakan masuk ke grup staf dengan tautan berikut:\n"
+                    "https://t.me/+Q7JFQS6ZV5s5N2Vl"
                 )
                 await context.bot.send_message(chat_id=target_uid, text=msg_dm, parse_mode="HTML")
             except Exception as e:
@@ -6238,10 +6237,9 @@ async def cmd_acc_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         msg_dm = (
             "🎉 <b>Selamat! Anda Dinyatakan LULUS Seleksi Charya!</b>\n\n"
-            f"Anda resmi diterima sebagai staf internal Dhruva pada divisi <b>{accepted_lbl}</b>.\n\n"
-            "<b>Langkah Selanjutnya:</b>\n"
-            "Silakan tanda tangani surat perjanjian kerja dan terbitkan identitas staf Anda dengan mengetik perintah:\n"
-            "<code>/kontrak</code>"
+            f"Anda resmi diterima sebagai staf Institut Dhruva Ekāgra pada divisi <b>{accepted_lbl}</b>.\n\n"
+            "<b>Langkah Selanjutnya</b>, silakan masuk ke grup staf dengan tautan berikut:\n"
+            "https://t.me/+Q7JFQS6ZV5s5N2Vl"
         )
         await context.bot.send_message(chat_id=target_uid, text=msg_dm, parse_mode="HTML")
     except Exception as e:
