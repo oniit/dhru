@@ -6,7 +6,7 @@ import html
 from html.parser import HTMLParser
 import re
 import urllib.parse
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Message
 from telegram.ext import ContextTypes
@@ -1020,7 +1020,7 @@ def sanitize_telegram_html(text: str) -> str:
     return re.sub(r'&(?!(?:amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text)
 
 
-def extract_greeting_source_from_message(message: any) -> tuple[str, bool]:
+def extract_greeting_source_from_message(message: Any) -> tuple[str, bool]:
     """
     Extracts command arguments preserving native Telegram formatting (bold, italic, links, etc.)
     via text_html if available, or falls back to plain message.text.
@@ -1045,7 +1045,7 @@ def extract_greeting_source_from_message(message: any) -> tuple[str, bool]:
 
 def render_greeting_message(
     template: str,
-    user: any,
+    user: Any,
     chat_title: str | None = None
 ) -> str:
     """

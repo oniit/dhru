@@ -127,7 +127,10 @@ def _multi_init(
     }
 
 if TYPE_CHECKING:
-    pass
+    import aiosqlite
+    from telegram import Chat
+
+    from bot.database import Database
 
 log = logging.getLogger(__name__)
 
@@ -3713,7 +3716,9 @@ async def cmd_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_agralog(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, from_log_cmd: bool = False
+) -> None:
     if not update.effective_user or not update.message:
         return
     conn = _conn(context)
@@ -3724,7 +3729,7 @@ async def cmd_agralog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Ketik /start dulu.")
         return
         
-    is_from_log_cmd = getattr(context, "is_from_log_cmd", False)
+    is_from_log_cmd = from_log_cmd
     is_global = False
     target_uid = uid
     title_suffix = "Kamu"
@@ -4536,8 +4541,7 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         name_sub = " ".join(context.args[1:])
     elif len(context.args) >= 1 and context.args[0].lower() == "agra":
         context.args = context.args[1:]
-        context.is_from_log_cmd = True
-        return await cmd_agralog(update, context)
+        return await cmd_agralog(update, context, from_log_cmd=True)
     elif len(context.args) == 1 and context.args[0].lower() == "terbaru":
         pass
     else:
