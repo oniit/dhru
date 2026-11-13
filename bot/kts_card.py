@@ -82,13 +82,13 @@ def _load_font(size: int, font_path: Path | str | None = None) -> ImageFont.Free
             return ImageFont.load_default()
 
 
-def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return int(bbox[2] - bbox[0])
 
 
 def _wrap_lines(
-    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int
+    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int, max_lines: int
 ) -> list[str]:
     text = (text or "").strip() or "—"
     words = text.split()
@@ -273,7 +273,7 @@ def render_kts_png_bytes(
                 draw.text((b_x, b_y), f"{b_label} — {b_detail}", font=font_light, fill=TEXT_COLOR)
                 
     # Terapkan rotasi pada overlay teks & foto
-    overlay = overlay.rotate(3.6, resample=Image.BICUBIC, center=(W//2, H//2))
+    overlay = overlay.rotate(3.6, resample=Image.Resampling.BICUBIC, center=(W//2, H//2))
     im.alpha_composite(overlay)
 
     buf = BytesIO()

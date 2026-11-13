@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Jakarta")
@@ -20,7 +20,7 @@ def format_time_only(ts: float | None) -> str:
     dt = datetime.fromtimestamp(float(ts), tz=TZ)
     return dt.strftime("%H:%M:%S WIB")
 
-def get_today_wib() -> datetime.date:
+def get_today_wib() -> date:
     return datetime.now(TZ).date()
 
 def days_until_next_birthday(birth_date_str: str) -> int:
@@ -34,7 +34,7 @@ def days_until_next_birthday(birth_date_str: str) -> int:
     
     today = get_today_wib()
     
-    def _get_bday(year: int, m: int, d: int) -> datetime.date:
+    def _get_bday(year: int, m: int, d: int) -> date:
         try:
             return datetime(year, m, d).date()
         except ValueError:

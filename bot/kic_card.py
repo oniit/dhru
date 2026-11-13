@@ -79,13 +79,13 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
             return ImageFont.load_default()
 
 
-def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
     return int(bbox[2] - bbox[0])
 
 
 def _wrap_lines(
-    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int
+    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int, max_lines: int
 ) -> list[str]:
     text = (text or "").strip() or "—"
     words = text.split()
@@ -310,7 +310,7 @@ def render_kic_png_bytes(
     draw.text((footer_x, footer_y), contract_end, font=font_footer, fill=(255, 255, 255))
 
     # Terapkan rotasi pada overlay teks & foto untuk menyesuaikan kemiringan template
-    overlay = overlay.rotate(3.7, resample=Image.BICUBIC, center=(W//2, H//2))
+    overlay = overlay.rotate(3.7, resample=Image.Resampling.BICUBIC, center=(W//2, H//2))
     im.alpha_composite(overlay)
 
     buf = BytesIO()
