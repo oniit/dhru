@@ -2,7 +2,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from telegram import Update, Message, User, Chat
-from bot.database import Database, ROLE_OWNER, ROLE_INTERNAL, ROLE_PURVA
+from bot.database import Database, ROLE_OWNER, ROLE_INTERNAL, ROLE_PURNA
 from bot.handlers import commands
 
 def make_mock_update(user_id=99991, text=""):
@@ -27,16 +27,16 @@ def make_mock_update(user_id=99991, text=""):
     return update
 
 @pytest.mark.asyncio
-async def test_daftar_all_staf_and_purva():
+async def test_daftar_all_staf_and_purna():
     db = Database()
     conn = await db.connect()
 
     owner_id = 999991
     staff_id = 999992
-    purva_id = 999993
+    purna_id = 999993
 
     # Clean up any leftover test data
-    for uid in (owner_id, staff_id, purva_id):
+    for uid in (owner_id, staff_id, purna_id):
         try:
             await conn.execute("DELETE FROM agra_ledger WHERE target_telegram_id = ? OR actor_telegram_id = ?", (uid, uid))
             await conn.execute("DELETE FROM users WHERE telegram_id = ?", (uid,))
@@ -74,24 +74,24 @@ async def test_daftar_all_staf_and_purva():
 
         await db.upsert_user_from_telegram(
             conn,
-            telegram_id=purva_id,
+            telegram_id=purna_id,
             username="alumni1",
             first_name="Alumni",
-            last_name="Purva",
+            last_name="Purna",
             language_code="id",
             is_premium=False,
             is_bot=False,
-            raw_profile={"full_name": "Alumni Purva"}
+            raw_profile={"full_name": "Alumni Purna"}
         )
-        await db.set_role(conn, purva_id, ROLE_PURVA)
+        await db.set_role(conn, purna_id, ROLE_PURNA)
 
-        # Add agra for purva
+        # Add agra for purna
         await db.add_agra(
             conn,
-            target_id=purva_id,
+            target_id=purna_id,
             actor_id=owner_id,
             amount=500,
-            description="test_purva_bonus",
+            description="test_purna_bonus",
             chat_id=None,
             message_id=None,
         )
@@ -120,25 +120,25 @@ async def test_daftar_all_staf_and_purva():
         assert not any("all_staf" in r for r in help_replies)
         assert any("/daftar charya" in r for r in help_replies)
 
-        # 2. Test /daftar purva
-        u2 = make_mock_update(user_id=owner_id, text="/daftar purva")
-        ctx.args = ["purva"]
+        # 2. Test /daftar purna
+        u2 = make_mock_update(user_id=owner_id, text="/daftar purna")
+        ctx.args = ["purna"]
         await commands.cmd_daftar(u2, ctx)
         assert u2.message.reply_text.called
         replies2 = [call.args[0] for call in u2.message.reply_text.call_args_list]
-        assert any("Daftar Purva (Alumni)" in r and "Alumni Purva" in r for r in replies2)
+        assert any("Daftar Purna (Alumni)" in r and "Alumni Purna" in r for r in replies2)
 
-        # 3. Test /agratop purva
-        u3 = make_mock_update(user_id=owner_id, text="/agratop purva")
-        ctx.args = ["purva"]
+        # 3. Test /agratop purna
+        u3 = make_mock_update(user_id=owner_id, text="/agratop purna")
+        ctx.args = ["purna"]
         await commands.cmd_agratop(u3, ctx)
         assert u3.message.reply_text.called
         replies3 = [call.args[0] for call in u3.message.reply_text.call_args_list]
         print(f"REPLIES3: {replies3}")
-        assert any("Purva" in r for r in replies3)
+        assert any("Purna" in r for r in replies3)
 
     finally:
-        for uid in (owner_id, staff_id, purva_id):
+        for uid in (owner_id, staff_id, purna_id):
             try:
                 await conn.execute("DELETE FROM agra_ledger WHERE target_telegram_id = ? OR actor_telegram_id = ?", (uid, uid))
                 await conn.execute("DELETE FROM users WHERE telegram_id = ?", (uid,))

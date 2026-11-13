@@ -1,9 +1,9 @@
 import pytest
-from bot.database import Database, ROLE_STUDENT, ROLE_PURVA
+from bot.database import Database, ROLE_STUDENT, ROLE_PURNA
 from bot.handlers.common import profile_from_row
 
 @pytest.mark.asyncio
-async def test_purva_sks_banking_and_fields():
+async def test_purna_sks_banking_and_fields():
     db = Database()
     conn = await db.connect()
     test_uid = 9988775544
@@ -42,22 +42,22 @@ async def test_purva_sks_banking_and_fields():
         assert prof.get("total_sks") == 12
         assert prof.get("student_id") is not None # Generated dynamically
 
-        # 2. User graduates and becomes PURVA
-        await db.set_role(conn, test_uid, ROLE_PURVA)
-        row_purva = await db.get_user(conn, test_uid)
-        prof_purva = profile_from_row(row_purva)
+        # 2. User graduates and becomes PURNA
+        await db.set_role(conn, test_uid, ROLE_PURNA)
+        row_purna = await db.get_user(conn, test_uid)
+        prof_purna = profile_from_row(row_purna)
 
         # Assert specific fields are removed/hidden like public
-        assert prof_purva.get("major") is None
-        assert prof_purva.get("student_id") is None
+        assert prof_purna.get("major") is None
+        assert prof_purna.get("student_id") is None
         
         # Assert preserved fields
-        assert prof_purva.get("muse") == "MuseA"
-        assert prof_purva.get("birth_date") == "2000-01-01"
+        assert prof_purna.get("muse") == "MuseA"
+        assert prof_purna.get("birth_date") == "2000-01-01"
 
         # Assert SKS is preserved securely!
-        assert prof_purva.get("accumulated_sks") == 12
-        assert prof_purva.get("total_sks") == 12
+        assert prof_purna.get("accumulated_sks") == 12
+        assert prof_purna.get("total_sks") == 12
 
         # 3. User re-enrolls as STUDENT
         await db.set_role(conn, test_uid, ROLE_STUDENT)
@@ -78,7 +78,7 @@ async def test_purva_sks_banking_and_fields():
         assert prof_student.get("muse") == "MuseA" # Preserved!
 
         # 4. User graduates again
-        await db.set_role(conn, test_uid, ROLE_PURVA)
+        await db.set_role(conn, test_uid, ROLE_PURNA)
         row_final = await db.get_user(conn, test_uid)
         prof_final = profile_from_row(row_final)
         

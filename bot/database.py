@@ -49,10 +49,10 @@ ROLE_STUDENT = "student"
 ROLE_BEM = "bem"
 ROLE_MABA = "maba"
 ROLE_CHARYARTHI = "charyarthi"
-ROLE_PURVA = "purva"
+ROLE_PURNA = "purna"
 ROLE_PUBLIC = "public"
 
-ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_PURVA, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PUBLIC)
+ROLES_ORDER = (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_PURNA, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PUBLIC)
 
 
 def _choice_position_code(choices_key: str, choice_id: str, width: int) -> str | None:
@@ -815,7 +815,7 @@ class Database:
         
         current = await self.get_profile_dict(conn, telegram_id)
         
-        if old_role != ROLE_PURVA and role == ROLE_PURVA:
+        if old_role != ROLE_PURNA and role == ROLE_PURNA:
             current["accumulated_sks"] = current.get("total_sks", 0)
             current.pop("major", None)
             current.pop("class_enrolled", None)

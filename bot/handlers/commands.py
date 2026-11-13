@@ -25,7 +25,7 @@ from bot.database import (
     ROLE_OWNER,
     ROLE_STUDENT,
     ROLE_BEM,
-    ROLE_PURVA,
+    ROLE_PURNA,
     ROLE_MABA,
     ROLE_CHARYARTHI,
     ROLE_PUBLIC,
@@ -3925,7 +3925,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "<code>/daftar charya</code> — Staf, Admin, Owner\n"
             "<code>/daftar charyarthi</code> — Calon Staf / Pendaftar\n"
             "<code>/daftar pravesi</code> — MABA\n"
-            "<code>/daftar purva</code> — Alumni / Purna Mahasiswa\n"
+            "<code>/daftar purna</code> — Alumni / Purna Mahasiswa\n"
             "<code>/daftar publik</code> — Publik/Eksternal\n"
             "<code>/daftar kelompok &lt;nama_kelompok&gt;</code> (Bisa pakai nama kelompok, atau 'belum')\n"
             f"<code>/daftar fakultas &lt;id&gt;</code> — {html.escape(fac_opts)}\n"
@@ -4015,10 +4015,10 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if r["role"] == ROLE_PUBLIC:
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
-    elif kind == "purva":
-        title = "Daftar Purva (Alumni)"
+    elif kind == "purna":
+        title = "Daftar Purna (Alumni)"
         for r in all_rows:
-            if r["role"] == ROLE_PURVA:
+            if r["role"] == ROLE_PURNA:
                 p = json.loads(r["profile_json"] or "{}")
                 push_row(r, p)
     elif kind in ("charyarthi", "calon", "pelamar"):
@@ -4104,7 +4104,7 @@ async def cmd_daftar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if apply_scope:
         if kind in ("publik", "charyarthi", "calon", "pelamar"):
             apply_scope = False
-        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purva"):
+        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purna"):
             apply_scope = False
 
     if apply_scope:
@@ -4283,12 +4283,12 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         ROLE_INTERNAL,
         ROLE_BEM,
         ROLE_STUDENT,
-        ROLE_PURVA,
+        ROLE_PURNA,
         ROLE_MABA,
         ROLE_PUBLIC,
     ):
         await update.message.reply_text(
-            "Role tidak dikenal. Gunakan admin, internal, bem, student, purva, maba, atau public."
+            "Role tidak dikenal. Gunakan admin, internal, bem, student, purna, maba, atau public."
         )
         return
     conn = _conn(context)
@@ -4849,9 +4849,9 @@ async def cmd_agratop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             elif sub == "pravesi":
                 where_clause = "WHERE u.role = 'maba'"
                 title_suffix = " (Pravesi)"
-            elif sub == "purva":
-                where_clause = "WHERE u.role = 'purva'"
-                title_suffix = " (Purva)"
+            elif sub == "purna":
+                where_clause = "WHERE u.role = 'purna'"
+                title_suffix = " (Purna)"
                 
     limit_clause = "" if is_all else "LIMIT 7"
     
@@ -5691,7 +5691,7 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if apply_scope:
         if kind in ("publik", "charyarthi", "calon", "pelamar"):
             apply_scope = False
-        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purva"):
+        elif lec_mode and not (dean_mode and dean_fid) and kind in ("dosen", "charya", "purna"):
             apply_scope = False
 
     if apply_scope:

@@ -19,7 +19,7 @@ from bot.database import (
     ROLE_BEM,
     ROLE_MABA,
     ROLE_CHARYARTHI,
-    ROLE_PURVA,
+    ROLE_PURNA,
 )
 from bot.settings import (
     CHOICES,
@@ -50,7 +50,7 @@ def role_display(role: str) -> str:
         ROLE_STUDENT: "Shishya",
         ROLE_MABA: "Pravesi",
         ROLE_CHARYARTHI: "Chāryārthī",
-        ROLE_PURVA: "Purvashishya",
+        ROLE_PURNA: "Purnata",
     }.get(role, role)
 
 
@@ -384,7 +384,7 @@ def display_keys_for_role(role: str, profile: dict | None = None) -> list[str]:
             elif key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM):
                 out.append(key)
         else:
-            if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM, ROLE_PURVA):
+            if key in ("total_sks", "auto_class_enrolled") and role not in (ROLE_STUDENT, ROLE_BEM, ROLE_PURNA):
                 continue
             if key == "position" and role not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
                 continue

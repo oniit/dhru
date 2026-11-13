@@ -13,7 +13,7 @@ from bot.database import (
     ROLE_INTERNAL,
     ROLE_BEM,
     ROLE_STUDENT,
-    ROLE_PURVA,
+    ROLE_PURNA,
     ROLE_MABA,
     ROLE_CHARYARTHI,
     ROLE_PUBLIC,

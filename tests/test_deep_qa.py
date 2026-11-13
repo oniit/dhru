@@ -429,11 +429,11 @@ async def test_cmd_help_all_roles(mock_app):
     """Verifikasi bahwa help_for_role dan cmd_help tidak melempar NameError pada semua role."""
     from bot.database import (
         ROLE_STUDENT, ROLE_ADMIN, ROLE_OWNER, ROLE_INTERNAL,
-        ROLE_BEM, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PURVA, ROLE_PUBLIC
+        ROLE_BEM, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PURNA, ROLE_PUBLIC
     )
     all_roles = [
         ROLE_STUDENT, ROLE_ADMIN, ROLE_OWNER, ROLE_INTERNAL,
-        ROLE_BEM, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PURVA, ROLE_PUBLIC
+        ROLE_BEM, ROLE_MABA, ROLE_CHARYARTHI, ROLE_PURNA, ROLE_PUBLIC
     ]
 
     for role in all_roles:
