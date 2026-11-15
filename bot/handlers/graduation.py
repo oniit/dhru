@@ -380,8 +380,87 @@ async def cmd_ijazah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pass
 
 
+async def _fetch_photos_for_graduates(
+    context: ContextTypes.DEFAULT_TYPE,
+    conn,
+    graduates: list[StudentGraduationData],
+) -> dict[str, bytes | None]:
+    """Mengambil pasfoto/avatar mahasiswa kelulusan secara efisien & paralel.
+    
+    Menggunakan index idx_users_student_id pada Turso dengan kueri WHERE student_id IN (...)
+    sehingga tetap hemat kuota pembacaan baris (read quota).
+    """
+    if not graduates or not conn:
+        return {}
+
+    nims = [g.nim.strip() for g in graduates if g.nim]
+    if not nims:
+        return {}
+
+    placeholders = ",".join("?" for _ in nims)
+    sql = (
+        f"SELECT telegram_id, profile_json "
+        f"FROM users "
+        f"WHERE json_extract(profile_json, '$.student_id') IN ({placeholders})"
+    )
+
+    student_map: dict[str, dict] = {}
+    try:
+        cur = await conn.execute(sql, tuple(nims))
+        rows = await cur.fetchall()
+        for r in rows:
+            p = json.loads(r["profile_json"] or "{}")
+            sid = str(p.get("student_id") or "").strip()
+            fid = (p.get("photo_file_id") or "").strip()
+            if sid:
+                # Jika ada duplikasi akun, prioritaskan yang sudah mengunggah photo_file_id
+                if sid not in student_map or (not student_map[sid]["photo_file_id"] and fid):
+                    student_map[sid] = {
+                        "telegram_id": r["telegram_id"],
+                        "photo_file_id": fid,
+                    }
+    except Exception as e:
+        log.warning("Gagal query data foto kelulusan dari DB: %s", e)
+        return {}
+
+    sem = asyncio.Semaphore(5)
+    photos_by_nim: dict[str, bytes | None] = {}
+
+    async def _fetch_one(nim: str):
+        info = student_map.get(nim)
+        if not info:
+            return
+
+        async with sem:
+            # 1. Prioritas: foto pasfoto resmi KTS
+            fid = info["photo_file_id"]
+            if fid:
+                data = await _download_telegram_photo(context, fid)
+                if data:
+                    photos_by_nim[nim] = data
+                    return
+
+            # 2. Fallback: avatar profil Telegram
+            tid = info.get("telegram_id")
+            if tid:
+                try:
+                    user_photos = await context.bot.get_user_profile_photos(int(tid), limit=1)
+                    if user_photos.total_count > 0 and user_photos.photos:
+                        largest = user_photos.photos[0][-1]
+                        data = await _download_telegram_photo(context, largest.file_id)
+                        if data:
+                            photos_by_nim[nim] = data
+                except Exception:
+                    pass
+
+    await asyncio.gather(*[_fetch_one(g.nim) for g in graduates], return_exceptions=True)
+    return photos_by_nim
+
+
 def _sync_export_documents(
-    graduates: list[StudentGraduationData], output_dir: Path
+    graduates: list[StudentGraduationData],
+    output_dir: Path,
+    photos_map: dict[str, bytes | None] | None = None,
 ) -> tuple[int, list[Path]]:
     """Fungsi ekspor batch grafis murni CPU-bound yang dijalankan di thread terpisah."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -393,9 +472,11 @@ def _sync_export_documents(
         t_path = output_dir / f"{st.nim}_{safe_name}_Transkrip.png"
         i_path = output_dir / f"{st.nim}_{safe_name}_Ijazah.png"
 
+        photo_bytes = photos_map.get(st.nim) if photos_map else None
+
         try:
-            t_bytes = render_transkrip_png_bytes(st)
-            i_bytes = render_ijazah_png_bytes(st)
+            t_bytes = render_transkrip_png_bytes(st, photo_bytes=photo_bytes)
+            i_bytes = render_ijazah_png_bytes(st, photo_bytes=photo_bytes)
 
             with open(t_path, "wb") as f:
                 f.write(t_bytes)
@@ -433,18 +514,30 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
     create_zip = bool(args and args[0].lower() == "zip")
 
     status_msg = await update.message.reply_text(
-        f"⚙️ Memulai pembuatan dokumen untuk <b>{len(graduates)}</b> shishya lulusan Gen 1..."
+        f"⚙️ Memulai export dokumen kelulusan Gen 1 (<b>{len(graduates)}</b> shishya)...\n"
+        f"• Mengambil pasfoto profil shishya..."
     )
 
-    # Jalankan render batch di thread latar belakang agar tidak memblokir event loop Telegram
+    # 1. Unduh pasfoto/avatar shishya secara paralel & efisien
+    photos_map = await _fetch_photos_for_graduates(context, conn, graduates)
+    with_photo_count = sum(1 for p in photos_map.values() if p)
+
+    await status_msg.edit_text(
+        f"⚙️ Memproses dokumen kelulusan Gen 1 (<b>{len(graduates)}</b> shishya)...\n"
+        f"• Foto ditemukan: <b>{with_photo_count}</b> / {len(graduates)}\n"
+        f"• Sedang me-render ijazah & transkrip..."
+    )
+
+    # 2. Jalankan render batch di thread latar belakang agar tidak memblokir event loop Telegram
     success_count, created_files = await asyncio.to_thread(
-        _sync_export_documents, graduates, OUTPUT_DIR
+        _sync_export_documents, graduates, OUTPUT_DIR, photos_map
     )
 
     msg = (
         f"✅ <b>Export Kelulusan Selesai!</b>\n\n"
         f"• Total Mahasiswa Lulus: <b>{len(graduates)}</b>\n"
         f"• Berhasil Digenerate: <b>{success_count}</b> mahasiswa ({success_count * 2} dokumen)\n"
+        f"• Dokumen berfoto: <b>{with_photo_count}</b> mahasiswa\n"
         f"• Folder Output: <code>{OUTPUT_DIR}</code>"
     )
 
@@ -463,7 +556,7 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_document(
                 document=zf_file,
                 filename="Dokumen_Kelulusan_Gen1.zip",
-                caption="📦 Paket Lengkap Ijazah & Transkrip Shishya Gen 1",
+                caption="📦 Paket Lengkap Ijazah & Transkrip Shishya Gen 1 (Termasuk Foto)",
                 read_timeout=120,
                 write_timeout=120,
             )

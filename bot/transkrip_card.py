@@ -36,7 +36,7 @@ UKM_ROW_Y = [597, 614, 631]
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 64
-_LAYOUT_VERSION = 5
+_LAYOUT_VERSION = 6
 
 
 def _load_font(font_path: Path, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -89,8 +89,8 @@ def render_transkrip_png(
     font_open_12 = _load_font(FONT_OPEN_SERIF_PATH, 12)
     font_open_13 = _load_font(FONT_OPEN_SERIF_PATH, 13)
 
-    # 1. Identitas Mahasiswa (Generasi/NIM dan Nama dibuat Bold)
-    draw.text((325, 204), f"{student.generasi} / {student.nim}", fill=NAVY, font=font_open_12, stroke_width=0.4, stroke_fill=NAVY)
+    # 1. Identitas Mahasiswa (Generasi/NIM regular, Nama dibuat Bold)
+    draw.text((325, 204), f"{student.generasi} / {student.nim}", fill=NAVY, font=font_open_12)
 
     # Auto-shrink nama jika melebihi batas kolom (X=325 sampai X=485, max 160px)
     name_size = 12

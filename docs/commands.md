@@ -16,7 +16,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 - `/transkrip [nim/nama]` — Menampilkan lembar Transkrip Nilai Akademik resmi (hanya chat privat). Admin dapat memasukkan argumen NIM/Nama shishya lain.
 - `/ijazah [nim/nama]` — Menampilkan lembar Ijazah Kelulusan resmi bagi shishya yang memenuhi syarat kelulusan (hanya chat privat). Memuat Nama, NIM, Tanggal Lahir (centered), Program Studi & Fakultas, serta Gelar Akademik resmi (Sarjana Sains (S.Si.) untuk FMIPA dan Sarjana Seni (S.Sn.) untuk FIB).
-- `/export_kelulusan [zip]` — (Owner/Admin) Men-generate massal seluruh dokumen ijazah & transkrip shishya Gen 1 ke folder `output/kelulusan_gen1/` (opsi `zip` untuk langsung mengirimkan arsip ZIP).
+- `/export_kelulusan [zip]` — (Owner/Admin) Men-generate massal seluruh dokumen ijazah & transkrip shishya Gen 1 beserta pasfoto/avatar mahasiswa yang terdaftar ke folder `output/kelulusan_gen1/` (opsi `zip` untuk langsung mengirimkan arsip ZIP).
 
 ## Sosial & Gamifikasi (Agra)
 - `/leaderboard` atau `/agra top [role] [all]` — Menampilkan peringkat Agra teratas. Gunakan argumen `all` untuk melihat keseluruhan tanpa batas Top 17 (contoh: `/agra top charya all`).
