@@ -274,11 +274,6 @@ async def cmd_ijazah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """Perintah /ijazah [nim/nama] — Menampilkan Ijazah Kelulusan Resmi."""
     if not update.effective_user or not update.message:
         return
-    if not _private_only_reply(update):
-        await update.message.reply_text(
-            "🔒 Perintah <code>/ijazah</code> hanya dapat digunakan di chat privat dengan bot."
-        )
-        return
 
     uid = update.effective_user.id
     if not rate_limit_check(uid, "ijazah", 4):

@@ -25,3 +25,4 @@ Menambahkan baris **Predikat** kelulusan pada keterangan pesan (*caption*) saat 
   <b>Predikat:</b> CUMLAUDE
   ```
 - Tidak ada error sintaksis.
+
