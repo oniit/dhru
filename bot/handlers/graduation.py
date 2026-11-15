@@ -360,13 +360,15 @@ async def cmd_ijazah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     jurusan_esc = html.escape(student.jurusan)
     fakultas_esc = html.escape(student.fakultas)
     degree_esc = html.escape(get_degree_title(student.fakultas, student.jurusan))
+    predikat_esc = html.escape(student.predikat if student.predikat and student.predikat != "-" else "LULUS")
 
     cap = (
         f"🎓 <b>Ijazah Kelulusan Resmi</b>\n"
         f"<b>Institut Dhruva Ekāgra</b>\n\n"
         f"Selamat kepada <b>{nama_esc}</b> (NIM: <code>{student.nim}</code>)\n"
         f"<b>Program Studi:</b> {jurusan_esc} - {fakultas_esc}\n"
-        f"<b>Gelar:</b> {degree_esc}"
+        f"<b>Gelar:</b> {degree_esc}\n"
+        f"<b>Predikat:</b> {predikat_esc}"
     )
 
     await update.message.reply_photo(

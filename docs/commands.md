@@ -15,7 +15,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/presensi` — Merekam kehadiran. Menu membuka/menutup presensi untuk jenis sesi tertentu (Mata Kuliah, Charya, Yaksa/BEM, dan Umum; sesi manual otomatis ditutup setelah 2 jam). Pembina BEM (Āchāryata) memiliki hak akses membuka, menghadiri, dan merekap Presensi Yaksa. Penutupan sesi Presensi Umum dibatasi ketat hanya untuk pembuat sesi atau Admin/Owner.
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 - `/transkrip [nim/nama]` — Menampilkan lembar Transkrip Nilai Akademik resmi (hanya chat privat). Admin dapat memasukkan argumen NIM/Nama shishya lain.
-- `/ijazah [nim/nama]` — Menampilkan lembar Ijazah Kelulusan resmi bagi shishya yang memenuhi syarat kelulusan (hanya chat privat). Memuat Nama, NIM, Tanggal Lahir (centered), Program Studi & Fakultas, serta Gelar Akademik resmi (Sarjana Sains (S.Si.) untuk FMIPA dan Sarjana Seni (S.Sn.) untuk FIB).
+- `/ijazah [nim/nama]` — Menampilkan lembar Ijazah Kelulusan resmi bagi shishya yang memenuhi syarat kelulusan (hanya chat privat). Memuat Nama, NIM, Tanggal Lahir (centered), Program Studi & Fakultas, Gelar Akademik resmi (Sarjana Sains (S.Si.) untuk FMIPA dan Sarjana Seni (S.Sn.) untuk FIB), serta keterangan Predikat pada caption pesan.
 - `/export_kelulusan [zip]` — (Owner/Admin) Men-generate massal seluruh dokumen ijazah & transkrip shishya Gen 1 beserta pasfoto/avatar mahasiswa yang terdaftar ke folder `output/kelulusan_gen1/` (opsi `zip` untuk langsung mengirimkan arsip ZIP).
 
 ## Sosial & Gamifikasi (Agra)
