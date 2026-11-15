@@ -15,6 +15,7 @@ Karena Turso berjalan melalui HTTP API over internet, koneksi idle TCP keep-aliv
 Turso memberlakukan kuota berbasis jumlah baris yang dibaca (*rows read*). Tanpa index, kueri filter (seperti pencarian status pending atau pencarian username) memicu *Full Table Scan*, yang dapat menghabiskan kuota ratusan juta pembacaan jika di-poll secara rutin.
 Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi index terdedikasi:
 - `idx_users_username_lower`: Index fungsional `lower(username)` pada tabel `users`.
+- `idx_users_student_id`: Index fungsional `json_extract(profile_json, '$.student_id')` pada `users` untuk lookup cepat mahasiswa berdasarkan NIM tanpa full table scan.
 - `idx_group_seen_username_lower`: Index fungsional `lower(username)` pada `group_seen_users`.
 - `idx_group_seen_chat_bot`: Index komposit `(chat_id, is_bot, last_seen_at)`.
 - `idx_promo_status`, `idx_promo_link`, `idx_promo_user_status`: Index pada tabel `promo_verifications`.

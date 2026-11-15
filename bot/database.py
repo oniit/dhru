@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_agra_target ON agra_ledger(target_telegram_id);
 CREATE INDEX IF NOT EXISTS idx_pending_profile ON profile_change_requests(status);
 CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance_records(session_id);
+CREATE INDEX IF NOT EXISTS idx_users_student_id ON users(json_extract(profile_json, '$.student_id'));
 
 CREATE TABLE IF NOT EXISTS access_codes (
     code TEXT PRIMARY KEY,

@@ -68,7 +68,8 @@ def load_profile_fields() -> tuple[list[FieldDef], list[str]]:
 CHOICES = load_choices()
 PROFILE_FIELDS, PROFILE_DISPLAY_KEYS = load_profile_fields()
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+_raw_token = os.environ.get("BOT_TOKEN", "").strip()
+BOT_TOKEN = _raw_token.split("#")[0].strip() if _raw_token else ""
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 TESTER_ID = int(os.environ.get("TESTER_ID", "0") or 0)
 GENERATION_CODE = os.environ.get("GENERATION_CODE", "01").strip()

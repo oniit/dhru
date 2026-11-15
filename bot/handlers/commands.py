@@ -516,12 +516,14 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "/ubah — Ajukan perubahan (disetujui admin)",
         "",
     ]
-    if role in (ROLE_STUDENT, ROLE_BEM):
+    if role in (ROLE_STUDENT, ROLE_BEM, ROLE_PURNA):
         lines.append(
-            "<b>Shishya</b>\n/hadir — Presensi ke sesi yang dibuka\n"
+            "<b>Shishya & Akademik</b>\n/hadir — Presensi ke sesi yang dibuka\n"
             "/tugas — Menu & Dashboard Tugas\n"
             "/kartu — Kartu Tanda Shishya (KTS)\n"
             "/foto — Ganti pas foto KTS\n"
+            "/transkrip — Transkrip Nilai Akademik\n"
+            "/ijazah — Ijazah Kelulusan Resmi\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
         lines.append(
@@ -583,6 +585,9 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "/pending — Antrean ubah profil",
                 "<code>/admin_data [id/username]</code> — Ubah profil user",
                 "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
+                "<code>/transkrip [nim/nama]</code> — Cetak Transkrip Shishya",
+                "<code>/ijazah [nim/nama]</code> — Cetak Ijazah Shishya",
+                "<code>/export_kelulusan [zip]</code> — Export Massal Kelulusan",
                 "",
             ]
         )
