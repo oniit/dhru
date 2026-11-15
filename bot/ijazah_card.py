@@ -33,7 +33,7 @@ PHOTO_SLOT = (294, 567, 132, 171)
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 64
-_LAYOUT_VERSION = 6
+_LAYOUT_VERSION = 7
 
 
 def _load_font(font_path: Path, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

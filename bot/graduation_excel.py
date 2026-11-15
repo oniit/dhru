@@ -147,6 +147,9 @@ def _load_workbook_data() -> dict[str, StudentGraduationData]:
         nim = str(raw_nim).strip()
         if nim.endswith(".0"):
             nim = nim[:-2]
+        # Standarisasi NIM Dhruva: 11 digit resmi (awalan kode fakultas 01 atau 02)
+        if len(nim) == 10 and nim.isdigit():
+            nim = nim.zfill(11)
 
         ttl = format_date_id(s_bulk.cell(r, 3).value)
         jurusan = str(s_bulk.cell(r, 4).value or "").strip()
@@ -214,6 +217,8 @@ def _load_workbook_data() -> dict[str, StudentGraduationData]:
             generasi="1",
         )
         data_map[nim] = record
+        # Dukung pencarian tanpa leading zero (format numerik Excel)
+        data_map[nim.lstrip("0")] = record
 
     _CACHE_DATA = data_map
     _CACHE_MTIME = current_mtime
@@ -226,7 +231,14 @@ def get_student_by_nim(nim: str | int) -> StudentGraduationData | None:
     clean_nim = str(nim).strip()
     if clean_nim.endswith(".0"):
         clean_nim = clean_nim[:-2]
-    return data.get(clean_nim)
+    # Cek format persis, format 11-digit zfill, atau tanpa leading zero
+    if clean_nim in data:
+        return data[clean_nim]
+    if clean_nim.zfill(11) in data:
+        return data[clean_nim.zfill(11)]
+    if clean_nim.lstrip("0") in data:
+        return data[clean_nim.lstrip("0")]
+    return None
 
 
 def get_student_by_name(name: str, exact_only: bool = False) -> StudentGraduationData | None:
@@ -253,8 +265,20 @@ def get_student_by_name(name: str, exact_only: bool = False) -> StudentGraduatio
 
 
 def get_all_students() -> list[StudentGraduationData]:
-    return list(_load_workbook_data().values())
+    seen = set()
+    res = []
+    for s in _load_workbook_data().values():
+        if s.nim not in seen:
+            seen.add(s.nim)
+            res.append(s)
+    return res
 
 
 def get_all_graduates() -> list[StudentGraduationData]:
-    return [s for s in _load_workbook_data().values() if s.is_lulus]
+    seen = set()
+    res = []
+    for s in _load_workbook_data().values():
+        if s.nim not in seen and s.is_lulus:
+            seen.add(s.nim)
+            res.append(s)
+    return res

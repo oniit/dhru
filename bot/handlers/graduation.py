@@ -95,12 +95,14 @@ async def _get_photo_bytes_for_student(
             pass
         return None
 
-    # Target lookup oleh admin: cari di database user dengan NIM ini
+    # Target lookup oleh admin: cari di database user dengan NIM ini (dukung 11-digit & 10-digit)
     if conn:
         try:
+            candidates = tuple({student.nim, student.nim.zfill(11), student.nim.lstrip("0")})
+            ph = ",".join("?" for _ in candidates)
             cur = await conn.execute(
-                "SELECT telegram_id, profile_json FROM users WHERE json_extract(profile_json, '$.student_id') = ?",
-                (student.nim,),
+                f"SELECT telegram_id, profile_json FROM users WHERE json_extract(profile_json, '$.student_id') IN ({ph})",
+                candidates,
             )
             row = await cur.fetchone()
             if row:
@@ -393,11 +395,18 @@ async def _fetch_photos_for_graduates(
     if not graduates or not conn:
         return {}
 
-    nims = [g.nim.strip() for g in graduates if g.nim]
-    if not nims:
+    candidate_nims = set()
+    for g in graduates:
+        if g.nim:
+            c = g.nim.strip()
+            candidate_nims.add(c)
+            candidate_nims.add(c.zfill(11))
+            candidate_nims.add(c.lstrip("0"))
+
+    if not candidate_nims:
         return {}
 
-    placeholders = ",".join("?" for _ in nims)
+    placeholders = ",".join("?" for _ in candidate_nims)
     sql = (
         f"SELECT telegram_id, profile_json "
         f"FROM users "
@@ -406,19 +415,21 @@ async def _fetch_photos_for_graduates(
 
     student_map: dict[str, dict] = {}
     try:
-        cur = await conn.execute(sql, tuple(nims))
+        cur = await conn.execute(sql, tuple(candidate_nims))
         rows = await cur.fetchall()
         for r in rows:
             p = json.loads(r["profile_json"] or "{}")
             sid = str(p.get("student_id") or "").strip()
             fid = (p.get("photo_file_id") or "").strip()
             if sid:
-                # Jika ada duplikasi akun, prioritaskan yang sudah mengunggah photo_file_id
-                if sid not in student_map or (not student_map[sid]["photo_file_id"] and fid):
-                    student_map[sid] = {
-                        "telegram_id": r["telegram_id"],
-                        "photo_file_id": fid,
-                    }
+                entry = {
+                    "telegram_id": r["telegram_id"],
+                    "photo_file_id": fid,
+                }
+                # Petakan ke berbagai variasi format NIM
+                for variant in (sid, sid.lstrip("0"), sid.zfill(11)):
+                    if variant not in student_map or (not student_map[variant]["photo_file_id"] and fid):
+                        student_map[variant] = entry
     except Exception as e:
         log.warning("Gagal query data foto kelulusan dari DB: %s", e)
         return {}
@@ -426,8 +437,9 @@ async def _fetch_photos_for_graduates(
     sem = asyncio.Semaphore(5)
     photos_by_nim: dict[str, bytes | None] = {}
 
-    async def _fetch_one(nim: str):
-        info = student_map.get(nim)
+    async def _fetch_one(st: StudentGraduationData):
+        nim = st.nim
+        info = student_map.get(nim) or student_map.get(nim.zfill(11)) or student_map.get(nim.lstrip("0"))
         if not info:
             return
 
@@ -453,7 +465,7 @@ async def _fetch_photos_for_graduates(
                 except Exception:
                     pass
 
-    await asyncio.gather(*[_fetch_one(g.nim) for g in graduates], return_exceptions=True)
+    await asyncio.gather(*[_fetch_one(g) for g in graduates], return_exceptions=True)
     return photos_by_nim
 
 
