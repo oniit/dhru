@@ -266,7 +266,7 @@ async def cmd_transkrip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"📄 <b>Transkrip Nilai Akademik</b>\n"
         f"<b>Nama:</b> {nama_esc}\n"
         f"<b>NIM:</b> <code>{student.nim}</code>\n"
-        f"<b>Program Studi:</b> {jurusan_esc}\n"
+        f"<b>Jurusan:</b> {jurusan_esc}\n"
         f"<b>IPK:</b> <b>{student.ipk}</b> | <b>Predikat:</b> {predikat_esc}"
     )
 
@@ -374,7 +374,7 @@ async def cmd_ijazah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"🎓 <b>Ijazah Kelulusan Resmi</b>\n"
         f"<b>Institut Dhruva Ekāgra</b>\n\n"
         f"Selamat kepada <b>{nama_esc}</b> (NIM: <code>{student.nim}</code>)\n"
-        f"<b>Program Studi:</b> {jurusan_esc} - {fakultas_esc}\n"
+        f"<b>Jurusan:</b> {jurusan_esc} - {fakultas_esc}\n"
         f"<b>Gelar:</b> {degree_esc}\n"
         f"<b>Predikat:</b> {predikat_esc}"
     )

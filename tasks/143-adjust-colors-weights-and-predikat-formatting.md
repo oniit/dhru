@@ -16,7 +16,7 @@ Menyesuaikan warna seluruh teks pada dokumen Ijazah dan Transkrip Nilai ke kode 
 
 ### 2. `bot/transkrip_card.py`
 - Mengubah konstanta warna teks menjadi `NAVY = (19, 50, 91, 255)` (`#13325B`).
-- Menjadikan baris Generasi/NIM dan Nama Mahasiswa berformat tebal (*bold* via `stroke_width=0.4`), sedangkan Tanggal Lahir, Program Studi, dan Fakultas tetap menggunakan format reguler.
+- Menjadikan baris Generasi/NIM dan Nama Mahasiswa berformat tebal (*bold* via `stroke_width=0.4`), sedangkan Tanggal Lahir, Jurusan, dan Fakultas tetap menggunakan format reguler.
 - Menjadikan teks nilai IPK dan IKK berformat tebal (*bold*).
 - Menjadikan Predikat Kelulusan berformat tebal (*bold*) dengan mekanisme auto-shrink adaptif:
   - Lebar kotak nilai predikat pada template adalah 141 px ($X=351$ hingga $X=492$).

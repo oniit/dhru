@@ -35,7 +35,7 @@ Modul parser dan caching memori untuk `assets/Template IPK.xlsx`:
 ### 2. `bot/transkrip_card.py`
 Generator lembar Transkrip Nilai (552 × 777 px):
 - **Pasfoto**: Slot foto $101 \times 131\text{ px}$ pada koordinat $(72, 178)$ dengan aspect-fill crop lanczos. Jika foto profil tidak tersedia, latar motif biru asli template tetap dipertahankan.
-- **Identitas**: Generasi, NIM, Nama, Tanggal Lahir, Program Studi, dan Fakultas.
+- **Identitas**: Generasi, NIM, Nama, Tanggal Lahir, Jurusan, dan Fakultas.
 - **Tabel Akademik**: Grid 4 baris matkul dengan Kode, Nama, SKS, Huruf Mutu, dan Indeks Mutu.
 - **Tabel UKM & Indeks**: Menampung hingga 3 klub, kalkulasi IPK, predikat kelulusan, dan nilai IKK.
 

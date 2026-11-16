@@ -110,11 +110,11 @@ def render_ijazah_png(
     draw.text((276, 342), student.nama, fill=WHITE, font=font_name, anchor="mm")
 
     # 2. NIM dan Tanggal Lahir menggunakan Font OPEN SERIF (Center di celah kosong baris template Y=388)
-    font_open_11 = _load_font(FONT_OPEN_SERIF_PATH, 11)
+    font_open_12 = _load_font(FONT_OPEN_SERIF_PATH, 12)
     # Slot NIM: X=120 s.d 192 (center = 156)
-    draw.text((164, 388), student.nim, fill=NAVY, font=font_open_11, anchor="mm")
+    draw.text((165, 388), student.nim, fill=NAVY, font=font_open_12, anchor="mm")
     # Slot Tanggal Lahir: X=316 s.d 469 (center = 392, celah kosong sama rata)
-    draw.text((401, 388), student.ttl, fill=NAVY, font=font_open_11, anchor="mm")
+    draw.text((401, 388), student.ttl, fill=NAVY, font=font_open_12, anchor="mm")
 
     # 3. Jurusan - Fakultas (Bold, dengan penambahan awalan 'Fakultas')
     fakultas_clean = (student.fakultas or "").strip()

@@ -1,7 +1,7 @@
 # Task 146: Menghapus Efek Bold pada Generasi dan NIM di Transkrip Nilai
 
 ## Ringkasan Eksekutif
-Menyesuaikan tipografi pada kartu Transkrip Nilai (`bot/transkrip_card.py`) dengan menghapus ketebalan teks (*simulated stroke bold*) pada baris **Generasi / NIM** (`f"{student.generasi} / {student.nim}"`). Teks kini menggunakan bobot standar (*regular weight*) dari font **Open Serif**, senada dengan baris Tanggal Lahir, Program Studi, dan Fakultas, sementara **Nama Mahasiswa** tetap dipertahankan dengan format **Bold**.
+Menyesuaikan tipografi pada kartu Transkrip Nilai (`bot/transkrip_card.py`) dengan menghapus ketebalan teks (*simulated stroke bold*) pada baris **Generasi / NIM** (`f"{student.generasi} / {student.nim}"`). Teks kini menggunakan bobot standar (*regular weight*) dari font **Open Serif**, senada dengan baris Tanggal Lahir, Jurusan, dan Fakultas, sementara **Nama Mahasiswa** tetap dipertahankan dengan format **Bold**.
 
 ---
 

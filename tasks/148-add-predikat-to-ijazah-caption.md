@@ -20,7 +20,7 @@ Menambahkan baris **Predikat** kelulusan pada keterangan pesan (*caption*) saat 
   <b>Institut Dhruva Ekāgra</b>
 
   Selamat kepada <b>Aluna Valencia</b> (NIM: <code>02004010093</code>)
-  <b>Program Studi:</b> Fotografi - Ilmu Budaya
+  <b>Jurusan:</b> Fotografi - Ilmu Budaya
   <b>Gelar:</b> Sarjana Seni (S.Sn.)
   <b>Predikat:</b> CUMLAUDE
   ```

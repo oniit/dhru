@@ -30,7 +30,7 @@ Menyesuaikan generator Ijazah Kelulusan (`bot/ijazah_card.py` dan `bot/handlers/
 
 ### 3. `bot/handlers/graduation.py`
 - Mengimpor `get_degree_title` dari `bot.ijazah_card`.
-- Memperbarui caption Telegram pada `cmd_ijazah` untuk menampilkan nama, NIM, Program Studi - Fakultas, dan Gelar Akademik resmi.
+- Memperbarui caption Telegram pada `cmd_ijazah` untuk menampilkan nama, NIM, Jurusan - Fakultas, dan Gelar Akademik resmi.
 
 ---
 
