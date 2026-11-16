@@ -48,7 +48,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
 - `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
-- `/ospek_mode [on|off]`: (Owner/Admin) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
+- `/ospek_mode [on|off]`: (Hanya Owner) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purna`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm). Menyesuaikan otomatis dengan wewenang Dosen/Dekan dan menyertakan staf pada filter fakultas/jurusan.
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
 - `/all [role|fakultas|jurusan|ukm|kelas|kelompok <val>]` — (Admin/Staf) Mention massal (_tagall_) anggota grup sesuai filter yang ditentukan.
@@ -65,8 +65,8 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pending` — Mengecek daftar ajuan perubahan profil pengguna.
 - `/setgreeting [chat_id] <pesan|off|help>` — (Owner/Admin Bot & Admin Grup) Mengatur atau mematikan pesan sambutan grup. Dapat dijalankan langsung di dalam grup target (`/setgreeting <pesan>`) atau secara remote dari PM bot / grup lain (`/setgreeting <chat_id> <pesan>`). Mendukung format teks bawaan Telegram (blok teks lalu pilih Tebal, Miring, Coret, Underline, Spoiler, atau Link) maupun tag HTML Telegram (`<b>`, `<i>`, `<u>`, `<s>`, `<a>`, `<code>`, dll), serta placeholder lengkap: `{name}`, `{full_name}`, `{first_name}`, `{last_name}`, `{username}`, `@{username}`, `{mention}`, `{chat_title}`, `{id}`. Ketik `/setgreeting help` untuk panduan lengkap & daftar ID grup.
 - `/greeting [chat_id]` — Menampilkan pesan sambutan yang sedang aktif untuk grup saat ini atau grup target tertentu secara remote.
-- `/export_photos` — (Owner/Admin) Mengekspor semua data foto KTS dan KIC dalam satu file `.zip`.
-- `/fix` — (Owner/Admin) Menjalankan validasi massal dan rekapitulasi ulang terhadap semua data profil *user* di *database* secara asinkron.
+- `/export_photos` — (Hanya Owner) Mengekspor semua data foto KTS dan KIC dalam satu file `.zip`.
+- `/fix` — (Hanya Owner) Menjalankan validasi massal dan rekapitulasi ulang terhadap semua data profil *user* di *database* secara asinkron.
 
 ## Ekstra
 - `/kartu` & `/foto` — Menghasilkan gambar kartu ID (KTS/KIC) otomatis berdasarkan peran pengguna, dan mengatur pas foto kartu.

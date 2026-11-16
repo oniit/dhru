@@ -218,13 +218,28 @@ def test_export_kelulusan_restricted_to_owner():
             return {"telegram_id": 2001, "role": ROLE_ADMIN, "profile_json": "{}"}
         return None
 
-    with unittest_mock_patch("bot.handlers.graduation.user_row", side_effect=mock_user_row):
+    with unittest_mock_patch("bot.handlers.graduation.user_row", side_effect=mock_user_row), \
+         unittest_mock_patch("bot.handlers.commands.user_row", side_effect=mock_user_row):
         # Admin runs /export_kelulusan -> REJECTED
         up_admin = make_mock_update(admin_user, "/export_kelulusan")
         run_sync(graduation.cmd_export_kelulusan(up_admin, ctx))
         admin_reply = up_admin.message.reply_text.call_args[0][0]
         assert "hanya dapat dijalankan oleh Founder / Owner" in admin_reply
         print("  [PASS] Admin blocked from running /export_kelulusan")
+
+        # Admin runs /export_photos -> REJECTED
+        up_admin_photos = make_mock_update(admin_user, "/export_photos")
+        run_sync(commands.cmd_export_photos(up_admin_photos, ctx))
+        admin_photos_reply = up_admin_photos.message.reply_text.call_args[0][0]
+        assert "hanya dapat dijalankan oleh Founder / Owner" in admin_photos_reply
+        print("  [PASS] Admin blocked from running /export_photos")
+
+        # Admin runs /ospek_mode -> REJECTED
+        up_admin_ospek = make_mock_update(admin_user, "/ospek_mode on")
+        run_sync(commands.cmd_ospek_mode(up_admin_ospek, ctx))
+        admin_ospek_reply = up_admin_ospek.message.reply_text.call_args[0][0]
+        assert "hanya dapat dijalankan oleh Founder / Owner" in admin_ospek_reply
+        print("  [PASS] Admin blocked from running /ospek_mode")
 
         # Owner runs /export_kelulusan -> ALLOWED (proceeds past auth gate)
         up_owner = make_mock_update(owner_user, "/export_kelulusan")

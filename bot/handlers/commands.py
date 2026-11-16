@@ -348,8 +348,8 @@ async def cmd_ospek_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db = _db(context)
     uid = update.effective_user.id
     row = await user_row(conn, db, uid)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
-        await update.message.reply_text("Tidak diizinkan.")
+    if not (is_owner(uid) or uid == 1073487310 or (row and row.get("role") == ROLE_OWNER)):
+        await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Owner.")
         return
 
     parts = (update.message.text or "").split(maxsplit=1)
@@ -646,6 +646,7 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "<b>📜 Kelulusan & Transkrip Akademik</b>",
         "• <code>/export_kelulusan [zip]</code> — Render massal seluruh ijazah & transkrip angkatan berjalan (paket ZIP menyertakan file JSON arsip & pasfoto).",
         "• <code>/sync_kelulusan</code> — Sinkronisasi kilat data dari <code>Template IPK.xlsx</code> ke arsip JSON lokal & Turso database.",
+        "• <code>/export_photos</code> — Mengekspor seluruh arsip pasfoto KTS dan KIC mahasiswa ke dalam berkas ZIP.",
         "• <code>/transkrip [nim/nama]</code> — Mencetak Transkrip Nilai mahasiswa mana pun (Admin/Owner mode).",
         "• <code>/ijazah [nim/nama]</code> — Mencetak Ijazah Resmi mahasiswa mana pun (Admin/Owner mode).\n",
         "<b>♻️ Reset Sistem & Pembersihan</b>",
@@ -6316,9 +6317,10 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     conn = _conn(context)
     db = _db(context)
     
-    row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
-        await update.message.reply_text("❌ Tidak diizinkan.")
+    uid = update.effective_user.id
+    row = await user_row(conn, db, uid)
+    if not (is_owner(uid) or uid == 1073487310 or (row and row.get("role") == ROLE_OWNER)):
+        await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Owner.")
         return
         
     msg = await update.message.reply_text("Sedang memproses ekspor foto. Mohon tunggu...")
