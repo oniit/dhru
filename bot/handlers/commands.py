@@ -587,7 +587,6 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
                 "<code>/transkrip [nim/nama]</code> — Cetak Transkrip Shishya",
                 "<code>/ijazah [nim/nama]</code> — Cetak Ijazah Shishya",
-                "<code>/export_kelulusan [zip]</code> — Export Massal Kelulusan",
                 "",
             ]
         )
@@ -610,7 +609,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = help_for_role(display_role, profile)
 
     if is_owner(uid):
-        text += "\n💡 <i>Khusus Founder/Owner: Ketik <code>/help_owner</code> untuk melihat seluruh perintah wewenang Owner.</i>"
+        text += "💡 <i>Khusus Founder/Owner: Ketik <code>/help_owner</code> untuk melihat seluruh perintah wewenang Owner.</i>"
 
     await update.message.reply_text(text, parse_mode="HTML")
 

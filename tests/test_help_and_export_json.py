@@ -201,14 +201,50 @@ def test_export_zip_includes_json():
             print(f"  [PASS] ZIP contains {len(namelist)} files, including {namelist[0]}!")
 
 
+def test_export_kelulusan_restricted_to_owner():
+    print("\n--- 3. Testing /export_kelulusan Restricted to Owner Only ---")
+    owner_user = make_mock_user(OWNER_ID, "founder", "Owner")
+    admin_user = make_mock_user(2001, "admin1", "Admin")
+
+    ctx = MagicMock()
+    mock_db = MagicMock()
+    mock_conn = MagicMock()
+    ctx.application.bot_data = {"conn": mock_conn, "db": mock_db}
+
+    async def mock_user_row(conn, db, uid):
+        if uid == OWNER_ID:
+            return {"telegram_id": OWNER_ID, "role": ROLE_OWNER, "profile_json": "{}"}
+        elif uid == 2001:
+            return {"telegram_id": 2001, "role": ROLE_ADMIN, "profile_json": "{}"}
+        return None
+
+    with unittest_mock_patch("bot.handlers.graduation.user_row", side_effect=mock_user_row):
+        # Admin runs /export_kelulusan -> REJECTED
+        up_admin = make_mock_update(admin_user, "/export_kelulusan")
+        run_sync(graduation.cmd_export_kelulusan(up_admin, ctx))
+        admin_reply = up_admin.message.reply_text.call_args[0][0]
+        assert "hanya dapat dijalankan oleh Founder / Owner" in admin_reply
+        print("  [PASS] Admin blocked from running /export_kelulusan")
+
+        # Owner runs /export_kelulusan -> ALLOWED (proceeds past auth gate)
+        up_owner = make_mock_update(owner_user, "/export_kelulusan")
+        # mock graduates to empty to exit cleanly
+        with unittest_mock_patch("bot.handlers.graduation.get_all_graduates", return_value=[]):
+            run_sync(graduation.cmd_export_kelulusan(up_owner, ctx))
+            owner_reply = up_owner.message.reply_text.call_args[0][0]
+            assert "Tidak ada data lulusan" in owner_reply
+            print("  [PASS] Owner allowed to run /export_kelulusan")
+
+
 def main():
     print("==================================================================")
     print("STARTING TEST SUITE: /help, /help_owner & ZIP JSON INCLUSION")
     print("==================================================================")
     test_help_view_and_help_owner()
     test_export_zip_includes_json()
+    test_export_kelulusan_restricted_to_owner()
     print("\n==================================================================")
-    print("ALL TESTS PASSED! (2/2 Suites)")
+    print("ALL TESTS PASSED! (3/3 Suites)")
     print("==================================================================")
 
 

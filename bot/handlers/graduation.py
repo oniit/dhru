@@ -57,12 +57,20 @@ def _private_only_reply(update: Update) -> bool:
     return bool(chat and chat.type == "private")
 
 
-def _is_admin_or_owner(row: dict | None, uid: int) -> bool:
+def _is_owner(row: dict | None, uid: int) -> bool:
     if uid == OWNER_ID or uid == 1073487310:
         return True
     if not row:
         return False
-    return row.get("role") in (ROLE_OWNER, ROLE_ADMIN)
+    return row.get("role") == ROLE_OWNER
+
+
+def _is_admin_or_owner(row: dict | None, uid: int) -> bool:
+    if _is_owner(row, uid):
+        return True
+    if not row:
+        return False
+    return row.get("role") == ROLE_ADMIN
 
 
 async def _download_telegram_photo(context: ContextTypes.DEFAULT_TYPE, file_id: str) -> bytes | None:
@@ -551,8 +559,8 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
     db = _db(context)
     row = await user_row(conn, db, uid)
 
-    if not _is_admin_or_owner(row, uid):
-        await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Admin.")
+    if not _is_owner(row, uid):
+        await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Owner.")
         return
 
     args = context.args or []

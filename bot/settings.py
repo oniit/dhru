@@ -72,7 +72,7 @@ _raw_token = os.environ.get("BOT_TOKEN", "").strip()
 BOT_TOKEN = _raw_token.split("#")[0].strip() if _raw_token else ""
 OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)
 TESTER_ID = int(os.environ.get("TESTER_ID", "0") or 0)
-GENERATION_CODE = os.environ.get("GENERATION_CODE", "01").strip()
+GENERATION_CODE = (os.environ.get("GENERATION_CODE") or "01").strip().zfill(2)
 
 _api_id = os.environ.get("API_ID", "").strip()
 API_ID = int(_api_id) if _api_id else 0
