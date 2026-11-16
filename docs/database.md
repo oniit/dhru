@@ -31,6 +31,9 @@ Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi in
 - `idx_bot_chats_active_type`: Index pada `bot_chats(is_active, type)`.
 - `idx_charyarthi_q_div_order`: Index pada `charyarthi_questions(division_id, question_order)`.
 - `idx_agra_actor`: Index pada `agra_ledger(actor_telegram_id)`.
+- `idx_users_created_at`: Index pada `users(created_at)` untuk sorting kronologis cepat user terdaftar.
+- `idx_pcr_telegram_id`: Index pada `profile_change_requests(telegram_id)` untuk lookup riwayat permohonan profil.
+- `idx_task_sub_student`: Index pada `task_submissions(student_telegram_id)` untuk lookup pengumpulan tugas mahasiswa.
 
 Selain index, worker background (seperti `checker.py`) menggunakan *adaptive polling*: jika antrean kosong (*idle*), interval sleep dinaikkan menjadi 3.5 detik; jika ada antrean yang diproses, interval turun ke 1 detik agar proses berlangsung cepat.
 

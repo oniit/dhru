@@ -348,7 +348,7 @@ async def cmd_ospek_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db = _db(context)
     uid = update.effective_user.id
     row = await user_row(conn, db, uid)
-    if not (is_owner(uid) or uid == 1073487310 or (row and row.get("role") == ROLE_OWNER)):
+    if not (is_owner(uid) or (row and row.get("role") == ROLE_OWNER)):
         await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Owner.")
         return
 
@@ -366,13 +366,19 @@ async def cmd_ospek_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def cmd_maba(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik lama)."""
     u = update.effective_user
-    if not u:
+    if not u or not update.message:
+        return
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_text("Silakan gunakan perintah ini di chat pribadi bot.")
         return
     conn = _conn(context)
     db = _db(context)
     
     row = await user_row(conn, db, u.id)
-    if row and row["role"] not in ("public", "maba", "owner"):
+    if not row:
+        await update.message.reply_text("Silakan ketik /start terlebih dahulu.")
+        return
+    if row["role"] not in ("public", "maba", "owner"):
         await update.message.reply_text("Anda sudah memiliki role lain dan tidak dapat mendaftar sebagai mahasiswa baru.")
         return
         
@@ -437,8 +443,15 @@ async def cmd_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def cmd_kode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_text("Silakan gunakan perintah ini di chat pribadi bot.")
+        return
     conn = _conn(context)
     db = _db(context)
+    row = await user_row(conn, db, update.effective_user.id)
+    if not row:
+        await update.message.reply_text("Silakan ketik /start terlebih dahulu.")
+        return
     await db.set_onboarding_step(conn, update.effective_user.id, "INPUT_CODE")
     await update.message.reply_text("Silakan ketikkan/tempel kode akses (huruf besar) yang Anda terima dari pihak akademik:")
 
@@ -475,7 +488,7 @@ async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await conn.executemany("INSERT INTO access_codes (code, created_at, target_role) VALUES (?, ?, ?)", codes)
     await conn.commit()
     
-    await update.message.reply_text(f"Berhasil generate {count} kode akses (Role: {target_role}):\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes))
+    await update.message.reply_text(f"Berhasil generate {count} kode akses (Role: {target_role}):\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes), parse_mode="HTML")
 
 
 async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -494,13 +507,19 @@ async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Tidak ada kode akses yang tersedia (belum diklaim).")
         return
         
-    text = f"Terdapat {len(rows)} kode akses yang belum diklaim:\n\n"
-    text += "\n".join(f"<code>{r['code']}</code> (Role: {r['target_role']})" for r in rows)
+    lines = [f"Terdapat {len(rows)} kode akses yang belum diklaim:\n"]
+    for r in rows:
+        lines.append(f"<code>{r['code']}</code> (Role: {r['target_role']})")
     
-    if len(text) > 4000:
-        text = text[:4000] + "\n\n...(terpotong karena terlalu panjang)"
-        
-    await update.message.reply_text(text)
+    buf = []
+    char_count = 0
+    for l in lines:
+        if char_count + len(l) + 1 > 3800:
+            buf.append("\n...(terpotong karena terlalu panjang)")
+            break
+        buf.append(l)
+        char_count += len(l) + 1
+    await update.message.reply_text("\n".join(buf), parse_mode="HTML")
 
 
 def help_for_role(role: str, profile: dict | None = None) -> str:
@@ -701,7 +720,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     row = await user_row(conn, db, target_id)
     profile = profile_from_row(row)
     agra = await db.agra_total(conn, target_id) if row else 0
-    requester_prof = profile_from_row(row) if row else {}
+    requester_prof = profile_from_row(requester_row) if requester_row else {}
     show_raw = can_view_sensitive_logs(requester_role, requester_prof) and not is_target_lookup
     
     cur = await conn.execute("SELECT created_at FROM users WHERE telegram_id = ?", (target_id,))
@@ -1017,6 +1036,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if data == "cancel_action":
         await q.answer("Aksi dibatalkan.")
+        await db.set_onboarding_step(conn, uid, None)
+        if context.user_data is not None:
+            context.user_data.pop("temp_ans_q", None)
+            context.user_data.pop("temp_ec_faculty", None)
+            context.user_data.pop("temp_ec_sfaculty", None)
+            context.user_data.pop(ADMIN_TARGET_KEY, None)
+            context.user_data.pop(MULTI_UD_KEY, None)
+            context.user_data.pop("trigger_draft", None)
+            context.user_data.pop("tugas_submission", None)
+            context.user_data.pop("manos_message", None)
         try:
             await q.edit_message_text("Aksi dibatalkan.")
         except Exception as e:
@@ -2601,7 +2630,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         or data.startswith("admld:")
     ):
         row_ad = await user_row(conn, db, uid)
-        if not row_ad or not can_report(row_ad["role"], profile_from_row(row_ad)):
+        if not row_ad or not can_approve_profile(row_ad["role"], profile_from_row(row_ad)):
             await q.answer("Tidak diizinkan.", show_alert=True)
             return
 
@@ -3407,7 +3436,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await q.answer()
             return
         _, rid_s, dec = parts
-        rid_int = int(rid_s)
+        try:
+            rid_int = int(rid_s)
+        except ValueError:
+            await q.answer("ID permintaan tidak valid.", show_alert=True)
+            return
         row_u = await user_row(conn, db, uid)
         if not row_u or not can_approve_profile(row_u["role"], profile_from_row(row_u)):
             await q.answer()
@@ -3521,10 +3554,15 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     db = _db(context)
     uid = update.effective_user.id
     await db.set_onboarding_step(conn, uid, None)
-    if context.user_data:
+    if context.user_data is not None:
         context.user_data.pop("temp_ans_q", None)
         context.user_data.pop("temp_ec_faculty", None)
         context.user_data.pop("temp_ec_sfaculty", None)
+        context.user_data.pop(ADMIN_TARGET_KEY, None)
+        context.user_data.pop(MULTI_UD_KEY, None)
+        context.user_data.pop("trigger_draft", None)
+        context.user_data.pop("tugas_submission", None)
+        context.user_data.pop("manos_message", None)
     await update.message.reply_text("Aksi dibatalkan. Ketik /start untuk kembali ke menu utama.")
 
 
@@ -3823,13 +3861,23 @@ async def cmd_agralog(
         amt = r["amount"]
         sign = "+" if amt > 0 else ""
         t_name = r["target_first"] or r["target_username"] or "User"
+        name_esc = html.escape(str(t_name))
+        desc_esc = html.escape(str(r["description"] or ""))
         
         if is_global:
-            lines.append(f"<code>{dt}</code> | {t_name} | <b>{sign}{amt}</b> | <i>{r['description']}</i>")
+            lines.append(f"<code>{dt}</code> | {name_esc} | <b>{sign}{amt}</b> | <i>{desc_esc}</i>")
         else:
-            lines.append(f"<b>{sign}{amt}</b> | <i>{r['description']}</i>")
+            lines.append(f"<b>{sign}{amt}</b> | <i>{desc_esc}</i>")
                 
-    await update.message.reply_text("\n".join(lines)[:4000])
+    buf = []
+    char_count = 0
+    for l in lines:
+        if char_count + len(l) + 1 > 3800:
+            buf.append("<i>...(terpotong karena terlalu panjang)</i>")
+            break
+        buf.append(l)
+        char_count += len(l) + 1
+    await update.message.reply_text("\n".join(buf), parse_mode="HTML")
 
 
 
@@ -4791,20 +4839,28 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         for r in audit_rows:
             ts = format_local_time(r["created_at"])
-            det = (r["detail"] or "")[:120]
-            lines.append(f"• <code>{ts}</code> <code>{r['action']}</code> — {det}")
+            det = html.escape(str(r["detail"] or "")[:120])
+            act = html.escape(str(r["action"] or ""))
+            lines.append(f"• <code>{ts}</code> <code>{act}</code> — {det}")
     lines.extend(["", "<b>Agra (deskripsi — mod only)</b>"])
     if not agra_rows:
         lines.append("<i>Kosong.</i>")
     else:
         for g in agra_rows:
             ts = format_local_time(g["created_at"])
+            desc_g = html.escape(str(g["description"] or "")[:80])
             lines.append(
-                f"• <code>{ts}</code> →<code>{g['target_telegram_id']}</code> <b>{g['amount']}</b> — <i>{g['description'][:80]}</i>"
+                f"• <code>{ts}</code> →<code>{g['target_telegram_id']}</code> <b>{g['amount']}</b> — <i>{desc_g}</i>"
             )
-    await update.message.reply_text(
-        "\n".join(lines)[:4000]
-    )
+    buf = []
+    char_count = 0
+    for l in lines:
+        if char_count + len(l) + 1 > 3800:
+            buf.append("<i>...(terpotong karena terlalu panjang)</i>")
+            break
+        buf.append(l)
+        char_count += len(l) + 1
+    await update.message.reply_text("\n".join(buf), parse_mode="HTML")
 
 
 async def cmd_all_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -5205,13 +5261,13 @@ async def cmd_cek_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
         
     if not context.args:
-        await update.message.reply_text("Format: <code>/cek_user &lt;ID|@username&gt;</code>")
+        await update.message.reply_text("Format: <code>/cek_user &lt;ID|@username&gt;</code>", parse_mode="HTML")
         return
         
     query = context.args[0]
     u = await db.get_user_by_username_or_id(conn, query)
     if not u:
-        await update.message.reply_text(f"User {query} tidak ditemukan.")
+        await update.message.reply_text(f"User {html.escape(str(query))} tidak ditemukan.", parse_mode="HTML")
         return
         
     pj = json.loads(u["profile_json"] or "{}")
@@ -5225,7 +5281,7 @@ async def cmd_cek_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Nama: {html.escape(str(name))}",
         f"Role: {html.escape(str(u['role']))}"
     ]
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 async def cmd_orreset_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -5959,11 +6015,9 @@ async def cmd_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
-    conn = _conn(context)
-    db = _db(context)
-    row = await user_row(conn, db, update.effective_user.id)
-    if not row or (row["role"] != ROLE_OWNER and not is_owner(update.effective_user.id)):
-        await update.message.reply_text("Tidak diizinkan.")
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("Tidak diizinkan. Hanya owner yang dapat me-reload bot.")
         return
 
     import os, json
@@ -5978,11 +6032,9 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
-    conn = _conn(context)
-    db = _db(context)
-    row = await user_row(conn, db, update.effective_user.id)
-    if not row or (row["role"] != ROLE_OWNER and not is_owner(update.effective_user.id)):
-        await update.message.reply_text("Tidak diizinkan.")
+    uid = update.effective_user.id
+    if not is_owner(uid):
+        await update.message.reply_text("Tidak diizinkan. Hanya owner yang dapat melakukan git pull.")
         return
 
     import subprocess
@@ -6319,7 +6371,7 @@ async def cmd_export_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     uid = update.effective_user.id
     row = await user_row(conn, db, uid)
-    if not (is_owner(uid) or uid == 1073487310 or (row and row.get("role") == ROLE_OWNER)):
+    if not (is_owner(uid) or (row and row.get("role") == ROLE_OWNER)):
         await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Owner.")
         return
         

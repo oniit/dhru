@@ -227,6 +227,11 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return GIFT_AMOUNT
         
     if data == "confirm:yes":
+        if update.callback_query and update.callback_query.message:
+            try:
+                await update.callback_query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass
         if "menfess_gift" not in context.user_data:
             context.user_data["menfess_gift"] = 0
         return await execute_menfess(update, context)
@@ -238,7 +243,7 @@ async def gift_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Dibatalkan.")
         return ConversationHandler.END
         
-    if not text.isdigit() or int(text) < 1:
+    if not text.isdigit() or int(text) < 1 or int(text) > 1000000:
         await update.message.reply_text("Nominal tidak valid. Harap masukkan angka yang lebih dari 0.")
         return GIFT_AMOUNT
         
@@ -339,6 +344,17 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
                 return ConversationHandler.END
     gift_text = f" [🎁 {gift} agra]" if gift > 0 else ""
     
+    # Validasi channel sebelum memotong saldo
+    channel_id = MENFESS_CH_ID
+    if not channel_id:
+        fail_msg = "❌ Channel menfess belum dikonfigurasi oleh admin. Pengiriman dibatalkan."
+        if is_message and update.message:
+            await update.message.reply_text(fail_msg)
+        elif update.callback_query and update.callback_query.message:
+            await update.callback_query.message.edit_text(fail_msg)
+        _clear_menfess_data(context)
+        return ConversationHandler.END
+
     # ATOMIC DEDUCTION (Mencegah Race Condition TOCTOU)
     desc = f"Menfess payment (1) + gift ({gift})"
     deducted = await db.deduct_agra_if_sufficient(
@@ -361,7 +377,6 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         return ConversationHandler.END
     
     # Send to channel FIRST
-    channel_id = MENFESS_CH_ID
     import html
     safe_target_name = html.escape(target_name)
     safe_message = html.escape(message_text)
@@ -378,7 +393,7 @@ async def execute_menfess(update: Update, context: ContextTypes.DEFAULT_TYPE, is
         if sent_msg.chat.username:
             post_link = f"https://t.me/{sent_msg.chat.username}/{sent_msg.message_id}"
         else:
-            cid = str(sent_msg.chat.id).replace("-100", "")
+            cid = str(sent_msg.chat.id).removeprefix("-100")
             post_link = f"https://t.me/c/{cid}/{sent_msg.message_id}"
     except Exception as e:
         log.error(f"Failed to send menfess to channel: {e}")

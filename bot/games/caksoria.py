@@ -76,7 +76,8 @@ async def mulai_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
         "delay_min": delay_min,
         "valid_words": valid_words,
         "entries": [],   # list [{"uid": str, "name": str, "diff": float, "text": str, "matches_keyword": bool, "emoji": str}]
-        "user_ids": []   # list [str] memastikan 1 user hanya dinilai 1x (jawaban pertama)
+        "user_ids": [],   # list [str] memastikan 1 user hanya dinilai 1x (jawaban pertama)
+        "started_by": update.effective_user.id
     }
     
     await db.start_game_session(conn, chat_id, "caksoria", setting_name or "default", initial_state)
@@ -245,6 +246,7 @@ async def berhenti_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         job.schedule_removal()
         
     await db.end_game_session(conn, session["id"])
+    context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
     await update.message.reply_text("⏹ Game Caksoria telah dihentikan secara paksa.")
 
 

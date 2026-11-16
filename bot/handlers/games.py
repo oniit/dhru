@@ -247,6 +247,8 @@ async def cmd_bermain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await ketik_angka.mulai_ketik_angka(update, context, db, conn, args_text)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
+        return
+    context.bot_data.setdefault("active_game_chats", set()).add(update.effective_chat.id)
 
 # /status <game_name>
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -329,6 +331,8 @@ async def cmd_berhenti(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await ketik_angka.berhenti_ketik_angka(update, context, db, conn, session)
     else:
         await update.message.reply_text(f"Game '{game_name}' tidak didukung.")
+        return
+    context.bot_data.setdefault("active_game_chats", set()).discard(update.effective_chat.id)
 
 # /hasil <game_name>
 async def cmd_hasil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -374,10 +378,24 @@ async def process_game_message(conn, db, update: Update, context: ContextTypes.D
     """
     chat_id = update.effective_chat.id
     
-    # In-memory cache checks can be implemented here if DB query per message is too heavy.
-    # For MVP, we query the DB to get the active session.
+    # In-memory cache to prevent Turso remote DB read spam on every message
+    active_chats = context.bot_data.get("active_game_chats")
+    if active_chats is None:
+        try:
+            cur = await conn.execute("SELECT DISTINCT chat_id FROM game_sessions WHERE is_active = 1")
+            rows = await cur.fetchall()
+            active_chats = {r["chat_id"] for r in rows}
+            context.bot_data["active_game_chats"] = active_chats
+        except Exception:
+            active_chats = None
+
+    if active_chats is not None and chat_id not in active_chats:
+        return False
+
     session = await db.get_active_game_session(conn, chat_id)
     if not session:
+        if active_chats is not None:
+            active_chats.discard(chat_id)
         return False
         
     game_name = session["game_name"]

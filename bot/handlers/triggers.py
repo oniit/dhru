@@ -21,13 +21,16 @@ async def check_admin(update, context):
 
 async def cmd_addtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("Pengaturan trigger hanya dapat dilakukan di Private Chat (DM) bot.")
+        return
     if not context.args:
         await update.message.reply_text("Gunakan: /trigger add &lt;keyword&gt;")
         return
     keyword = " ".join(context.args).strip().lower()
     
-    context.user_data["trigger_draft"] = {"keyword": keyword, "messages": []}
-    await update.message.reply_text(f"Mulai membuat trigger untuk keyword: <code>{html.escape(keyword)}</code>\nSilakan kirim pesan balasan satu per satu.\n<i>Jika di grup, balas (reply) ke pesan ini agar bot bisa membaca pesan Anda.</i>\n\nJika sudah selesai, ketik /trigger done")
+    context.user_data["trigger_draft"] = {"keyword": keyword, "messages": [], "chat_id": update.effective_chat.id}
+    await update.message.reply_text(f"Mulai membuat trigger untuk keyword: <code>{html.escape(keyword)}</code>\nSilakan kirim pesan balasan satu per satu.\n\nJika sudah selesai, ketik /trigger done (atau /trigger cancel untuk membatalkan).")
 
 async def cmd_selesai_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
@@ -75,7 +78,11 @@ async def cmd_listtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     lines = ["<b>Daftar Trigger:</b>"]
     for r in rows:
         lines.append(f"ID {r['id']}: <code>{html.escape(str(r['keyword']))}</code>")
-    await update.message.reply_text("\n".join(lines))
+        if len("\n".join(lines)) > 3500:
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            lines = ["<b>Daftar Trigger (Lanjutan):</b>"]
+    if lines:
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 async def cmd_deltrigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not await check_admin(update, context): return
@@ -96,8 +103,15 @@ async def check_and_execute_trigger(conn, update: Update, context: ContextTypes.
     # check if admin is drafting a trigger
     draft = context.user_data.get("trigger_draft")
     if draft is not None:
+        raw_cmd = text.strip().lower()
+        if raw_cmd in ("/cancel", "/trigger cancel", "batal"):
+            context.user_data.pop("trigger_draft", None)
+            await update.message.reply_text("Pembuatan trigger dibatalkan.")
+            return True
+        if raw_cmd in ("/trigger done", "/done", "/selesai"):
+            return False  # Let cmd_trigger_router handle it
         draft["messages"].append(text)
-        await update.message.reply_text("Pesan ditambahkan ke draft trigger. Kirim lagi atau ketik /trigger done")
+        await update.message.reply_text("Pesan ditambahkan ke draft trigger. Kirim lagi, ketik /trigger done untuk menyimpan, atau /cancel untuk membatalkan.")
         return True
         
     text_lower = text.strip().lower()
@@ -108,7 +122,15 @@ async def check_and_execute_trigger(conn, update: Update, context: ContextTypes.
         
     actions = json.loads(row["actions_json"])
     for msg in actions:
-        await update.message.reply_text(msg)
+        if not msg:
+            continue
+        try:
+            await update.message.reply_text(msg, parse_mode=None)
+        except Exception:
+            try:
+                await update.message.reply_text(html.escape(msg), parse_mode="HTML")
+            except Exception:
+                pass
     return True
 
 async def cmd_trigger_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -143,6 +165,9 @@ async def cmd_trigger_router(update: Update, context: ContextTypes.DEFAULT_TYPE)
         elif subcmd == "list": await cmd_listtrigger(update, context)
         elif subcmd == "done": await cmd_selesai_trigger(update, context)
         elif subcmd in ("del", "delete"): await cmd_deltrigger(update, context)
+        elif subcmd in ("cancel", "batal"):
+            context.user_data.pop("trigger_draft", None)
+            await update.message.reply_text("Draft trigger dibatalkan.")
         else: await update.message.reply_text("Sub-command Trigger tidak ditemukan. Ketik /trigger untuk panduan.")
     finally:
         context.args = original_args

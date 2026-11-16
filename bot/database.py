@@ -496,7 +496,7 @@ class AiosqliteCursorMock:
         self._idx = 0
         self.lastrowid = getattr(result_set, 'last_insert_rowid', None)
         affected = getattr(result_set, 'rows_affected', getattr(result_set, 'affected_rows', None))
-        if (affected is None or affected == 0) and self.lastrowid is not None and self.lastrowid > 0:
+        if affected is None and self.lastrowid is not None and self.lastrowid > 0:
             affected = 1
         self.rowcount = affected if affected is not None else 0
 
@@ -635,7 +635,8 @@ class Database:
             tagall_path = self.path.parent / "tagall.db"
             if tagall_path.exists():
                 try:
-                    await conn.execute(f"ATTACH DATABASE '{tagall_path}' AS tagall")
+                    safe_path = str(tagall_path).replace("'", "''")
+                    await conn.execute(f"ATTACH DATABASE '{safe_path}' AS tagall")
                     await conn.execute("INSERT OR IGNORE INTO group_seen_users SELECT * FROM tagall.group_seen_users")
                     await conn.execute("DETACH DATABASE tagall")
                     tagall_path.rename(tagall_path.parent / "tagall.db.bak")
@@ -671,6 +672,9 @@ class Database:
             pass
 
         try:
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at, telegram_id)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pcr_telegram_id ON profile_change_requests(telegram_id)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_task_sub_student ON task_submissions(student_id)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_nama ON graduation_records(nama)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_gen ON graduation_records(generasi)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
@@ -1635,7 +1639,7 @@ class Database:
                 """
                 UPDATE task_submissions
                 SET content = ?, status = 'submitted', reject_reason = NULL,
-                    channel_message_id = NULL, reviewed_by = NULL,
+                    reviewed_by = NULL,
                     submitted_at = ?, reviewed_at = NULL
                 WHERE id = ?
                 """,
@@ -2224,12 +2228,11 @@ class Database:
                 jabs = set(p.get("position_detail") or [])
                 if "p_panitia_ospek" in jabs:
                     user_classes.add("ospek_maba")
-                if "d_coach" in jabs:
-                    raw_club = p.get("club_enrolled")
-                    if isinstance(raw_club, list):
-                        user_classes.update(str(x) for x in raw_club if x is not None and str(x).strip())
-                    elif isinstance(raw_club, str) and raw_club.strip():
-                        user_classes.add(raw_club.strip())
+                raw_club = p.get("club_enrolled")
+                if isinstance(raw_club, list):
+                    user_classes.update(str(x) for x in raw_club if x is not None and str(x).strip())
+                elif isinstance(raw_club, str) and raw_club.strip():
+                    user_classes.add(raw_club.strip())
                 
                 if class_id not in user_classes:
                     continue
@@ -2838,6 +2841,7 @@ class Database:
             (sender_id, message_text, now)
         )
         await conn.commit()
+        return cur.lastrowid
     async def get_charyarthi_questions(
         self, conn: aiosqlite.Connection, division_id: str
     ) -> list[dict]:

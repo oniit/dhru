@@ -148,16 +148,19 @@ def _format_presensi_block(
     if not hadir_records:
         lines.append("<i>Belum ada.</i>")
     else:
-        for r in hadir_records:
+        current_len = sum(len(l) + 1 for l in lines)
+        for i, r in enumerate(hadir_records):
             pj = json.loads(r["profile_json"] or "{}")
             name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
             name = html.escape(name)
-            if show_record_times:
-                lines.append(
-                    f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
-                )
-            else:
-                lines.append(f"• {name}")
+            time_str = f" — <code>{format_time_only(r['recorded_at'])}</code>" if show_record_times else ""
+            line = f"• {name}{time_str}"
+            if current_len + len(line) + 1 > 3500:
+                truncated_count = len(hadir_records) - i
+                lines.append(f"• <i>...dan {truncated_count} lainnya</i>")
+                break
+            lines.append(line)
+            current_len += len(line) + 1
 
     if sess["class_id"] not in ("staff_auto", "maba_auto"):
         lines.append("")
@@ -165,16 +168,19 @@ def _format_presensi_block(
         if not izin_records:
             lines.append("<i>Belum ada.</i>")
         else:
-            for r in izin_records:
+            current_len = sum(len(l) + 1 for l in lines)
+            for i, r in enumerate(izin_records):
                 pj = json.loads(r["profile_json"] or "{}")
                 name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
                 name = html.escape(name)
-                if show_record_times:
-                    lines.append(
-                        f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
-                    )
-                else:
-                    lines.append(f"• {name}")
+                time_str = f" — <code>{format_time_only(r['recorded_at'])}</code>" if show_record_times else ""
+                line = f"• {name}{time_str}"
+                if current_len + len(line) + 1 > 3800:
+                    truncated_count = len(izin_records) - i
+                    lines.append(f"• <i>...dan {truncated_count} lainnya</i>")
+                    break
+                lines.append(line)
+                current_len += len(line) + 1
     return "\n".join(lines)
 
 
@@ -401,7 +407,7 @@ async def cmd_tutup_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
         
-    if sess["class_id"] == "staff_auto" and sess["opened_by"] == 0:
+    if sess["class_id"] == "staff_auto" and sess["opened_by"] in (0, OWNER_ID):
         await update.message.reply_text(
             "Sesi otomatis ini tidak dapat ditutup secara manual. Sesi ini akan ditutup secara otomatis pada pukul 23:59."
         )
@@ -481,7 +487,26 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Lengkapi profil kamu (/lengkapi) agar bisa melakukan presensi."
         )
         return
-    sess = await db.get_open_session_for_classes(conn, user_classes)
+
+    sess = None
+    if context.args:
+        arg = context.args[0].strip()
+        if arg.isdigit():
+            target_sess = await db.get_attendance_session(conn, int(arg))
+            if target_sess and target_sess["closed_at"] is None:
+                if target_sess["class_id"] in user_classes or row["role"] in (ROLE_OWNER, ROLE_ADMIN):
+                    sess = target_sess
+        else:
+            if arg in user_classes or row["role"] in (ROLE_OWNER, ROLE_ADMIN):
+                sess = await db.get_open_session_for_classes(conn, [arg])
+
+    if not sess:
+        primary_classes = [c for c in user_classes if c != "event_bebas"]
+        if primary_classes:
+            sess = await db.get_open_session_for_classes(conn, primary_classes)
+        if not sess and "event_bebas" in user_classes:
+            sess = await db.get_open_session_for_classes(conn, ["event_bebas"])
+
     if not sess:
         await update.message.reply_text(
             "Tidak ada sesi presensi aktif yang relevan."
@@ -492,7 +517,10 @@ async def cmd_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     await update.message.reply_text(msg)
     if ok:
-        await refresh_presensi_announcement(context, db, conn, sess["id"])
+        if sess["class_id"] == "maba_auto":
+            await refresh_maba_presensi_announcement(context, db, conn, sess["id"])
+        else:
+            await refresh_presensi_announcement(context, db, conn, sess["id"])
         await _send_presensi_dm(context, uid, msg)
 
 
@@ -532,17 +560,22 @@ async def _record_hadir(
                 diff = AGRA_REWARD_CLASS_IZIN if not old_status else (AGRA_REWARD_CLASS_IZIN - AGRA_REWARD_CLASS_HADIR)
             
         if diff != 0:
-            c_lab = _class_label(sess["class_id"])
-            desc = f"Presensi otomatis {status_label} sesi {c_lab}"
-            await db.add_agra(
-                conn,
-                target_id=uid,
-                actor_id=uid,
-                amount=diff,
-                description=desc,
-                chat_id=None,
-                message_id=None
-            )
+            if diff < 0:
+                current_agra = await db.agra_total(conn, uid)
+                max_deduct = min(abs(diff), max(0, current_agra))
+                diff = -max_deduct
+            if diff != 0:
+                c_lab = _class_label(sess["class_id"])
+                desc = f"Presensi otomatis {status_label} sesi {c_lab}"
+                await db.add_agra(
+                    conn,
+                    target_id=uid,
+                    actor_id=uid,
+                    amount=diff,
+                    description=desc,
+                    chat_id=None,
+                    message_id=None
+                )
 
         agra_text = f" (+{diff} Agra)" if sess["class_id"] not in ("event_bebas",) and diff > 0 else ""
         if old_status:
@@ -751,7 +784,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     lines = [
         f"<b>Rekap presensi</b> sesi <code>{sid}</code>",
-        f"Sesi: {_class_label(sess['class_id'])}",
+        f"Sesi: {html.escape(_class_label(sess['class_id']))}",
         f"Dibuka: {format_local_time(sess['opened_at'])}",
         f"Ditutup: {format_local_time(sess['closed_at']) if sess['closed_at'] else '— (aktif)'}",
         "",
@@ -760,6 +793,7 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     for r in hadir_records:
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+        name = html.escape(str(name))
         lines.append(
             f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
         )
@@ -769,10 +803,19 @@ async def cmd_rekap_hadir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     for r in izin_records:
         pj = profile_from_row(r)
         name = pj.get("full_name") or r["first_name"] or str(r["telegram_id"])
+        name = html.escape(str(name))
         lines.append(
             f"• {name} — <code>{format_time_only(r['recorded_at'])}</code>"
         )
-    await update.message.reply_text("\n".join(lines)[:4000])
+    buf = []
+    char_count = 0
+    for l in lines:
+        if char_count + len(l) + 1 > 3800:
+            buf.append("<i>...(terpotong karena terlalu panjang)</i>")
+            break
+        buf.append(l)
+        char_count += len(l) + 1
+    await update.message.reply_text("\n".join(buf), parse_mode="HTML")
 
 
 async def cb_open_presensi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

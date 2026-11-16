@@ -49,6 +49,9 @@ async def link_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(text, parse_mode="HTML")
 
 async def cek_akun_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_text("Perintah ini hanya dapat digunakan di chat pribadi bot.")
+        return
     db: Database = context.bot_data["db"]
     conn = context.bot_data["conn"]
     main_user_id = update.effective_user.id
@@ -227,7 +230,7 @@ async def verify_lpm_link_embed(
         is_sender_valid = True
     elif author_name:
         for vn in valid_names:
-            if vn and (vn == author_name or vn in author_name or author_name in vn):
+            if vn and vn == author_name:
                 is_sender_valid = True
                 break
 
@@ -480,24 +483,30 @@ async def promo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db: Database = context.bot_data["db"]
     conn = context.bot_data["conn"]
     
-    if query.data == "promo_set_lpm":
+    if query.data == "promo_cancel":
+        await db.set_onboarding_step(conn, update.effective_user.id, None)
+        await query.edit_message_text("Pengaturan dibatalkan.")
+        return
+    elif query.data == "promo_set_lpm":
         await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_LPM")
         current_lpm = await db.get_setting(conn, "promo_lpm_keyword", "dhruva")
         text = (
             f"Kirimkan syarat kata untuk LPM.\n\n"
             f"💡 *Kata saat ini:* `{current_lpm}`\n\n"
-            "_Kirim pesan berisi kata baru untuk mengubahnya, atau abaikan pesan ini jika tidak jadi mengubah._"
+            "_Kirim pesan berisi kata baru untuk mengubahnya, atau ketik /cancel._"
         )
-        await query.edit_message_text(text, parse_mode="Markdown")
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="promo_cancel")]])
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=cancel_kb)
     elif query.data == "promo_set_story":
         await db.set_onboarding_step(conn, update.effective_user.id, "PROMO_WAIT_STORY")
         current_story = await db.get_setting(conn, "promo_story_post", "(Belum diatur)")
         text = (
             f"Kirimkan link post channel untuk validasi Story.\n\n"
             f"💡 *Link saat ini:* `{current_story}`\n\n"
-            "_Kirim pesan berisi link baru (contoh: https://t.me/channel/123), atau abaikan jika tidak jadi mengubah._"
+            "_Kirim pesan berisi link baru (contoh: https://t.me/channel/123), atau ketik /cancel._"
         )
-        await query.edit_message_text(text, parse_mode="Markdown")
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Batal", callback_data="promo_cancel")]])
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=cancel_kb)
 
 async def promo_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     from bot.settings import OWNER_ID
@@ -519,6 +528,11 @@ async def promo_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
         
     text = update.message.text.strip()
+    if text.startswith("/"):
+        await db.set_onboarding_step(conn, update.effective_user.id, None)
+        if text.lower() in ("/cancel", "/batal"):
+            await update.message.reply_text("Pengaturan dibatalkan.")
+        return
     
     if step == "PROMO_WAIT_LPM":
         await db.set_setting(conn, "promo_lpm_keyword", text.lower())

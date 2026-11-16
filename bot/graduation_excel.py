@@ -323,7 +323,7 @@ def _sync_excel_into_archive(force: bool = False) -> bool:
         is_lulus = False
         try:
             ipk_float = float(ipk_str.replace(",", "."))
-            if ipk_float > 2.00:
+            if ipk_float >= 2.00:
                 is_lulus = True
         except ValueError:
             pass

@@ -110,7 +110,16 @@ def render_transkrip_png(
     for idx, course in enumerate(student.courses[:4]):
         y = MK_ROW_Y[idx]
         draw.text((92, y), course.kode, fill=NAVY, font=font_open_10, anchor="mm")
-        draw.text((138, y), course.nama, fill=NAVY, font=font_open_10, anchor="lm")
+        
+        c_name = course.nama
+        bbox_c = draw.textbbox((0, 0), c_name, font=font_open_10)
+        max_c_w = 215
+        if (bbox_c[2] - bbox_c[0]) > max_c_w:
+            while c_name and (draw.textbbox((0, 0), c_name + "…", font=font_open_10)[2] - draw.textbbox((0, 0), c_name + "…", font=font_open_10)[0]) > max_c_w:
+                c_name = c_name[:-1]
+            c_name = (c_name + "…") if c_name else "—"
+            
+        draw.text((138, y), c_name, fill=NAVY, font=font_open_10, anchor="lm")
         draw.text((376, y), str(course.sks), fill=NAVY, font=font_open_10, anchor="mm")
         draw.text((425, y), course.nilai, fill=NAVY, font=font_open_11, anchor="mm")
         draw.text((470, y), course.ip, fill=NAVY, font=font_open_10, anchor="mm")
@@ -131,7 +140,15 @@ def render_transkrip_png(
     # 4. Tabel Unit Kegiatan Mahasiswa (UKM)
     for idx, club in enumerate(student.clubs[:3]):
         y = UKM_ROW_Y[idx]
-        draw.text((60, y), club.nama, fill=NAVY, font=font_open_10, anchor="lm")
+        cl_name = club.nama
+        bbox_cl = draw.textbbox((0, 0), cl_name, font=font_open_10)
+        max_cl_w = 340
+        if (bbox_cl[2] - bbox_cl[0]) > max_cl_w:
+            while cl_name and (draw.textbbox((0, 0), cl_name + "…", font=font_open_10)[2] - draw.textbbox((0, 0), cl_name + "…", font=font_open_10)[0]) > max_cl_w:
+                cl_name = cl_name[:-1]
+            cl_name = (cl_name + "…") if cl_name else "—"
+            
+        draw.text((60, y), cl_name, fill=NAVY, font=font_open_10, anchor="lm")
         draw.text((425, y), str(club.sks), fill=NAVY, font=font_open_10, anchor="mm")
         draw.text((471, y), club.nilai, fill=NAVY, font=font_open_11, anchor="mm")
 

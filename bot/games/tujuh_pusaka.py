@@ -1,8 +1,10 @@
 import json
 import random
 import asyncio
+import html
 from telegram import Update
 from telegram.ext import ContextTypes
+from bot.settings import is_admin_elevated
 
 # PHASE CONSTANTS
 PHASE_REGISTRATION = "registration"
@@ -122,7 +124,8 @@ async def job_tujuh_pusaka_autostart(context: ContextTypes.DEFAULT_TYPE):
             
         if not state["players"]:
             await context.bot.send_message(chat_id=chat_id, text="⚠️ Waktu habis, tetapi permainan dibatalkan karena belum ada pemain yang mendaftar.")
-            await db.end_game_session(conn, chat_id, "tujuh_pusaka")
+            await db.end_game_session(conn, session_id)
+            context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
             return
             
         state["phase"] = PHASE_PLAYING
@@ -247,7 +250,8 @@ async def proses_pesan_tujuh_pusaka(update: Update, context: ContextTypes.DEFAUL
         
     if cmd == "/mulai_game" or cmd.startswith("/mulai_game@"):
         state = json.loads(session["state_json"])
-        if update.effective_user.id == state.get("started_by") or update.effective_user.id in context.application.bot_data.get("ADMIN_IDS", []):
+        uid = update.effective_user.id
+        if uid == state.get("started_by") or is_admin_elevated(uid):
             await paksa_mulai_tujuh_pusaka(update, context, db, conn, session)
         return
         
@@ -291,6 +295,7 @@ async def pilih_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, co
         
         # Check if everyone has chosen
         all_chosen = len(state["choices"]) == len(state["players"])
+        round_for_resolve = state["round"]
         
     await update.message.reply_text(f"✅ {player_data['name']} telah memilih kartu.")
     
@@ -299,7 +304,7 @@ async def pilih_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, co
         jobs = context.job_queue.get_jobs_by_name(f"tujuh_pusaka_timeout_{session['chat_id']}")
         for j in jobs: j.schedule_removal()
         
-        await resolve_round(context, db, conn, session["chat_id"], session_id)
+        await resolve_round(context, db, conn, session["chat_id"], session_id, expected_round=round_for_resolve)
 
 async def job_timeout_round(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -316,7 +321,7 @@ async def job_timeout_round(context: ContextTypes.DEFAULT_TYPE):
     state = json.loads(session["state_json"])
     if state["phase"] != PHASE_PLAYING or state["round"] != round_num: return
     
-    await resolve_round(context, db, conn, chat_id, session_id)
+    await resolve_round(context, db, conn, chat_id, session_id, expected_round=round_num)
 
 def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
     # Base strengths
@@ -398,7 +403,7 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
     
     return result, p_next_pen, b_next_pen, desc
 
-async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, session_id):
+async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, session_id, expected_round: int | None = None):
     lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
     
     async with lock:
@@ -408,6 +413,8 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
         if state["phase"] != PHASE_PLAYING: return
         
         round_num = state["round"]
+        if expected_round is not None and round_num != expected_round:
+            return
         
         bot_available = state["bot_cards"]
         b_card_id = random.choice(bot_available)
@@ -416,14 +423,15 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
         lines = [f"⚔️ <b>Hasil Ronde {round_num}</b>", f"🤖 Bot mengeluarkan: <b>{CARDS[b_card_id]['name']}</b>\n"]
         
         for uid_str, p_data in state["players"].items():
+            p_name = html.escape(str(p_data.get("name") or "Pemain"))
             if uid_str not in state["choices"]:
                 if p_data["cards"]:
                     burned_card = random.choice(p_data["cards"])
                     p_data["cards"].remove(burned_card)
                     burned_name = CARDS[burned_card]["name"]
-                    lines.append(f"❌ {p_data['name']} tidak memilih kartu (kalah) & kartu <b>{burned_name}</b> hangus dibakar waktu!")
+                    lines.append(f"❌ {p_name} tidak memilih kartu (kalah) & kartu <b>{burned_name}</b> hangus dibakar waktu!")
                 else:
-                    lines.append(f"❌ {p_data['name']} tidak memilih kartu dan kalah.")
+                    lines.append(f"❌ {p_name} tidak memilih kartu dan kalah.")
                 p_data["next_round_penalty"] = 0
                 p_data["bot_next_round_penalty"] = 0
                 continue
@@ -441,11 +449,11 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
             
             if res == "player":
                 p_data["wins"] += 1
-                lines.append(f"✅ {p_data['name']} <b>MENANG</b> | {desc}")
+                lines.append(f"✅ {p_name} <b>MENANG</b> | {desc}")
             elif res == "bot":
-                lines.append(f"💀 {p_data['name']} <b>KALAH</b> | {desc}")
+                lines.append(f"💀 {p_name} <b>KALAH</b> | {desc}")
             else:
-                lines.append(f"➖ {p_data['name']} <b>DRAW</b> | {desc}")
+                lines.append(f"➖ {p_name} <b>DRAW</b> | {desc}")
                 
         state["choices"] = {}
         
@@ -456,9 +464,11 @@ async def resolve_round(context: ContextTypes.DEFAULT_TYPE, db, conn, chat_id, s
             lines.append("\n🏁 <b>PERMAINAN SELESAI!</b>\n<b>Papan Skor Akhir:</b>")
             sorted_players = sorted(state["players"].values(), key=lambda x: x["wins"], reverse=True)
             for p in sorted_players:
-                lines.append(f"• {p['name']}: {p['wins']} Menang")
+                p_esc = html.escape(str(p.get("name") or "Pemain"))
+                lines.append(f"• {p_esc}: {p['wins']} Menang")
             
             await db.end_game_session(conn, session_id)
+            context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
             await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
         else:
             state["round"] += 1

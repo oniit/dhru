@@ -51,7 +51,8 @@ async def berhenti_adu_react(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     if not reactions:
         await update.message.reply_text("Game dihentikan. Belum ada react yang masuk sama sekali.")
-        await db.end_game_session(conn, chat_id, "adu_react")
+        await db.end_game_session(conn, session["id"])
+        context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
         return
         
     winner_msg_id = None
@@ -75,7 +76,8 @@ async def berhenti_adu_react(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 
     if winner_msg_id is None:
         await update.message.reply_text("Game dihentikan. Semua react telah ditarik kembali.")
-        await db.end_game_session(conn, chat_id, "adu_react")
+        await db.end_game_session(conn, session["id"])
+        context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
         return
         
     await context.bot.send_message(
@@ -89,7 +91,8 @@ async def berhenti_adu_react(update: Update, context: ContextTypes.DEFAULT_TYPE,
     state["max_react"] = max_react
     await db.update_game_session_state(conn, session["id"], state)
     
-    await db.end_game_session(conn, chat_id, "adu_react")
+    await db.end_game_session(conn, session["id"])
+    context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
 
 async def hasil_adu_react(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session):
     state = json.loads(session["state_json"])

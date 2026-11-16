@@ -429,6 +429,12 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await q.edit_message_text("Tidak diizinkan.")
             return
 
+        if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+            allowed_classes = _task_class_ids_for_lecturer(prof)
+            if class_id not in allowed_classes:
+                await q.edit_message_text("Anda tidak mengampu kelas/matkul ini.")
+                return
+
         await db.set_onboarding_step(conn, uid, f"TUGAS_JUDUL:{class_id}")
         await q.edit_message_text(
             f"📝 Buka tugas baru untuk <b>{_class_label(class_id)}</b>.\n\n"
@@ -621,12 +627,22 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await q.edit_message_text("Submission tidak ditemukan.")
             return
 
+        task = await db.get_task(conn, sub["task_id"])
+        if not task:
+            await q.edit_message_text("Tugas tidak ditemukan.")
+            return
+
+        if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+            allowed_classes = _task_class_ids_for_lecturer(prof)
+            if task["created_by"] != uid and task["class_id"] not in allowed_classes:
+                await q.edit_message_text("Anda bukan pengampu tugas ini.")
+                return
+
         ok = await db.review_submission(conn, sub_id, accept=True, reviewed_by=uid)
         if not ok:
             await q.edit_message_text("Submission sudah di-review sebelumnya.")
             return
 
-        task = await db.get_task(conn, sub["task_id"])
         task_title = task["title"] if task else "?"
         class_label = _class_label(task["class_id"]) if task else "?"
         
@@ -651,7 +667,7 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Notify student
         await _send_dm(
             context, sub["student_id"],
-            f"✅ Tugas <b>{task_title}</b> ({class_label}) telah <b>diterima</b>!\n"
+            f"✅ Tugas <b>{html.escape(task_title)}</b> ({html.escape(class_label)}) telah <b>diterima</b>!\n"
             f"🎁 Kamu mendapat <b>{reward} Agra</b>."
         )
 
@@ -661,8 +677,9 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         sname = sp.get("full_name") or (student_row["first_name"] if student_row else "") or str(sub["student_id"])
 
         await q.edit_message_text(
-            f"✅ Submission dari <b>{sname}</b> untuk tugas <b>{task_title}</b> telah diterima.\n"
-            f"Agra +{reward} diberikan."
+            f"✅ Submission dari <b>{html.escape(sname)}</b> untuk tugas <b>{html.escape(task_title)}</b> telah diterima.\n"
+            f"Agra +{reward} diberikan.",
+            parse_mode="HTML"
         )
         return
 
@@ -681,9 +698,21 @@ async def cb_tugas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await q.edit_message_text("Submission tidak valid atau sudah di-review.")
             return
 
+        task = await db.get_task(conn, sub["task_id"])
+        if not task:
+            await q.edit_message_text("Tugas tidak ditemukan.")
+            return
+
+        if row["role"] not in (ROLE_OWNER, ROLE_ADMIN):
+            allowed_classes = _task_class_ids_for_lecturer(prof)
+            if task["created_by"] != uid and task["class_id"] not in allowed_classes:
+                await q.edit_message_text("Anda bukan pengampu tugas ini.")
+                return
+
         await db.set_onboarding_step(conn, uid, f"TUGAS_TOLAK:{sub_id}")
         await q.edit_message_text(
-            f"❌ Ketik alasan penolakan untuk submission <code>#{sub_id}</code>:"
+            f"❌ Ketik alasan penolakan untuk submission <code>#{sub_id}</code>:",
+            parse_mode="HTML"
         )
         return
 
@@ -748,15 +777,18 @@ async def handle_tugas_input(
     update: Update, context: ContextTypes.DEFAULT_TYPE, task_id: int
 ) -> None:
     """Handle text input for student submission."""
-    if not update.effective_user or not update.message or not update.message.text:
+    if not update.effective_user or not update.message:
         return
     conn = _conn(context)
     db = _db(context)
     uid = update.effective_user.id
-    content = update.message.text.strip()
+    content = (update.message.text or update.message.caption or "").strip()
 
     if not content:
-        await update.message.reply_text("Jawaban tidak boleh kosong. Coba lagi:")
+        await update.message.reply_text(
+            "⚠️ Pengumpulan tugas hanya menerima teks (atau foto/file dengan caption teks).\n"
+            "Silakan ketikkan jawaban teks Anda atau ketik /cancel untuk membatalkan."
+        )
         return
 
     task = await db.get_task(conn, task_id)
@@ -848,8 +880,8 @@ async def handle_tugas_tolak(
     # Notify student
     await _send_dm(
         context, sub["student_id"],
-        f"❌ Tugas <b>{task_title}</b> ({class_label}) <b>ditolak</b>.\n"
-        f"<b>Alasan:</b> {reason}\n\n"
+        f"❌ Tugas <b>{html.escape(task_title)}</b> ({html.escape(class_label)}) <b>ditolak</b>.\n"
+        f"<b>Alasan:</b> {html.escape(reason)}\n\n"
         f"Silakan kirim ulang melalui /tugas."
     )
 
@@ -859,7 +891,8 @@ async def handle_tugas_tolak(
     sname = sp.get("full_name") or (student_row["first_name"] if student_row else "") or str(sub["student_id"])
 
     await update.message.reply_text(
-        f"❌ Submission dari <b>{sname}</b> untuk tugas <b>{task_title}</b> ditolak.\n"
-        f"Alasan: {reason}\n"
-        f"Shishya telah dinotifikasi untuk kirim ulang."
+        f"❌ Submission dari <b>{html.escape(sname)}</b> untuk tugas <b>{html.escape(task_title)}</b> ditolak.\n"
+        f"Alasan: {html.escape(reason)}\n"
+        f"Shishya telah dinotifikasi untuk kirim ulang.",
+        parse_mode="HTML"
     )

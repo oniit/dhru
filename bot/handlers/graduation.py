@@ -23,7 +23,7 @@ from bot.graduation_excel import (
     mirror_archive_to_turso,
 )
 from bot.ijazah_card import get_degree_title, render_ijazah_png_bytes
-from bot.settings import GENERATION_CODE, OWNER_ID, ROOT
+from bot.settings import GENERATION_CODE, OWNER_ID, ROOT, is_owner
 from bot.transkrip_card import render_transkrip_png_bytes
 
 from .common import profile_from_row, rate_limit_check, user_row
@@ -58,7 +58,7 @@ def _private_only_reply(update: Update) -> bool:
 
 
 def _is_owner(row: dict | None, uid: int) -> bool:
-    if uid == OWNER_ID or uid == 1073487310:
+    if is_owner(uid):
         return True
     if not row:
         return False
@@ -180,13 +180,6 @@ def _find_student(
         if st:
             return st
 
-    # Fallback hanya jika full_name di profil terisi dan COCOK PERSIS (exact match)
-    full_name = (profile.get("full_name") or "").strip()
-    if full_name:
-        st = get_student_by_name(full_name, exact_only=True)
-        if st:
-            return st
-
     return None
 
 
@@ -294,6 +287,12 @@ async def cmd_transkrip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cmd_ijazah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Perintah /ijazah [nim/nama] — Menampilkan Ijazah Kelulusan Resmi."""
     if not update.effective_user or not update.message:
+        return
+    if not _private_only_reply(update):
+        await update.message.reply_text(
+            "🔒 Perintah <code>/ijazah</code> hanya dapat digunakan di chat privat dengan bot demi privasi Anda.",
+            parse_mode="HTML"
+        )
         return
 
     uid = update.effective_user.id

@@ -29,6 +29,18 @@ MONTH_NAMES = [
 ROMAN_MONTHS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
 
 
+def parse_indo_date(date_str: str) -> tuple[int, int, int] | None:
+    parts = date_str.strip().split()
+    if len(parts) == 3 and parts[0].isdigit() and parts[2].isdigit():
+        day = int(parts[0])
+        yr = int(parts[2])
+        month_name = parts[1].title()
+        if month_name in MONTH_NAMES:
+            month = MONTH_NAMES.index(month_name) + 1
+            return day, month, yr
+    return None
+
+
 def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["conn"]
 
@@ -277,11 +289,11 @@ async def _send_active_kontrak(
     if isinstance(history, list) and history:
         nomor_surat = history[-1].get("nomor_surat") or ""
     if not nomor_surat:
-        try:
-            dt = datetime.strptime(start_str, "%d %B %Y")
-            roman_m = ROMAN_MONTHS[dt.month - 1]
-            yr = dt.year
-        except Exception:
+        parsed = parse_indo_date(start_str)
+        if parsed:
+            _, mo, yr = parsed
+            roman_m = ROMAN_MONTHS[mo - 1]
+        else:
             roman_m = "—"
             yr = datetime.now().year
         nomor_surat = f"{int(seq):04d}/DK.A/{roman_m}/{yr}"
@@ -414,6 +426,14 @@ async def _execute_sahkan_kontrak(
             await update.message.reply_text(msg_text)
         return
 
+    if st["has_contract"] or profile.get("contract_seq_no"):
+        msg_text = "Anda sudah pernah memiliki kontrak kerja resmi. Untuk memperpanjang masa kontrak, silakan gunakan perintah /kontrak renew."
+        if query:
+            await query.answer(msg_text, show_alert=True)
+        else:
+            await update.message.reply_text(msg_text)
+        return
+
     fid = (profile.get("ttd_file_id") or "").strip()
     if not fid:
         msg_text = "Tanda tangan belum tersedia. Silakan unggah terlebih dahulu dengan /kontrak ttd."
@@ -433,6 +453,10 @@ async def _execute_sahkan_kontrak(
         return
 
     if query:
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
         await query.answer("Memproses pengesahan kontrak...")
 
     # Ambil sequence number atomic resmi
@@ -862,6 +886,10 @@ async def cb_kontrak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     elif action == "change_ttd":
         conn = _conn(context)
         db = _db(context)
+        row = await user_row(conn, db, uid)
+        if not row or row["role"] not in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
+            await query.answer("Hanya staf/internal.", show_alert=True)
+            return
         await db.set_onboarding_step(conn, uid, STEP_KONTRAK_TTD)
         await query.answer()
         await query.message.reply_text(
@@ -879,6 +907,9 @@ async def cb_kontrak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def cmd_kontrak_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
+        return
+    if not _private_only_reply(update):
+        await update.message.reply_text("Perintah /kontrak hanya dapat digunakan di chat pribadi bot.")
         return
     uid = update.effective_user.id
     conn = _conn(context)

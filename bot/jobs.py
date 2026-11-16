@@ -16,8 +16,7 @@ async def daily_staff_attendance_open(context, opened_by=None):
     if not db or not conn: return
     
     if opened_by is None:
-        from bot.settings import OWNER_ID
-        opened_by = OWNER_ID
+        opened_by = 0
 
     existing_sess = await db.get_open_session_for_class(conn, "staff_auto")
     if existing_sess:
@@ -240,80 +239,86 @@ async def process_broadcast_queue(context):
     db = context.application.bot_data.get("db")
     conn = context.application.bot_data.get("conn")
     if not db or not conn: return
-    
-    job = await db.get_pending_broadcast_job(conn)
-    if not job: return
 
-    job_id = job["id"]
-    msg_text = job["message_text"]
-    reporter_id = job["reporter_id"]
-    try:
-        targets = json.loads(job["target_users_json"])
-        processed = set(json.loads(job["processed_users_json"]))
-    except Exception:
-        await db.update_broadcast_job(conn, job_id, [], "failed")
+    lock = context.application.bot_data.setdefault("broadcast_lock", asyncio.Lock())
+    if lock.locked():
         return
 
-    remaining = [u for u in targets if u not in processed]
-    if not remaining:
-        await db.update_broadcast_job(conn, job_id, list(processed), "completed")
-        if reporter_id:
+    async with lock:
+        job = await db.get_pending_broadcast_job(conn)
+        if not job: return
+
+        job_id = job["id"]
+        msg_text = job["message_text"]
+        reporter_id = job["reporter_id"]
+        try:
+            targets = json.loads(job["target_users_json"])
+            processed = set(json.loads(job["processed_users_json"]))
+        except Exception:
+            await db.update_broadcast_job(conn, job_id, [], "failed")
+            return
+
+        remaining = [u for u in targets if u not in processed]
+        if not remaining:
+            await db.update_broadcast_job(conn, job_id, list(processed), "completed")
+            if reporter_id:
+                try:
+                    await context.bot.send_message(
+                        chat_id=reporter_id,
+                        text=f"✅ Broadcast {job_id} selesai.\nBerhasil/Diproses: {len(processed)} user."
+                    )
+                except Exception: pass
+            return
+
+        # Process a batch of 30
+        batch = remaining[:30]
+        success_in_batch = 0
+        from telegram.error import RetryAfter, BadRequest
+        import asyncio
+
+        for uid in batch:
+            try:
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=msg_text,
+                    parse_mode="HTML"
+                )
+                success_in_batch += 1
+                processed.add(uid)
+            except RetryAfter as e:
+                # Stop batch, will retry next run
+                break
+            except BadRequest as e:
+                err_str = str(e).lower()
+                if "can't parse entities" in err_str or "entity" in err_str:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=uid,
+                            text=msg_text,
+                            parse_mode=None
+                        )
+                        success_in_batch += 1
+                    except Exception as inner_e:
+                        log.warning("Broadcast to %s failed after plain text fallback: %s", uid, inner_e)
+                else:
+                    log.warning("Broadcast to %s failed (BadRequest): %s", uid, e)
+                processed.add(uid)
+            except Exception as e:
+                # Mark as processed even if failed to avoid infinite loop
+                log.warning("Broadcast to %s failed: %s", uid, e)
+                processed.add(uid)
+            await asyncio.sleep(0.05)
+
+        status = "completed" if len(processed) >= len(targets) else "pending"
+        await db.update_broadcast_job(conn, job_id, list(processed), status)
+        
+        if status == "completed" and reporter_id:
             try:
                 await context.bot.send_message(
                     chat_id=reporter_id,
-                    text=f"✅ Broadcast {job_id} selesai.\nBerhasil/Diproses: {len(processed)} user."
+                    text=f"✅ Broadcast {job_id} selesai.\nDiproses: {len(processed)} user."
                 )
             except Exception: pass
-        return
-
-    # Process a batch of 30
-    batch = remaining[:30]
-    success_in_batch = 0
-    from telegram.error import RetryAfter, BadRequest
-    import asyncio
-
-    for uid in batch:
-        try:
-            await context.bot.send_message(
-                chat_id=uid,
-                text=msg_text,
-                parse_mode="HTML"
-            )
-            success_in_batch += 1
-            processed.add(uid)
-        except RetryAfter as e:
-            # Stop batch, will retry next run
-            break
-        except BadRequest as e:
-            err_str = str(e).lower()
-            if "can't parse entities" in err_str or "entity" in err_str:
-                try:
-                    await context.bot.send_message(
-                        chat_id=uid,
-                        text=msg_text,
-                    )
-                    success_in_batch += 1
-                except Exception as inner_e:
-                    log.warning("Broadcast to %s failed after plain text fallback: %s", uid, inner_e)
-            else:
-                log.warning("Broadcast to %s failed (BadRequest): %s", uid, e)
-            processed.add(uid)
-        except Exception as e:
-            # Mark as processed even if failed to avoid infinite loop
-            log.warning("Broadcast to %s failed: %s", uid, e)
-            processed.add(uid)
-        await asyncio.sleep(0.05)
-
-    status = "completed" if len(processed) >= len(targets) else "pending"
-    await db.update_broadcast_job(conn, job_id, list(processed), status)
-    
-    if status == "completed" and reporter_id:
-        try:
-            await context.bot.send_message(
-                chat_id=reporter_id,
-                text=f"✅ Broadcast {job_id} selesai.\nDiproses: {len(processed)} user."
-            )
-        except Exception: pass
 
 def is_keep_msg_excluded(msg, bot_id: int | None = None) -> bool:
     """
@@ -343,6 +348,7 @@ def is_keep_msg_excluded(msg, bot_id: int | None = None) -> bool:
 
 
 async def daily_keep_to_post(context):
+    """channel keep punya settingan 24 jam (post yang sudah diforward otomatis hilang karena jobsnya per 24 jam juga)"""
     import logging
     log = logging.getLogger(__name__)
     
@@ -371,10 +377,21 @@ async def daily_keep_to_post(context):
         return
 
     try:
+        db = context.application.bot_data.get("db")
+        conn = context.application.bot_data.get("conn")
+        last_fwd_id = 0
+        if db and conn:
+            try:
+                last_fwd_id = int(await db.get_setting(conn, "keep_last_fwd_id", "0"))
+            except Exception:
+                pass
+
         message_ids = []
         async for msg in app.get_chat_history(KEEP_CH_ID):
             # Abaikan pesan notifikasi dan error bot agar tidak ikut ter-forward ke POST_CH_ID
             if is_keep_msg_excluded(msg, bot_id=bot_id):
+                continue
+            if last_fwd_id and msg.id <= last_fwd_id:
                 continue
             message_ids.append(msg.id)
             
@@ -412,6 +429,11 @@ async def daily_keep_to_post(context):
 
         if forwarded_count > 0:
             log.info(f"Successfully forwarded {forwarded_count} messages.")
+            if db and conn and message_ids:
+                try:
+                    await db.set_setting(conn, "keep_last_fwd_id", str(max(message_ids)))
+                except Exception:
+                    pass
             try:
                 await context.bot.send_message(
                     chat_id=KEEP_CH_ID,
@@ -442,7 +464,7 @@ async def process_promo_queue(context):
         return
 
     try:
-        cur = await conn.execute("SELECT * FROM promo_verifications WHERE status = 'PENDING'")
+        cur = await conn.execute("SELECT * FROM promo_verifications WHERE status = 'PENDING' AND promo_type = 'lpm'")
         rows = await cur.fetchall()
         if not rows:
             return
@@ -487,6 +509,7 @@ async def process_promo_queue(context):
                             message_id=None,
                         )
                         await conn.commit()
+                        context.application.bot_data.setdefault("promo_retries", {}).pop(req_id, None)
                         try:
                             await context.bot.send_message(
                                 chat_id=user_id,
@@ -503,6 +526,7 @@ async def process_promo_queue(context):
                 elif status_code not in ("NETWORK_ERROR",):
                     await conn.execute("UPDATE promo_verifications SET status = ? WHERE id = ?", (status_code, req_id))
                     await conn.commit()
+                    context.application.bot_data.setdefault("promo_retries", {}).pop(req_id, None)
                     if err_msg:
                         try:
                             await context.bot.send_message(
@@ -518,9 +542,16 @@ async def process_promo_queue(context):
                         except Exception as e:
                             log.warning("Gagal kirim notif promo gagal ke %s: %s", user_id, e)
                 else:
-                    # NETWORK_ERROR: rollback back to PENDING so next tick can retry
-                    await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ?", (req_id,))
-                    await conn.commit()
+                    # NETWORK_ERROR: max 3 retries to prevent burning Turso read quotas
+                    retries = context.application.bot_data.setdefault("promo_retries", {}).get(req_id, 0) + 1
+                    context.application.bot_data["promo_retries"][req_id] = retries
+                    if retries >= 3:
+                        await conn.execute("UPDATE promo_verifications SET status = 'FAILED' WHERE id = ?", (req_id,))
+                        await conn.commit()
+                        context.application.bot_data["promo_retries"].pop(req_id, None)
+                    else:
+                        await conn.execute("UPDATE promo_verifications SET status = 'PENDING' WHERE id = ?", (req_id,))
+                        await conn.commit()
     except Exception as e:
         log.error("Error in process_promo_queue: %s", e)
 

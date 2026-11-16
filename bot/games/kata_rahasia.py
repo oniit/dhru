@@ -59,30 +59,35 @@ async def mulai_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE,
 async def proses_pesan_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     text = update.message.text or update.message.caption or ""
     text_lower = text.lower()
+    session_id = session["id"]
+    lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
     
-    state = json.loads(session["state_json"])
-    active_words = state.get("active_words", [])
-    
-    if not active_words:
-        return
-        
-    found_words = []
-    
-    # Check regex bounds for each active word to prevent partial match (e.g. lari vs pelarian)
-    for word in list(active_words):
-        # Escape word just in case it contains regex special chars
-        escaped_word = re.escape(word)
-        pattern = r"\b" + escaped_word + r"\b"
-        if re.search(pattern, text_lower):
-            found_words.append(word)
-            active_words.remove(word)
+    async with lock:
+        current_session = await db.get_active_game_session(conn, session["chat_id"])
+        if not current_session or current_session["id"] != session_id:
+            return
             
-    if found_words:
+        state = json.loads(current_session["state_json"])
+        active_words = state.get("active_words", [])
+        
+        if not active_words:
+            return
+            
+        found_words = []
+        for word in list(active_words):
+            escaped_word = re.escape(word)
+            pattern = r"\b" + escaped_word + r"\b"
+            if re.search(pattern, text_lower):
+                found_words.append(word)
+                active_words.remove(word)
+                
+        if not found_words:
+            return
+            
         points = len(found_words)
         user = update.effective_user
         uid_str = str(user.id)
         
-        # Update score
         scores = state.setdefault("scores", {})
         if uid_str not in scores:
             scores[uid_str] = {
@@ -94,24 +99,20 @@ async def proses_pesan_kata_rahasia(update: Update, context: ContextTypes.DEFAUL
         claimed_words = state.setdefault("claimed_words", [])
         claimed_words.extend(found_words)
         
-        # Update state to DB
-        await db.update_game_session_state(conn, session["id"], state)
-        
-        # Convert session to mutable dict to avoid TypeError on Row objects
+        await db.update_game_session_state(conn, session_id, state)
         if not isinstance(session, dict):
             session = {k: session[k] for k in session.keys()}
-            
         session["state_json"] = json.dumps(state)
-        
-        await update.message.reply_text(
-            f"🎯 Benar! +{points} poin untuk {user.first_name}!",
-            reply_to_message_id=update.message.message_id
-        )
-        
-        if not active_words:
-            # End game auto
-            await update.message.reply_text("🎉 Semua kata rahasia telah ditebak!")
-            await berhenti_kata_rahasia(update, context, db, conn, session)
+
+    user_name_esc = html.escape(str(user.first_name or user.username or "Pemain"))
+    await update.message.reply_text(
+        f"🎯 Benar! +{points} poin untuk {user_name_esc}!",
+        reply_to_message_id=update.message.message_id
+    )
+    
+    if not active_words:
+        await update.message.reply_text("🎉 Semua kata rahasia telah ditebak!")
+        await berhenti_kata_rahasia(update, context, db, conn, session)
 
 
 async def status_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
@@ -152,6 +153,7 @@ async def berhenti_kata_rahasia(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
     await db.end_game_session(conn, session["id"])
+    context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
     
     state = json.loads(session["state_json"])
     scores = state.get("scores", {})

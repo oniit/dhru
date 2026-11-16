@@ -1,6 +1,8 @@
 import json
 import random
 import re
+import asyncio
+import html
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -85,29 +87,35 @@ async def mulai_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 async def proses_pesan_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     text = update.message.text or update.message.caption or ""
     text_clean = clean_text(text)
+    session_id = session["id"]
+    lock = context.bot_data.setdefault("game_locks", {}).setdefault(session_id, asyncio.Lock())
     
-    state = json.loads(session["state_json"])
-    expected_answer = state.get("expected_answer", "")
-    winners = state.get("winners", [])
-    max_winners = state.get("max_winners", 3)
-    
-    if len(winners) >= max_winners:
-        return # Should not happen if game is ended properly, but just in case
+    async with lock:
+        current_session = await db.get_active_game_session(conn, session["chat_id"])
+        if not current_session or current_session["id"] != session_id:
+            return
+            
+        state = json.loads(current_session["state_json"])
+        expected_answer = state.get("expected_answer", "")
+        winners = state.get("winners", [])
+        max_winners = state.get("max_winners", 3)
         
-    # Periksa apakah user sudah menang
-    uid_str = str(update.effective_user.id)
-    if any(str(w["id"]) == uid_str for w in winners):
-        return # User ini sudah menjawab benar sebelumnya
-        
-    if text_clean == expected_answer:
-        # User menjawab dengan benar
+        if len(winners) >= max_winners:
+            return
+            
+        uid_str = str(update.effective_user.id)
+        if any(str(w["id"]) == uid_str for w in winners):
+            return
+            
+        if text_clean != expected_answer:
+            return
+            
         rank = len(winners) + 1
-        points = max(1, (max_winners + 1) - rank) if max_winners > 1 else 3 # Default 3 points if only 1 winner, else scale
-        # Adjust points mapping to original logic if it was 3 winners, 1st = 3, 2nd = 2, 3rd = 1
+        points = max(1, (max_winners + 1) - rank) if max_winners > 1 else 3
         if max_winners == 3:
             points = 4 - rank
         elif max_winners == 1:
-            points = 3 # 3 points for the single winner
+            points = 3
         
         user = update.effective_user
         name = user.first_name or user.username or uid_str
@@ -118,27 +126,22 @@ async def proses_pesan_ketik_angka(update: Update, context: ContextTypes.DEFAULT
             "points": points
         }
         winners.append(winner_data)
-        
-        # Update state
         state["winners"] = winners
         
-        # Update state to DB
-        await db.update_game_session_state(conn, session["id"], state)
-        
-        # Convert session to mutable dict
+        await db.update_game_session_state(conn, session_id, state)
         if not isinstance(session, dict):
             session = {k: session[k] for k in session.keys()}
         session["state_json"] = json.dumps(state)
-        
-        await update.message.reply_text(
-            f"🎯 Benar! {name} adalah tercepat ke-{rank} (+{points} poin)!",
-            reply_to_message_id=update.message.message_id
-        )
-        
-        if len(winners) >= max_winners:
-            # End game auto
-            await update.message.reply_text(f"🎉 Sudah ada {max_winners} pemenang tercepat!")
-            await berhenti_ketik_angka(update, context, db, conn, session)
+
+    name_esc = html.escape(str(name))
+    await update.message.reply_text(
+        f"🎯 Benar! {name_esc} adalah tercepat ke-{rank} (+{points} poin)!",
+        reply_to_message_id=update.message.message_id
+    )
+    
+    if len(winners) >= max_winners:
+        await update.message.reply_text(f"🎉 Sudah ada {max_winners} pemenang tercepat!")
+        await berhenti_ketik_angka(update, context, db, conn, session)
 
 async def status_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):
     state = json.loads(session["state_json"])
@@ -175,6 +178,7 @@ async def berhenti_ketik_angka(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
     await db.end_game_session(conn, session["id"])
+    context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
     
     state = json.loads(session["state_json"])
     winners = state.get("winners", [])

@@ -71,7 +71,8 @@ async def mulai_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, d
         "valid_words": valid_words,
         "early": {},       # dict {user_id: {"name": "..."}}
         "responses": [],   # list [{"uid": user_id, "name": "...", "diff": float}]
-        "scores": {}       # dict {user_id: {"name": "...", "score": int}} (accumulated if needed)
+        "scores": {},       # dict {user_id: {"name": "...", "score": int}} (accumulated if needed)
+        "started_by": update.effective_user.id
     }
     
     await db.start_game_session(conn, chat_id, "tahan_dulu", setting_name or "default", initial_state)
@@ -222,6 +223,7 @@ async def job_end_tahan_dulu(context: ContextTypes.DEFAULT_TYPE):
         
         await db.update_game_session_state(conn, session_id, state)
         await db.end_game_session(conn, session_id)
+        context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
         
     await context.bot.send_message(
         chat_id=chat_id,
@@ -254,6 +256,7 @@ async def berhenti_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE
         job.schedule_removal()
         
     await db.end_game_session(conn, session["id"])
+    context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
     await update.message.reply_text("⏹ Game Tahan Dulu telah dihentikan secara paksa.")
 
 async def hasil_tahan_dulu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict):

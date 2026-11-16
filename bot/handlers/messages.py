@@ -134,7 +134,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = raw_text.strip()
     
     if not step:
-        # Abaikan hanya /chat agar pesan owner tidak bocor ke grup petinggi
+        # Abaikan pesan owner dan admin agar tidak bocor ke grup petinggi
+        if row and row["role"] in ("owner", "admin"):
+            return
         if text.lower().startswith("/chat"):
             return
 
@@ -197,17 +199,17 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     )
                 else:
                     original_caption = update.message.caption or ""
-                    # Telegram max caption is 1024 chars. Our header takes ~130 chars.
-                    if len(original_caption) > 850:
+                    new_caption = f"{header}\n{html.escape(original_caption)}"
+                    # Telegram max caption is 1024 chars
+                    if len(new_caption) > 1024:
                         copied_msg = await update.message.copy(chat_id=PETINGGI_GID)
                         await context.bot.send_message(
                             chat_id=PETINGGI_GID,
-                            text=header,
+                            text=new_caption,
                             parse_mode="HTML",
                             reply_to_message_id=copied_msg.message_id
                         )
                     else:
-                        new_caption = f"{header}\n{html.escape(original_caption)}"
                         await update.message.copy(
                             chat_id=PETINGGI_GID,
                             caption=new_caption,
@@ -269,6 +271,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if step == "MABA_NAME":
+        if not text:
+            await update.message.reply_text("⚠️ Nama tidak boleh kosong. Silakan ketik nama lengkap Anda:")
+            return
         name = text.title()
         profile_before = profile_from_row(row)
         await db.set_profile_partial(conn, uid, {"full_name": name})
@@ -280,6 +285,9 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
         
     if step == "MABA_REASON":
+        if not text:
+            await update.message.reply_text("⚠️ Alasan bergabung tidak boleh kosong. Silakan ketik alasan Anda:")
+            return
         reason = text
         await db.set_profile_partial(conn, uid, {"join_reason": reason})
         
@@ -410,7 +418,11 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await update.message.reply_text(f"Gagal, ini adalah kode {target_role}, peranmu sebelumnya {row['role']}")
                     return
                 
-            await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ?", (uid, time.time(), code))
+            cur_up = await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ? AND used_by IS NULL", (uid, time.time(), code))
+            if getattr(cur_up, "rowcount", 0) <= 0:
+                await db.set_onboarding_step(conn, uid, None)
+                await update.message.reply_text("❌ Kode akses ini baru saja digunakan oleh orang lain atau sudah tidak valid.")
+                return
             await db.set_role(conn, uid, target_role)
             await db.set_onboarding_step(conn, uid, None)
             await conn.commit()
@@ -466,7 +478,8 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     if str(r["telegram_id"]) == str(uid):
                         continue # Skip current user
                     prof = json.loads(r["profile_json"]) if r["profile_json"] else {}
-                    mg = int(prof.get("maba_group", 0))
+                    mg_raw = prof.get("maba_group", 0)
+                    mg = int(mg_raw) if mg_raw and str(mg_raw).isdigit() else 0
                     if 1 <= mg <= 4:
                         total_counts[mg] += 1
                         t = all_tiers.get(r["telegram_id"], "C")
@@ -768,19 +781,11 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     target_desc = ""
     reply_text = raw_balas
     
-    # 1. Cek jika mereply pesan bot yang memiliki #ID_...
-    if reply and reply.from_user and reply.from_user.id == context.bot.id:
-        bot_text = reply.text or reply.caption or ""
-        matches = re.findall(r"#ID_(\d+)", bot_text)
-        if matches:
-            target_id = int(matches[0])
-            target_desc = f"user #{target_id}"
-
-    # 2. Cek jika target diberikan secara eksplisit: #balas @username <pesan> atau #balas <ID> <pesan>
-    if not target_id and raw_balas:
+    # 1. Cek jika target diberikan secara eksplisit: #balas @username <pesan> atau #balas <ID> <pesan>
+    if raw_balas:
         parts = raw_balas.split(maxsplit=1)
         potential_target = parts[0]
-        if potential_target.startswith("@") or potential_target.isdigit():
+        if potential_target.startswith("@") or (potential_target.isdigit() and len(potential_target) >= 6):
             conn = _conn(context)
             db = _db(context)
             resolved_id, resolved_desc = await resolve_target_user(conn, db, potential_target)
@@ -788,6 +793,14 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 target_id = resolved_id
                 target_desc = resolved_desc
                 reply_text = parts[1].strip() if len(parts) > 1 else ""
+
+    # 2. Cek jika mereply pesan bot yang memiliki #ID_...
+    if not target_id and reply and reply.from_user and reply.from_user.id == context.bot.id:
+        bot_text = reply.text or reply.caption or ""
+        matches = re.findall(r"#ID_(\d+)", bot_text)
+        if matches:
+            target_id = int(matches[0])
+            target_desc = f"user #{target_id}"
 
     if not target_id:
         if not reply:
@@ -826,9 +839,9 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             text_or_caption=reply_text,
             source_message=None,
         )
-        await update.message.reply_text(f"✅ Balasan berhasil dikirim ke {target_desc or f'user #{target_id}'}.")
+        await update.message.reply_text(f"✅ Balasan berhasil dikirim ke {html.escape(target_desc or f'user #{target_id}')}.")
     except Exception as e:
-        await update.message.reply_text(f"Gagal mengirim balasan: {e}")
+        await update.message.reply_text(f"Gagal mengirim balasan: {html.escape(str(e))}")
 
 async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.my_chat_member:
@@ -924,13 +937,18 @@ async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 try:
                     await context.bot.send_message(
                         chat_id=chat.id,
-                        text=rendered
+                        text=rendered,
+                        parse_mode=None
                     )
                 except Exception as e2:
                     log.error("Failed to send fallback plain text greeting in chat %s: %s", chat.id, e2)
 
 async def on_chat_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.chat_join_request:
+        return
+    req_chat_id = update.chat_join_request.chat.id
+    from bot.settings import MABA_GROUP_GIDS
+    if MABA_GROUP_GIDS and req_chat_id not in MABA_GROUP_GIDS:
         return
     uid = update.chat_join_request.from_user.id
     conn = _conn(context)

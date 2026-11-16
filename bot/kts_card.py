@@ -8,6 +8,7 @@ import logging
 from collections import OrderedDict
 from io import BytesIO
 from pathlib import Path
+import threading
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -46,6 +47,7 @@ _LAYOUT_VERSION = 5
 
 _CACHE: OrderedDict[str, bytes] = OrderedDict()
 _CACHE_MAX = 128
+_CACHE_LOCK = threading.Lock()
 
 
 def _cache_key(telegram_id: int, payload: dict) -> str:
@@ -57,17 +59,19 @@ def _cache_key(telegram_id: int, payload: dict) -> str:
 
 
 def _cache_get(key: str) -> bytes | None:
-    if key not in _CACHE:
-        return None
-    _CACHE.move_to_end(key)
-    return _CACHE[key]
+    with _CACHE_LOCK:
+        if key not in _CACHE:
+            return None
+        _CACHE.move_to_end(key)
+        return _CACHE[key]
 
 
 def _cache_put(key: str, value: bytes) -> None:
-    _CACHE[key] = value
-    _CACHE.move_to_end(key)
-    while len(_CACHE) > _CACHE_MAX:
-        _CACHE.popitem(last=False)
+    with _CACHE_LOCK:
+        _CACHE[key] = value
+        _CACHE.move_to_end(key)
+        while len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
 
 
 def _load_font(size: int, font_path: Path | str | None = None) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -176,7 +180,7 @@ def _paste_photo_slot(
     slot_h = max(1, int(PHOTO_SLOT[3] * sy))
     try:
         ph = Image.open(BytesIO(photo_bytes)).convert("RGBA")
-    except OSError:
+    except Exception:
         log.warning("KTS: file foto tidak bisa dibuka sebagai gambar")
         return
     fitted = _cover_resize(ph, (slot_w, slot_h))
@@ -254,8 +258,8 @@ def render_kts_png_bytes(
         draw.text((value_x, y), line, font=font_small, fill=TEXT_COLOR)
         y += line_h
         
-    # Agra
-    y = int(AGRA_Y * sy)
+    # Agra (dihitung dinamis di bawah baris club terakhir agar tidak tumpang tindih)
+    y = max(int(AGRA_Y * sy), y + int(4 * sy))
     draw.text((value_x, y), agra_s, font=font_agra, fill=TEXT_COLOR)
 
     bem_pos_id = payload.get("bem_position")

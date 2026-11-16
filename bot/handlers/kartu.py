@@ -48,6 +48,9 @@ async def _download_telegram_photo(context: ContextTypes.DEFAULT_TYPE, file_id: 
 async def cmd_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
+    if not _private_only_reply(update):
+        await update.message.reply_text("Kartu identitas hanya dapat diakses melalui chat pribadi bot demi privasi.")
+        return
     uid = update.effective_user.id
     conn = _conn(context)
     db = _db(context)

@@ -69,7 +69,14 @@ def _paste_ttd_multiply(base: Image.Image, ttd_bytes: bytes, sx: float, sy: floa
     slot_w = int(TTD_SLOT[2] * sx)
     slot_h = int(TTD_SLOT[3] * sy)
     try:
-        ttd = Image.open(BytesIO(ttd_bytes)).convert("RGB")
+        raw_ttd = Image.open(BytesIO(ttd_bytes))
+        if raw_ttd.mode in ("RGBA", "LA") or (raw_ttd.mode == "P" and "transparency" in raw_ttd.info):
+            raw_ttd = raw_ttd.convert("RGBA")
+            canvas = Image.new("RGBA", raw_ttd.size, (255, 255, 255, 255))
+            canvas.paste(raw_ttd, mask=raw_ttd.split()[3])
+            ttd = canvas.convert("RGB")
+        else:
+            ttd = raw_ttd.convert("RGB")
     except Exception:
         log.warning("Gagal memuat gambar TTD")
         return

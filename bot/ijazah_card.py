@@ -89,7 +89,7 @@ def render_ijazah_png(
             y_top = (nh - th) // 2
             photo_cropped = photo_scaled.crop((x_left, y_top, x_left + tw, y_top + th))
 
-            base_im.paste(photo_cropped, (PHOTO_SLOT[0], PHOTO_SLOT[1]))
+            base_im.paste(photo_cropped, (PHOTO_SLOT[0], PHOTO_SLOT[1]), mask=photo_cropped)
         except Exception as e:
             log.warning("Gagal menempelkan foto ke ijazah NIM %s: %s", student.nim, e)
 

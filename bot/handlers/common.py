@@ -468,10 +468,10 @@ def format_profile_card(
         if key == "telegram_name":
             fn = row["first_name"] or ""
             ln = row["last_name"] or ""
-            return (fn + " " + ln).strip() or "—"
+            return html.escape((fn + " " + ln).strip() or "—")
         if key == "username":
             u = row["username"]
-            return f"@{u}" if u else "—"
+            return f"@{html.escape(u)}" if u else "—"
         if key == "full_name":
             raw = profile.get("full_name")
             if not raw:
@@ -479,11 +479,12 @@ def format_profile_card(
             raw_esc = html.escape(raw)
             u = row["username"]
             if u:
-                return f'<a href="https://t.me/{u}">{raw_esc}</a>'
+                clean_u = html.escape(str(u).lstrip("@"), quote=True)
+                return f'<a href="https://t.me/{clean_u}">{raw_esc}</a>'
             return f'<a href="tg://user?id={row["telegram_id"]}">{raw_esc}</a>'
         if key == "student_id":
             raw = profile.get("student_id")
-            return f"<code>{raw}</code>" if raw else "—"
+            return f"<code>{html.escape(str(raw))}</code>" if raw else "—"
         if key == "role":
             return role_display(row["role"])
         if key == "maba_group":
@@ -528,14 +529,14 @@ def format_profile_card(
 
         fdef = next((x for x in PROFILE_FIELDS if x.key == key), None)
         if not fdef:
-            return str(profile.get(key, "—"))
+            return html.escape(str(profile.get(key, "—")))
 
         raw = profile.get(fdef.key)
         if fdef.type == "multi_choice" and fdef.choices_key:
             return multi_choice_labels(fdef.choices_key, normalize_multi_choice_value(raw))
         if fdef.type == "choice" and fdef.choices_key:
             return choice_label(fdef.choices_key, raw) if raw else "—"
-        return str(raw) if raw else "—"
+        return html.escape(str(raw)) if raw else "—"
 
     labels = {
         "telegram_name": "Nama Telegram",

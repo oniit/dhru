@@ -85,6 +85,8 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = query.data
     
     if data == "manos:cancel":
+        if context.user_data:
+            context.user_data.pop("manos_message", None)
         await query.message.edit_text("Pengiriman dibatalkan.")
         return ConversationHandler.END
         
@@ -93,21 +95,18 @@ async def on_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def execute_manosraya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     sender_id = update.effective_user.id
-    message_text = context.user_data.get("manos_message")
+    message_text = context.user_data.get("manos_message") if context.user_data else None
+    if not message_text:
+        if context.user_data:
+            context.user_data.pop("manos_message", None)
+        await update.callback_query.message.edit_text("❌ Pesan tidak ditemukan atau sesi telah berakhir.")
+        return ConversationHandler.END
     
-    db = _db(context)
-    conn = _conn(context)
-    
-    # Record history
-    manos_id = await db.add_manosraya(
-        conn,
-        sender_id=sender_id,
-        message_text=message_text
-    )
-    
-    # Send to channel
+    # Send to channel FIRST
     channel_id = MANOS_CH_ID
     if not channel_id:
+        if context.user_data:
+            context.user_data.pop("manos_message", None)
         await update.callback_query.message.edit_text("❌ Sistem belum dikonfigurasi dengan channel manosraya (Yaksa Open Arms). Silakan hubungi admin.")
         return ConversationHandler.END
 
@@ -122,8 +121,22 @@ async def execute_manosraya(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
     except Exception as e:
         log.error(f"Failed to send manosraya to channel: {e}")
+        if context.user_data:
+            context.user_data.pop("manos_message", None)
         await update.callback_query.message.edit_text("❌ Gagal mengirim pesan ke channel. Silakan coba lagi nanti.")
         return ConversationHandler.END
+
+    db = _db(context)
+    conn = _conn(context)
+    
+    # Record history only after successful delivery
+    manos_id = await db.add_manosraya(
+        conn,
+        sender_id=sender_id,
+        message_text=message_text
+    )
+    if context.user_data:
+        context.user_data.pop("manos_message", None)
         
     success_msg = f"✅ Pesan berhasil dikirim secara anonim ke Yaksa Open Arms!\nTerima kasih atas aspirasi Anda."
         
