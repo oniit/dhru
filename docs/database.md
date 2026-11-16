@@ -15,6 +15,7 @@ Karena Turso berjalan melalui HTTP API over internet, koneksi idle TCP keep-aliv
 Turso memberlakukan kuota berbasis jumlah baris yang dibaca (*rows read*). Tanpa index, kueri filter (seperti pencarian status pending atau pencarian username) memicu *Full Table Scan*, yang dapat menghabiskan kuota ratusan juta pembacaan jika di-poll secara rutin.
 Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi index terdedikasi:
 - `idx_users_username_lower`: Index fungsional `lower(username)` pada tabel `users`.
+- `idx_users_role`: Index kolom `users(role)` untuk filtering kilat mahasiswa aktif saat tutup generasi / kelulusan massal tanpa *full table scan*.
 - `idx_users_student_id`: Index fungsional `json_extract(profile_json, '$.student_id')` pada `users` untuk lookup cepat mahasiswa berdasarkan NIM tanpa full table scan.
 - `idx_group_seen_username_lower`: Index fungsional `lower(username)` pada `group_seen_users`.
 - `idx_group_seen_chat_bot`: Index komposit `(chat_id, is_bot, last_seen_at)`.
@@ -181,6 +182,16 @@ Draft dan jawaban tes esai divisi yang dikerjakan oleh pelamar calon staf.
 - `answer_text` (TEXT NOT NULL): Teks jawaban pelamar
 - `updated_at` (REAL NOT NULL): Timestamp update terakhir
 - `UNIQUE (telegram_id, division_id, question_id)`
+
+### 21. `graduation_records`
+Tabel cermin (*mirroring*) cloud remote untuk data kelulusan, nilai mata kuliah, IPK, dan predikat shishya lintas generasi.
+- `nim` (TEXT PRIMARY KEY): Nomor Induk Mahasiswa resmi
+- `nama` (TEXT NOT NULL): Nama lengkap wisudawan
+- `generasi` (TEXT NOT NULL): Angkatan/generasi wisudawan (contoh: `"1"`, `"2"`)
+- `data_json` (TEXT NOT NULL): Serialisasi lengkap riwayat akademik (matkul, sks, nilai, ukm, ikk, predikat)
+- `created_at` (REAL NOT NULL): Timestamp pembuatan arsip
+- `updated_at` (REAL NOT NULL): Timestamp pembaruan arsip
+- *Indexes:* `idx_grad_records_nama` ON `nama`, `idx_grad_records_gen` ON `generasi`
 
 ---
 

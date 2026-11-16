@@ -133,8 +133,12 @@ async def _apply_generated_profile_fields(
     accumulated = int(out.get("accumulated_sks", 0))
     out["total_sks"] = accumulated + sks_total
 
-    if role not in (ROLE_STUDENT, ROLE_BEM):
+    if role not in (ROLE_STUDENT, ROLE_BEM, ROLE_PURNA):
         out.pop("student_id", None)
+        return out
+
+    if role == ROLE_PURNA:
+        # Pertahankan NIM resmi lulusan (student_id) untuk arsip ijazah & transkrip
         return out
 
     faculty_id = str(out.get("faculty") or "").strip()
@@ -446,6 +450,18 @@ CREATE INDEX IF NOT EXISTS idx_linked_accounts_promo ON linked_accounts(promo_us
 CREATE INDEX IF NOT EXISTS idx_bot_chats_active_type ON bot_chats(is_active, type);
 CREATE INDEX IF NOT EXISTS idx_charyarthi_q_div_order ON charyarthi_questions(division_id, question_order);
 CREATE INDEX IF NOT EXISTS idx_agra_actor ON agra_ledger(actor_telegram_id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+CREATE TABLE IF NOT EXISTS graduation_records (
+    nim TEXT PRIMARY KEY,
+    nama TEXT NOT NULL,
+    generasi TEXT NOT NULL,
+    data_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_grad_records_nama ON graduation_records(nama);
+CREATE INDEX IF NOT EXISTS idx_grad_records_gen ON graduation_records(generasi);
 """
 
 class AiosqliteRowMock:
@@ -635,6 +651,7 @@ class Database:
             ("manosraya_history", "id", "CREATE TABLE IF NOT EXISTS manosraya_history (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER NOT NULL, message_text TEXT NOT NULL, created_at REAL NOT NULL, FOREIGN KEY (sender_id) REFERENCES users(telegram_id))"),
             ("charyarthi_questions", "id", "CREATE TABLE IF NOT EXISTS charyarthi_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, division_id TEXT NOT NULL, question_order INTEGER NOT NULL, question_text TEXT NOT NULL, created_at REAL NOT NULL)"),
             ("charyarthi_answers", "id", "CREATE TABLE IF NOT EXISTS charyarthi_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, division_id TEXT NOT NULL, question_id INTEGER NOT NULL, answer_text TEXT NOT NULL, updated_at REAL NOT NULL, UNIQUE (telegram_id, division_id, question_id))"),
+            ("graduation_records", "nim", "CREATE TABLE IF NOT EXISTS graduation_records (nim TEXT PRIMARY KEY, nama TEXT NOT NULL, generasi TEXT NOT NULL, data_json TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)"),
         ]
         for tbl, col, sql in migrations:
             try:
@@ -650,6 +667,13 @@ class Database:
             
         try:
             await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_triggers_keyword ON triggers(keyword)")
+        except Exception:
+            pass
+
+        try:
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_nama ON graduation_records(nama)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_gen ON graduation_records(generasi)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
         except Exception:
             pass
             
@@ -821,7 +845,7 @@ class Database:
             current.pop("major", None)
             current.pop("class_enrolled", None)
             current.pop("club_enrolled", None)
-            current.pop("student_id", None)
+            # student_id (NIM) sengaja dipertahankan sebagai arsip identitas alumni permanen
         current = await _apply_generated_profile_fields(
             conn, telegram_id, role, current
         )
@@ -834,6 +858,62 @@ class Database:
             (role, json.dumps(current, ensure_ascii=False), now, telegram_id),
         )
         await conn.commit()
+
+    async def mass_set_role_purna(
+        self, conn: aiosqlite.Connection, actor_id: int, target_type: str = "all"
+    ) -> tuple[int, dict[str, int], list[dict]]:
+        """
+        Meluluskan seluruh mahasiswa aktif ke ROLE_PURNA secara massal (Tutup Generasi).
+        - Membekukan SKS aktif ke accumulated_sks.
+        - Mempertahankan NIM resmi (student_id) untuk akses ijazah & transkrip.
+        - Menghapus kelas dan UKM aktif.
+        - Mencatat audit log untuk setiap perubahan.
+        """
+        tt = (target_type or "all").lower().strip()
+        if tt in ("student", "shishya", "students", "shishyas"):
+            target_roles = (ROLE_STUDENT,)
+        elif tt in ("bem",):
+            target_roles = (ROLE_BEM,)
+        else:
+            target_roles = (ROLE_STUDENT, ROLE_BEM)
+
+        placeholders = ",".join("?" for _ in target_roles)
+        cur = await conn.execute(
+            f"SELECT telegram_id, role, username, first_name, last_name, profile_json "
+            f"FROM users WHERE role IN ({placeholders}) ORDER BY telegram_id ASC",
+            target_roles,
+        )
+        rows = await cur.fetchall()
+        if not rows:
+            return 0, {}, []
+
+        counts: dict[str, int] = {}
+        processed: list[dict] = []
+
+        for row in rows:
+            tid = row["telegram_id"]
+            old_role = row["role"]
+            prof = json.loads(row["profile_json"] or "{}")
+            full_name = (
+                prof.get("full_name")
+                or f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+                or (f"@{row['username']}" if row["username"] else str(tid))
+            )
+            nim = prof.get("student_id") or "-"
+
+            await self.set_role(conn, tid, ROLE_PURNA)
+            await self.add_audit(conn, actor_id, "mass_set_role_purna", f"{tid}:{old_role}->purna")
+
+            counts[old_role] = counts.get(old_role, 0) + 1
+            processed.append({
+                "telegram_id": tid,
+                "full_name": full_name,
+                "username": row["username"],
+                "old_role": old_role,
+                "nim": nim,
+            })
+
+        return len(processed), counts, processed
 
     async def list_pending_profile_requests(
         self, conn: aiosqlite.Connection
@@ -2918,6 +2998,54 @@ class Database:
                 (telegram_id,)
             )
         await conn.commit()
+
+    async def upsert_graduation_records(
+        self, conn: aiosqlite.Connection, records: list[dict]
+    ) -> int:
+        if not records:
+            return 0
+        now = time.time()
+        count = 0
+        for r in records:
+            nim = str(r.get("nim", "")).strip()
+            nama = str(r.get("nama", "")).strip()
+            generasi = str(r.get("generasi", "1")).strip()
+            if not nim or not nama:
+                continue
+            raw_json = json.dumps(r, ensure_ascii=False)
+            await conn.execute(
+                """
+                INSERT INTO graduation_records (nim, nama, generasi, data_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(nim) DO UPDATE SET
+                    nama = excluded.nama,
+                    generasi = excluded.generasi,
+                    data_json = excluded.data_json,
+                    updated_at = excluded.updated_at
+                """,
+                (nim, nama, generasi, raw_json, now, now),
+            )
+            count += 1
+        await conn.commit()
+        return count
+
+    async def get_all_graduation_records_from_db(
+        self, conn: aiosqlite.Connection, generasi: str | None = None
+    ) -> list[dict]:
+        if generasi:
+            cur = await conn.execute(
+                "SELECT data_json FROM graduation_records WHERE generasi = ?", (str(generasi),)
+            )
+        else:
+            cur = await conn.execute("SELECT data_json FROM graduation_records")
+        rows = await cur.fetchall()
+        res = []
+        for row in rows:
+            try:
+                res.append(json.loads(row["data_json"]))
+            except Exception:
+                pass
+        return res
 
 
 __all__ = [

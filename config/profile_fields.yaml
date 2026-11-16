@@ -38,7 +38,7 @@ fields:
   - key: student_id
     label: NIM
     type: text
-    roles: [student, bem]
+    roles: [student, bem, purna]
     required: false
 
   - key: bem_position

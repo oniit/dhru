@@ -1,0 +1,1514 @@
+{
+  "02004010123": {
+    "nama": "Aditya Galih Danendra",
+    "nim": "02004010123",
+    "ttl": "8 Juli 1997",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ipk": "0,00",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02004010093": {
+    "nama": "Aluna Valencia",
+    "nim": "02004010093",
+    "ttl": "11 Mei 2010",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,94",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02004010181": {
+    "nama": "Beryl Arundaya",
+    "nim": "02004010181",
+    "ttl": "20 Maret 2007",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ipk": "0,00",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02004010167": {
+    "nama": "Damighail",
+    "nim": "02004010167",
+    "ttl": "3 Desember 2007",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "D",
+        "ip": "1,00"
+      }
+    ],
+    "ipk": "1,90",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      }
+    ],
+    "ikk": "1,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02004010159": {
+    "nama": "Kafka Ardhana",
+    "nim": "02004010159",
+    "ttl": "15 Januari 1998",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "A-",
+        "ip": "3,70"
+      }
+    ],
+    "ipk": "3,77",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02004010158": {
+    "nama": "Lucinda Philadephia",
+    "nim": "02004010158",
+    "ttl": "11 Mei 2004",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "C+",
+        "ip": "2,30"
+      }
+    ],
+    "ipk": "3,22",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02004010157": {
+    "nama": "Sabiru Anantara Nalendra",
+    "nim": "02004010157",
+    "ttl": "17 Juni 1999",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "B",
+        "ip": "3,00"
+      }
+    ],
+    "ipk": "3,10",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02004010146": {
+    "nama": "Szesther Gwen Delaney",
+    "nim": "02004010146",
+    "ttl": "5 November 1999",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "C-",
+        "ip": "1,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "C-",
+        "ip": "1,70"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "C",
+        "ip": "2,00"
+      }
+    ],
+    "ipk": "1,65",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "C",
+        "ip": "2,00"
+      }
+    ],
+    "ikk": "2,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02004010171": {
+    "nama": "Zeivalle Aravie Nyxaria",
+    "nim": "02004010171",
+    "ttl": "12 April 2007",
+    "jurusan": "Fotografi",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "FG101",
+        "nama": "Dasar Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "FG102",
+        "nama": "Teknik Fotografi",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,26",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010132": {
+    "nama": "Aethel Chi Solaine",
+    "nim": "01002010132",
+    "ttl": "28 Maret 2006",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010133": {
+    "nama": "Ashayla Liviella",
+    "nim": "01002010133",
+    "ttl": "9 Oktober 2009",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,34",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010119": {
+    "nama": "Brigitta Ginara Aurellie",
+    "nim": "01002010119",
+    "ttl": "11 April 2000",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "D+",
+        "ip": "1,30"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ipk": "0,26",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "01002010036": {
+    "nama": "Jaganatha Damar Prasodjo",
+    "nim": "01002010036",
+    "ttl": "18 September 2006",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "B-",
+        "ip": "2,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,68",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010177": {
+    "nama": "Julian Luca",
+    "nim": "01002010177",
+    "ttl": "15 Januari 1998",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010103": {
+    "nama": "Niko Jevian Evren",
+    "nim": "01002010103",
+    "ttl": "30 Oktober 2000",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01002010058": {
+    "nama": "Ning Yixhie",
+    "nim": "01002010058",
+    "ttl": "23 Oktober 2002",
+    "jurusan": "Ilmu Fisika",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF101",
+        "nama": "Fisika Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IF102",
+        "nama": "Matematika Fisika",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010060": {
+    "nama": "Adam Eldarone",
+    "nim": "01001010060",
+    "ttl": "13 Maret 2001",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010066": {
+    "nama": "Arcelline Xiandria",
+    "nim": "01001010066",
+    "ttl": "11 April 2007",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "A-",
+        "ip": "3,70"
+      }
+    ],
+    "ipk": "3,71",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "B-",
+        "ip": "2,70"
+      }
+    ],
+    "ikk": "2,70",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010144": {
+    "nama": "Caspien Zenandra Donovan",
+    "nim": "01001010144",
+    "ttl": "8 Desember 2002",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "C+",
+        "ip": "2,30"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,39",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010056": {
+    "nama": "Devilián Avnaier Roderic",
+    "nim": "01001010056",
+    "ttl": "22 September 1999",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "C+",
+        "ip": "2,30"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ipk": "0,66",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "01001010175": {
+    "nama": "Gamatra Erlo Jagatara",
+    "nim": "01001010175",
+    "ttl": "6 September 1990",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "C-",
+        "ip": "1,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "B+",
+        "ip": "3,30"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "B+",
+        "ip": "3,30"
+      }
+    ],
+    "ipk": "2,52",
+    "predikat": "CUKUP",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010080": {
+    "nama": "Hana Syaqila",
+    "nim": "01001010080",
+    "ttl": "21 Agustus 2005",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "C+",
+        "ip": "2,30"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "D",
+        "ip": "1,00"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "A-",
+        "ip": "3,70"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "A-",
+        "ip": "3,70"
+      }
+    ],
+    "ipk": "2,88",
+    "predikat": "MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "01001010045": {
+    "nama": "Lutesha Hiraia Noélise",
+    "nim": "01001010045",
+    "ttl": "1 Desember 2008",
+    "jurusan": "Ilmu Kimia",
+    "fakultas": "Matematika dan IPA",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "IK101",
+        "nama": "Kimia Dasar",
+        "sks": 3,
+        "nilai": "B-",
+        "ip": "2,70"
+      },
+      {
+        "kode": "IK102",
+        "nama": "Kimia Organik Dasar",
+        "sks": 3,
+        "nilai": "D",
+        "ip": "1,00"
+      }
+    ],
+    "ipk": "1,11",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "D+",
+        "ip": "1,30"
+      }
+    ],
+    "ikk": "1,30",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02003010047": {
+    "nama": "Atmaja Altair Senja Valerius",
+    "nim": "02003010047",
+    "ttl": "13 Maret 2001",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "C-",
+        "ip": "1,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "2,74",
+    "predikat": "CUKUP",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "C+",
+        "ip": "2,30"
+      }
+    ],
+    "ikk": "2,30",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02003010090": {
+    "nama": "Ghaffar Attharazka",
+    "nim": "02003010090",
+    "ttl": "9 Oktober 1997",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "4,00",
+    "predikat": "CUMLAUDE",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02003010180": {
+    "nama": "Hanasastra Keshtria Sennera",
+    "nim": "02003010180",
+    "ttl": "22 Desember 1996",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "3,20",
+    "predikat": "SANGAT MEMUASKAN",
+    "clubs": [
+      {
+        "nama": "Klub Bahasa Inggris",
+        "sks": 2,
+        "nilai": "B+",
+        "ip": "3,30"
+      }
+    ],
+    "ikk": "3,30",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02003010168": {
+    "nama": "Isaias Lakandula",
+    "nim": "02003010168",
+    "ttl": "3 Januari 2008",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "B-",
+        "ip": "2,70"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "C",
+        "ip": "2,00"
+      }
+    ],
+    "ipk": "2,34",
+    "predikat": "CUKUP",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02003010050": {
+    "nama": "Kanita Amina Nesya",
+    "nim": "02003010050",
+    "ttl": "24 Maret 1997",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ipk": "2,40",
+    "predikat": "CUKUP",
+    "clubs": [
+      {
+        "nama": "Klub Kewirausahaan",
+        "sks": 2,
+        "nilai": "A",
+        "ip": "4,00"
+      }
+    ],
+    "ikk": "4,00",
+    "is_lulus": true,
+    "generasi": "1"
+  },
+  "02003010061": {
+    "nama": "Senandika Sadana Fausta",
+    "nim": "02003010061",
+    "ttl": "17 April 1986",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "C",
+        "ip": "2,00"
+      }
+    ],
+    "ipk": "0,60",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  },
+  "02003010083": {
+    "nama": "Yzekiel Noir",
+    "nim": "02003010083",
+    "ttl": "23 April 2000",
+    "jurusan": "Seni Musik",
+    "fakultas": "Ilmu Budaya",
+    "courses": [
+      {
+        "kode": "KU101",
+        "nama": "Kaidah Kebahasaan",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "KU102",
+        "nama": "Pengembangan Diri",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM101",
+        "nama": "Sejarah Musik",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      },
+      {
+        "kode": "SM102",
+        "nama": "Membaca Partitur",
+        "sks": 3,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ipk": "0,00",
+    "predikat": "-",
+    "clubs": [
+      {
+        "nama": "Klub Memasak",
+        "sks": 2,
+        "nilai": "E",
+        "ip": "0,00"
+      }
+    ],
+    "ikk": "0,00",
+    "is_lulus": false,
+    "generasi": "1"
+  }
+}

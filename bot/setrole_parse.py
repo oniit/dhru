@@ -14,6 +14,8 @@ class ParsedSetrole:
     role: str
     target_ids: set[int]
     mention_usernames: list[str]
+    is_mass: bool = False
+    mass_target: str | None = None
 
 
 def parse_setrole_command(message: Message) -> ParsedSetrole | None:
@@ -44,10 +46,22 @@ def parse_setrole_command(message: Message) -> ParsedSetrole | None:
                         mention_usernames.append(chunk)
 
     if not target_ids and not mention_usernames:
+        tail = text[cmd_end:].strip().lower()
+        first_token = tail.split()[0] if tail else ""
+        if first_token in {"all", "massal", "shishya", "student", "students", "shishyas", "semua", "bem"}:
+            return ParsedSetrole(
+                role=role,
+                target_ids=set(),
+                mention_usernames=[],
+                is_mass=True,
+                mass_target=first_token,
+            )
         return None
 
     return ParsedSetrole(
         role=role,
         target_ids=target_ids,
         mention_usernames=mention_usernames,
+        is_mass=False,
+        mass_target=None,
     )

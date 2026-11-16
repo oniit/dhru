@@ -4,6 +4,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Manajemen Akun & Profil
 - `/start` — Titik masuk utama. Membuat pengguna di DB jika belum ada.
+- `/help` — Menampilkan daftar panduan perintah sesuai peran pengguna (tampilan Owner diselaraskan dengan Admin dan dilengkapi tautan `/help_owner`).
 - `/profil` — Menampilkan Kartu Profil pengguna (NIM, Jabatan, Poin Agra).
 - `/lengkapi` — Memulai proses pengisian data (_onboarding_) yang belum lengkap.
 - `/ubah` — Meminta perubahan data yang sudah terkunci (masuk ke antrean _pending_).
@@ -16,7 +17,8 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/tugas` — Masuk ke _dashboard_ manajemen tugas (unggah tugas bagi dosen, kumpul tugas bagi shishya).
 - `/transkrip [nim/nama]` — Menampilkan lembar Transkrip Nilai Akademik resmi (hanya chat privat). Admin dapat memasukkan argumen NIM/Nama shishya lain.
 - `/ijazah [nim/nama]` — Menampilkan lembar Ijazah Kelulusan resmi bagi shishya yang memenuhi syarat kelulusan (dapat digunakan di grup maupun chat privat). Memuat Nama, NIM, Tanggal Lahir (centered), Program Studi & Fakultas, Gelar Akademik resmi (Sarjana Sains (S.Si.) untuk FMIPA dan Sarjana Seni (S.Sn.) untuk FIB), serta keterangan Predikat pada caption pesan.
-- `/export_kelulusan [zip]` — (Owner/Admin) Men-generate massal seluruh dokumen ijazah & transkrip shishya Gen 1 beserta pasfoto/avatar mahasiswa yang terdaftar ke folder `output/kelulusan_gen1/` (opsi `zip` untuk langsung mengirimkan arsip ZIP).
+- `/export_kelulusan [zip|sync]` — (Owner/Admin) Men-generate massal seluruh dokumen ijazah & transkrip shishya generasi aktif beserta pasfoto ke folder dinamis `output/kelulusan_gen{N}/`. File arsip data JSON (`graduation_records_gen{N}.json`) otomatis disimpan di folder keluaran dan dipaketkan ke dalam file ZIP sehingga sumber data transkrip dan ijazah tercatat jelas. (Opsi `zip` untuk mengunduh paket ZIP, atau opsi `sync` untuk sinkronisasi kilat ke arsip JSON dan mirror Turso tanpa merender gambar).
+- `/sync_kelulusan` — (Owner/Admin) Pintasan instan sinkronisasi data dari spreadsheet Excel aktif ke arsip permanen JSON (`data/graduation_records.json`) dan me-mirror salinannya ke tabel `graduation_records` remote database Turso.
 
 ## Sosial & Gamifikasi (Agra)
 - `/leaderboard` atau `/agra top [role] [all]` — Menampilkan peringkat Agra teratas. Gunakan argumen `all` untuk melihat keseluruhan tanpa batas Top 17 (contoh: `/agra top charya all`).
@@ -30,9 +32,13 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
+- `/help_owner` atau `/ownerhelp` — (Hanya Owner) Menampilkan ensiklopedia panduan lengkap seluruh perintah, wewenang, dan fungsi administratif eksklusif tingkat Founder / Owner.
 - `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.
-- `/setrole <role> <@username>` — Menetapkan peran (`admin`, `student`, dll) kepada pengguna.
+- `/setrole <role> <@username...>` — Menetapkan peran (`admin`, `student`, `purna`, dll) kepada satu atau beberapa pengguna.
+- `/setrole purna <all|shishya|bem|massal|semua>` — (Hanya Owner) Meluluskan seluruh mahasiswa aktif ke **Purna Shishya (Alumni)** secara massal pada saat penutupan generasi. SKS aktif dibukukan permanen ke `accumulated_sks`, NIM (`student_id`) dipertahankan untuk arsip Ijazah & Transkrip, dan kelas/UKM aktif dibersihkan.
+- `/tutup_generasi [konfirmasi]` — (Hanya Owner) Menu dan perintah konfirmasi penutupan generasi akademik untuk mengeksekusi transisi massal seluruh Shishya & BEM ke Purna Shishya.
+- `/tutupgenerasi` — Alias untuk `/tutup_generasi`.
 - `/kick <@username|ID>` — (Owner/Admin/Sekre) Mengeluarkan target dari grup. Jika dijalankan di dalam grup, langsung mengeluarkan anggota dari grup tersebut. Jika dijalankan via PM (private chat bot), bot akan secara dinamis mengecek keanggotaan target dan hanya menampilkan daftar tombol grup di mana target tersebut benar-benar bergabung.
 - `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).

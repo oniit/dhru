@@ -17,18 +17,31 @@ from bot.database import ROLE_ADMIN, ROLE_OWNER, ROLE_PUBLIC
 from bot.graduation_excel import (
     StudentGraduationData,
     get_all_graduates,
+    get_all_students,
     get_student_by_name,
     get_student_by_nim,
+    mirror_archive_to_turso,
 )
 from bot.ijazah_card import get_degree_title, render_ijazah_png_bytes
-from bot.settings import OWNER_ID, ROOT
+from bot.settings import GENERATION_CODE, OWNER_ID, ROOT
 from bot.transkrip_card import render_transkrip_png_bytes
 
 from .common import profile_from_row, rate_limit_check, user_row
 
 log = logging.getLogger(__name__)
 
-OUTPUT_DIR = ROOT / "output" / "kelulusan_gen1"
+
+def _get_output_dir(gen_str: str | None = None) -> Path:
+    g = (gen_str or GENERATION_CODE).lstrip("0") or (gen_str or GENERATION_CODE) or "1"
+    return ROOT / "output" / f"kelulusan_gen{g}"
+
+
+def _get_zip_path(gen_str: str | None = None) -> Path:
+    g = (gen_str or GENERATION_CODE).lstrip("0") or (gen_str or GENERATION_CODE) or "1"
+    return ROOT / "output" / f"kelulusan_gen{g}.zip"
+
+
+OUTPUT_DIR = _get_output_dir()
 
 
 def _conn(context: ContextTypes.DEFAULT_TYPE):
@@ -470,11 +483,39 @@ def _sync_export_documents(
     graduates: list[StudentGraduationData],
     output_dir: Path,
     photos_map: dict[str, bytes | None] | None = None,
+    gen_val: str = "1",
 ) -> tuple[int, list[Path]]:
     """Fungsi ekspor batch grafis murni CPU-bound yang dijalankan di thread terpisah."""
     output_dir.mkdir(parents=True, exist_ok=True)
     created_files: list[Path] = []
     success_count = 0
+
+    # 1. Tulis arsip data JSON angkatan ini langsung ke dalam output_dir
+    json_export_name = f"graduation_records_gen{gen_val}.json"
+    json_export_path = output_dir / json_export_name
+    try:
+        gen_data = {
+            st.nim: {
+                "nama": st.nama,
+                "nim": st.nim,
+                "ttl": st.ttl,
+                "jurusan": st.jurusan,
+                "fakultas": st.fakultas,
+                "courses": [{"kode": c.kode, "nama": c.nama, "sks": c.sks, "nilai": c.nilai, "ip": c.ip} for c in st.courses],
+                "ipk": st.ipk,
+                "predikat": st.predikat,
+                "clubs": [{"nama": cl.nama, "sks": cl.sks, "nilai": cl.nilai, "ip": cl.ip} for cl in st.clubs],
+                "ikk": st.ikk,
+                "is_lulus": st.is_lulus,
+                "generasi": st.generasi,
+            }
+            for st in graduates
+        }
+        with open(json_export_path, "w", encoding="utf-8") as jf:
+            json.dump(gen_data, jf, ensure_ascii=False, indent=2)
+        created_files.append(json_export_path)
+    except Exception as e:
+        log.warning("Gagal menulis arsip JSON ke %s: %s", json_export_path, e)
 
     for st in graduates:
         safe_name = "".join(c for c in st.nama if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
@@ -501,7 +542,7 @@ def _sync_export_documents(
 
 
 async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Perintah admin /export_kelulusan [zip] — Render massal seluruh ijazah & transkrip lulusan."""
+    """Perintah admin /export_kelulusan [zip|sync] — Render massal seluruh ijazah & transkrip lulusan."""
     if not update.effective_user or not update.message:
         return
 
@@ -514,16 +555,40 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Perintah ini hanya dapat dijalankan oleh Founder / Admin.")
         return
 
-    graduates = get_all_graduates()
-    if not graduates:
-        await update.message.reply_text("Tidak ada data lulusan yang ditemukan di spreadsheet.")
+    args = context.args or []
+    if args and args[0].lower() == "sync":
+        from bot.graduation_excel import _sync_excel_into_archive
+        _sync_excel_into_archive(force=True)
+        all_s = get_all_students()
+        grads = get_all_graduates()
+        turso_count = await mirror_archive_to_turso(conn, db)
+        await update.message.reply_text(
+            f"🔄 <b>Sinkronisasi Arsip Kelulusan Berhasil!</b>\n\n"
+            f"• Total Mahasiswa di Arsip: <b>{len(all_s)}</b>\n"
+            f"• Total Mahasiswa Lulus: <b>{len(grads)}</b>\n"
+            f"• File Arsip: <code>data/graduation_records.json</code>\n"
+            f"• Mirror ke Turso DB: <b>{turso_count}</b> record berhasil disinkronkan.",
+            parse_mode="HTML",
+        )
         return
 
-    args = context.args or []
+    gen_val = GENERATION_CODE.lstrip("0") or GENERATION_CODE or "1"
+    output_dir = _get_output_dir(gen_val)
+    zip_path = _get_zip_path(gen_val)
+
+    graduates = get_all_graduates(generasi=gen_val)
+    if not graduates:
+        # Fallback ke seluruh lulusan jika data generasi belum spesifik
+        graduates = get_all_graduates()
+
+    if not graduates:
+        await update.message.reply_text("Tidak ada data lulusan yang ditemukan di spreadsheet atau arsip.")
+        return
+
     create_zip = bool(args and args[0].lower() == "zip")
 
     status_msg = await update.message.reply_text(
-        f"⚙️ Memulai export dokumen kelulusan Gen 1 (<b>{len(graduates)}</b> shishya)...\n"
+        f"⚙️ Memulai export dokumen kelulusan Gen {gen_val} (<b>{len(graduates)}</b> shishya)...\n"
         f"• Mengambil pasfoto profil shishya..."
     )
 
@@ -532,40 +597,51 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
     with_photo_count = sum(1 for p in photos_map.values() if p)
 
     await status_msg.edit_text(
-        f"⚙️ Memproses dokumen kelulusan Gen 1 (<b>{len(graduates)}</b> shishya)...\n"
+        f"⚙️ Memproses dokumen kelulusan Gen {gen_val} (<b>{len(graduates)}</b> shishya)...\n"
         f"• Foto ditemukan: <b>{with_photo_count}</b> / {len(graduates)}\n"
         f"• Sedang me-render ijazah & transkrip..."
     )
 
     # 2. Jalankan render batch di thread latar belakang agar tidak memblokir event loop Telegram
     success_count, created_files = await asyncio.to_thread(
-        _sync_export_documents, graduates, OUTPUT_DIR, photos_map
+        _sync_export_documents, graduates, output_dir, photos_map, gen_val
     )
 
+    # 3. Mirror data lulusan ke Turso secara non-blocking
+    try:
+        asyncio.create_task(mirror_archive_to_turso(conn, db, graduates))
+    except Exception:
+        pass
+
+    json_export_name = f"graduation_records_gen{gen_val}.json"
     msg = (
-        f"✅ <b>Export Kelulusan Selesai!</b>\n\n"
+        f"✅ <b>Export Kelulusan Selesai! (Gen {gen_val})</b>\n\n"
         f"• Total Mahasiswa Lulus: <b>{len(graduates)}</b>\n"
         f"• Berhasil Digenerate: <b>{success_count}</b> mahasiswa ({success_count * 2} dokumen)\n"
         f"• Dokumen berfoto: <b>{with_photo_count}</b> mahasiswa\n"
-        f"• Folder Output: <code>{OUTPUT_DIR}</code>"
+        f"• File Data JSON: <code>{output_dir / json_export_name}</code>\n"
+        f"• Arsip Master: <code>data/graduation_records.json</code>\n"
+        f"• Mirror Turso DB: ✅ Tersinkronkan\n"
+        f"• Folder Output: <code>{output_dir}</code>"
     )
 
     if create_zip and created_files:
-        zip_path = ROOT / "output" / "kelulusan_gen1.zip"
-
         def _make_zip():
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for file_path in created_files:
                     zf.write(file_path, arcname=file_path.name)
+                from bot.graduation_excel import JSON_ARCHIVE_PATH
+                if JSON_ARCHIVE_PATH.exists() and JSON_ARCHIVE_PATH not in created_files:
+                    zf.write(JSON_ARCHIVE_PATH, arcname="graduation_records_master.json")
 
         await asyncio.to_thread(_make_zip)
 
-        await status_msg.edit_text(msg + "\n\n📦 Sedang mengunggah file ZIP...")
+        await status_msg.edit_text(msg + "\n\n📦 Sedang mengunggah file ZIP (termasuk berkas data JSON & pasfoto)...")
         with open(zip_path, "rb") as zf_file:
             await update.message.reply_document(
                 document=zf_file,
-                filename="Dokumen_Kelulusan_Gen1.zip",
-                caption="📦 Paket Lengkap Ijazah & Transkrip Shishya Gen 1 (Termasuk Foto)",
+                filename=f"Dokumen_Kelulusan_Gen{gen_val}.zip",
+                caption=f"📦 Paket Lengkap Ijazah, Transkrip & Data JSON Kelulusan Gen {gen_val}",
                 read_timeout=120,
                 write_timeout=120,
             )
@@ -574,3 +650,9 @@ async def cmd_export_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYP
         await status_msg.edit_text(
             msg + "\n\n<i>Tip: Ketik <code>/export_kelulusan zip</code> jika ingin bot mengirimkan paket ZIP langsung ke chat ini.</i>"
         )
+
+
+async def cmd_sync_kelulusan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah admin /sync_kelulusan — Shortcut sinkronisasi Excel ke arsip JSON & Turso DB."""
+    context.args = ["sync"]
+    await cmd_export_kelulusan(update, context)

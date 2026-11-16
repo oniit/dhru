@@ -231,7 +231,7 @@ async def _revalidate_filtered_choice_fields(
                 continue
             if f.key == "faculty" and role in (ROLE_STUDENT, ROLE_BEM, ROLE_MABA):
                 continue
-            if f.key in ("birth_date", "muse", "join_reason", "charyarthi_reason"):
+            if f.key in ("birth_date", "muse", "join_reason", "charyarthi_reason", "student_id"):
                 continue
             if f.key in prof:
                 to_remove.append(f.key)
@@ -591,20 +591,6 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "",
             ]
         )
-    if role == ROLE_OWNER:
-        lines.extend(
-            [
-                "<b>Owner</b>",
-                "<code>/setrole [role] @user123…</code> / reply",
-                "<i>Role: admin · internal · bem · student · public</i>",
-                "<code>/gencode [jumlah]</code> — Generate kode akses",
-                "<code>/gencode_avail</code> — Cek kode belum diklaim",
-                "<code>/broadcast [role] [text]</code> — Broadcast pesan dari bot",
-                "<code>/owner_reset</code> — Reset semua user",
-                "<code>/orreset_user [id/username]</code> — Reset satu user",
-                "",
-            ]
-        )
     lines.append(" ")
     return "\n".join(lines)
 
@@ -614,10 +600,65 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     conn = _conn(context)
     db = _db(context)
-    row = await user_row(conn, db, update.effective_user.id)
+    uid = update.effective_user.id
+    row = await user_row(conn, db, uid)
     role = row["role"] if row else ROLE_STUDENT
     profile = profile_from_row(row) if row else {}
-    await update.message.reply_text(help_for_role(role, profile))
+
+    # Jika pemanggil adalah Owner, samakan tampilan help dengan Admin
+    display_role = ROLE_ADMIN if (role == ROLE_OWNER or is_owner(uid)) else role
+    text = help_for_role(display_role, profile)
+
+    if is_owner(uid):
+        text += "\n💡 <i>Khusus Founder/Owner: Ketik <code>/help_owner</code> untuk melihat seluruh perintah wewenang Owner.</i>"
+
+    await update.message.reply_text(text, parse_mode="HTML")
+
+
+async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah khusus Founder/Owner untuk menampilkan semua wewenang dan perintah eksklusif Owner."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Perintah <code>/help_owner</code> hanya dapat diakses oleh Founder / Owner.", parse_mode="HTML")
+        return
+
+    lines = [
+        "👑 <b>Panduan Lengkap Perintah Khusus Owner / Founder</b>\n",
+        "Berikut seluruh perintah dan wewenang eksklusif tingkat Owner di sistem Dhruva:\n",
+        "<b>🎓 Penutupan Generasi & Peran (Role)</b>",
+        "• <code>/setrole [role] @user1 @user2...</code> — Menetapkan peran user spesifik (admin, internal, bem, student, purna, maba, public).",
+        "• <code>/setrole purna all</code> — <b>Tutup Generasi:</b> Meluluskan seluruh Shishya & BEM aktif ke Purna Shishya (Alumni) secara massal.",
+        "• <code>/setrole purna shishya</code> — Meluluskan hanya Shishya aktif ke Purna.",
+        "• <code>/setrole purna bem</code> — Meluluskan hanya pengurus BEM ke Purna.",
+        "• <code>/tutup_generasi [konfirmasi]</code> — Menu interaktif penutupan generasi (pratinjau jumlah mahasiswa aktif & eksekusi).\n",
+        "<b>👤 Manajemen Akun & Migrasi</b>",
+        "• <code>/pindah_data [id_lama|@lama] [id_baru|@baru]</code> — Memindahkan seluruh profil, role, saldo Agra, presensi, & tugas dari akun lama ke akun baru.",
+        "• <code>/admin_data [id/username]</code> — Mengubah paksa profil user mana pun tanpa persetujuan.",
+        "• <code>/chat [id/username] [pesan]</code> — Mengirim pesan langsung / media secara polos ke private chat user dari bot.\n",
+        "<b>🎫 Kode Akses & Promosi</b>",
+        "• <code>/gencode [jumlah] [role]</code> — Membuat kode akses registrasi baru (default role: student).",
+        "• <code>/gencode_avail</code> — Melihat daftar kode akses yang belum diklaim.",
+        "• <code>/promo</code> — Menu pengaturan syarat kata kunci validasi LPM dan link target Story Telegram.",
+        "• <code>/ospek_mode [on|off]</code> — Menghidupkan/mematikan rutinitas otomatis kegiatan Ospek Maba.\n",
+        "<b>📢 Penyiaran & Komunikasi</b>",
+        "• <code>/broadcast [role|all] [pesan]</code> — Mengirimkan pesan siaran resmi dari bot ke seluruh pengguna sesuai role.",
+        "• <code>/trigger</code> — Menu pembuatan dan pengelolaan auto-responder kata kunci bot.\n",
+        "<b>📜 Kelulusan & Transkrip Akademik</b>",
+        "• <code>/export_kelulusan [zip]</code> — Render massal seluruh ijazah & transkrip angkatan berjalan (paket ZIP menyertakan file JSON arsip & pasfoto).",
+        "• <code>/sync_kelulusan</code> — Sinkronisasi kilat data dari <code>Template IPK.xlsx</code> ke arsip JSON lokal & Turso database.",
+        "• <code>/transkrip [nim/nama]</code> — Mencetak Transkrip Nilai mahasiswa mana pun (Admin/Owner mode).",
+        "• <code>/ijazah [nim/nama]</code> — Mencetak Ijazah Resmi mahasiswa mana pun (Admin/Owner mode).\n",
+        "<b>♻️ Reset Sistem & Pembersihan</b>",
+        "• <code>/owner_reset</code> — Menu reset data menyeluruh (presensi, tugas, agra, audit, periode akademik).",
+        "• <code>/orreset_user [id/username] [tipe]</code> — Reset satu user tertentu (onboarding, rank, all).",
+        "• <code>/orreset_agra [id/username] [tipe]</code> — Reset mutasi atau saldo Agra spesifik user.\n",
+        "<b>⚡ Pemeliharaan Server & Repositori</b>",
+        "• <code>/reload</code> — Memuat ulang modul & konfigurasi tanpa mematikan bot.",
+        "• <code>/pull</code> — Menarik pembaruan kode terbaru dari repositori Git secara live.\n",
+        "<i>Catatan: Seluruh perintah admin standar (/daftar, /presensi, /tagall, /tugas, dll.) juga tetap dapat digunakan oleh Owner.</i>"
+    ]
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -4281,9 +4322,12 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not parsed:
         await update.message.reply_text(
             "Pakai:\n"
-            "<code>/setrole <admin|internal|student|maba|public> @user1 @user2</code>\n"
+            "<code>/setrole <admin|internal|student|purna|maba|public> @user1 @user2</code>\n"
             "atau balas pesan seseorang lalu <code>/setrole <role></code>\n\n"
+            "💡 <b>Tutup Generasi Massal:</b>\n"
+            "Gunakan <code>/setrole purna all</code> (atau <code>shishya</code>) untuk meluluskan seluruh mahasiswa secara massal.\n\n"
             "Owner tetap hanya satu (di .env); tidak bisa set owner ke orang lain.",
+            parse_mode="HTML",
         )
         return
     role = parsed.role
@@ -4303,6 +4347,70 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     conn = _conn(context)
     db = _db(context)
+
+    # Penanganan transisi role massal (Tutup Generasi)
+    if parsed.is_mass:
+        if role != ROLE_PURNA:
+            await update.message.reply_text(
+                "⚠️ Fitur massal (<code>all</code>, <code>shishya</code>, <code>massal</code>, <code>semua</code>) "
+                "hanya diizinkan untuk mengubah peran ke <b>Purna</b> (Purvashishya) saat penutupan generasi demi keamanan sistem.\n\n"
+                "Untuk role lain, silakan sebutkan @username atau balas pesan pengguna secara spesifik.",
+                parse_mode="HTML",
+            )
+            return
+
+        actor = update.effective_user.id
+        total, counts, processed = await db.mass_set_role_purna(conn, actor, parsed.mass_target or "all")
+        if total == 0:
+            target_desc = "Shishya" if (parsed.mass_target or "").lower() in ("student", "shishya", "students", "shishyas") else ("BEM" if (parsed.mass_target or "").lower() == "bem" else "Shishya / BEM")
+            await update.message.reply_text(
+                f"ℹ️ Tidak ditemukan mahasiswa aktif ({target_desc}) yang perlu dialihkan ke Purna.",
+                parse_mode="HTML",
+            )
+            return
+
+        # Notifikasi ke mahasiswa yang diluluskan (throttled)
+        notif_text = (
+            "🎓 <b>Pemberitahuan Kelulusan Generasi</b>\n\n"
+            "Selamat! Generasi akademik telah resmi ditutup, dan status Anda kini telah diperbarui menjadi "
+            "<b>🎓 Purna Shishya (Alumni)</b>.\n\n"
+            "• SKS Anda telah dibukukan secara permanen ke akumulasi akademik.\n"
+            "• Anda dapat mencetak <b>Ijazah</b> melalui perintah <code>/ijazah</code>.\n"
+            "• Anda dapat melihat <b>Transkrip Nilai</b> melalui perintah <code>/transkrip</code>.\n\n"
+            "Terima kasih atas dedikasi dan perjalanan belajar Anda di Dhruva!"
+        )
+        for item in processed:
+            tid = item["telegram_id"]
+            try:
+                await _revalidate_filtered_choice_fields(conn, db, tid)
+            except Exception:
+                pass
+            try:
+                await context.bot.send_message(chat_id=tid, text=notif_text, parse_mode="HTML")
+                await asyncio.sleep(0.05)
+            except Exception:
+                pass
+
+        lines_summary = [
+            "🎓 <b>Penutupan Generasi — Transisi Massal ke Purna Shishya Selesai</b>\n",
+            f"• Total mahasiswa yang diluluskan: <b>{total}</b> orang",
+            f"• Rincian peran: Shishya (<code>{counts.get(ROLE_STUDENT, 0)}</code>), BEM (<code>{counts.get(ROLE_BEM, 0)}</code>)\n",
+            "<b>Catatan Sistem:</b>",
+            "✅ Seluruh SKS aktif telah dibukukan ke akumulasi (<code>accumulated_sks</code>).",
+            "✅ NIM resmi (<code>student_id</code>) tetap dipertahankan untuk akses Ijazah & Transkrip.",
+            "✅ Kelas dan UKM aktif telah dibersihkan siap untuk generasi baru.\n",
+            "<b>Daftar Mahasiswa:</b>",
+        ]
+        for item in processed[:35]:
+            uname_part = f" (@{item['username']})" if item.get("username") else ""
+            nim_part = f" [NIM: {item['nim']}]" if item.get("nim") and item['nim'] != "-" else ""
+            lines_summary.append(f"• {html.escape(item['full_name'])}{uname_part}{nim_part} → {role_display(ROLE_PURNA)}")
+
+        if len(processed) > 35:
+            lines_summary.append(f"<i>...dan {len(processed) - 35} mahasiswa lainnya.</i>")
+
+        await update.message.reply_text("\n".join(lines_summary), parse_mode="HTML")
+        return
     extra = await db.find_ids_by_usernames(conn, parsed.mention_usernames)
     targets: set[int] = set(parsed.target_ids) | set(extra)
     if not targets:
@@ -4397,6 +4505,95 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(
         "Set role selesai:\n" + "\n".join(lines_out)[:4000]
     )
+
+
+async def cmd_tutup_generasi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah owner /tutup_generasi [konfirmasi] — Meluluskan seluruh shishya aktif ke purna."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang berhak menutup generasi.")
+        return
+
+    args = context.args or []
+    sub = (args[0] if args else "").lower().strip()
+
+    conn = _conn(context)
+    db = _db(context)
+
+    # Hitung kandidat aktif
+    cur = await conn.execute(
+        "SELECT COUNT(*) as c FROM users WHERE role IN (?, ?)",
+        (ROLE_STUDENT, ROLE_BEM),
+    )
+    row = await cur.fetchone()
+    active_count = int(row["c"]) if row else 0
+
+    if sub not in ("konfirmasi", "confirm", "ya", "yes"):
+        await update.message.reply_text(
+            f"🎓 <b>Penutupan Generasi Akademik (Tutup Generasi)</b>\n\n"
+            f"Saat ini terdapat <b>{active_count}</b> mahasiswa aktif (Shishya & BEM).\n\n"
+            f"Jika generasi ditutup:\n"
+            f"1. Seluruh Shishya & BEM akan diubah perannya menjadi <b>Purna Shishya (Alumni)</b>.\n"
+            f"2. SKS semester berjalan akan dibukukan ke <code>accumulated_sks</code>.\n"
+            f"3. NIM (<code>student_id</code>) tetap disimpan permanen untuk Transkrip (<code>/transkrip</code>) & Ijazah (<code>/ijazah</code>).\n"
+            f"4. Kelas & UKM aktif dibersihkan agar bot siap digunakan untuk generasi berikutnya.\n\n"
+            f"Ketik <code>/tutup_generasi konfirmasi</code> untuk mengeksekusi penutupan generasi.\n"
+            f"Atau gunakan <code>/setrole purna all</code>.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Eksekusi langsung
+    actor = update.effective_user.id
+    total, counts, processed = await db.mass_set_role_purna(conn, actor, "all")
+    if total == 0:
+        await update.message.reply_text(
+            "ℹ️ Tidak ada mahasiswa aktif (Shishya/BEM) yang ditemukan untuk dialihkan ke Purna.",
+            parse_mode="HTML",
+        )
+        return
+
+    notif_text = (
+        "🎓 <b>Pemberitahuan Kelulusan Generasi</b>\n\n"
+        "Selamat! Generasi akademik telah resmi ditutup, dan status Anda kini telah diperbarui menjadi "
+        "<b>🎓 Purna Shishya (Alumni)</b>.\n\n"
+        "• SKS Anda telah dibukukan secara permanen ke akumulasi akademik.\n"
+        "• Anda dapat mencetak <b>Ijazah</b> melalui perintah <code>/ijazah</code>.\n"
+        "• Anda dapat melihat <b>Transkrip Nilai</b> melalui perintah <code>/transkrip</code>.\n\n"
+        "Terima kasih atas dedikasi dan perjalanan belajar Anda di Dhruva!"
+    )
+    for item in processed:
+        tid = item["telegram_id"]
+        try:
+            await _revalidate_filtered_choice_fields(conn, db, tid)
+        except Exception:
+            pass
+        try:
+            await context.bot.send_message(chat_id=tid, text=notif_text, parse_mode="HTML")
+            await asyncio.sleep(0.05)
+        except Exception:
+            pass
+
+    lines_summary = [
+        "🎓 <b>Penutupan Generasi — Transisi Massal ke Purna Shishya Selesai</b>\n",
+        f"• Total mahasiswa yang diluluskan: <b>{total}</b> orang",
+        f"• Rincian peran: Shishya (<code>{counts.get(ROLE_STUDENT, 0)}</code>), BEM (<code>{counts.get(ROLE_BEM, 0)}</code>)\n",
+        "<b>Catatan Sistem:</b>",
+        "✅ Seluruh SKS aktif telah dibukukan ke akumulasi (<code>accumulated_sks</code>).",
+        "✅ NIM resmi (<code>student_id</code>) tetap dipertahankan untuk akses Ijazah & Transkrip.",
+        "✅ Kelas dan UKM aktif telah dibersihkan siap untuk generasi baru.\n",
+        "<b>Daftar Mahasiswa:</b>",
+    ]
+    for item in processed[:35]:
+        uname_part = f" (@{item['username']})" if item.get("username") else ""
+        nim_part = f" [NIM: {item['nim']}]" if item.get("nim") and item['nim'] != "-" else ""
+        lines_summary.append(f"• {html.escape(item['full_name'])}{uname_part}{nim_part} → {role_display(ROLE_PURNA)}")
+
+    if len(processed) > 35:
+        lines_summary.append(f"<i>...dan {len(processed) - 35} mahasiswa lainnya.</i>")
+
+    await update.message.reply_text("\n".join(lines_summary), parse_mode="HTML")
 
 async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
