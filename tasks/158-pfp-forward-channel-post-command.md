@@ -51,11 +51,27 @@ Selain itu, jika perintah `/pfp` dikirimkan tanpa argumen, bot menampilkan pandu
 - `bot/handlers/commands.py`: Menambahkan perintah `/pfp` pada panduan `/help` (perintah umum) dan `/help_owner` (menu Owner).
 
 ## 3. Pengujian & Quality Assurance (QA)
-- Menuliskan unit & integration test terpusat di `tests/test_pfp.py` mencakup 17 skenario:
-  - Penguraian URL channel publik dan privat beserta edge cases (query string, trailing slash, angle brackets).
-  - Validasi batas maksimal 100 post dan validasi kesamaan channel sumber pada forward rentang.
-  - Pembatasan hak akses Owner pada perintah `/pfp daily`, `/pfp weekly`, serta navigasi callback query.
-  - Logika fallback batch ke single forward.
-  - Eksekusi fallback IPC userbot saat Bot API menghadapi batasan akses channel.
-  - Rekap statistik harian dan mingguan.
-- Seluruh 17 pengujian berhasil lulus 100% tanpa kendala.
+- Menuliskan unit & integration test terpusat di `tests/test_pfp.py` dan `tests/test_pfp_qa.py` mencakup 28 skenario pengujian komprehensif:
+  - **Happy Path:**
+    - Forward single post (channel publik & privat).
+    - Forward rentang post dengan pemisah `to` dan `-`.
+    - Tampilan tutorial `/pfp` reguler vs menu bertombol untuk Owner.
+    - Rekap statistik harian (`pfp daily`) dan mingguan (`pfp weekly`).
+  - **Edge Cases & Proteksi Input:**
+    - Parsing URL dengan query string, fragment (`#`), trailing slash, dan tanda kurung/kutip (`<...>`, `"..."`, `[...]`).
+    - Penanganan otomatis pembalikan rentang (`link/20 to link/10`).
+    - Validasi batas maksimal 100 post (100 diizinkan, 101 ditolak).
+    - Validasi kesamaan channel sumber pada forward rentang.
+    - Budgeting dan pemotongan daftar panjang pengguna pada PFP Daily (maksimal 3300 karakter untuk mencegah error Telegram 4096 karakter).
+    - Penanganan gracefully saat database belum terhubung (NoneType guard).
+  - **Keamanan & Otorisasi:**
+    - Non-owner diblokir saat memanggil `/pfp daily` maupun `/pfp weekly`.
+    - Non-owner diblokir saat menekan tombol callback `pfp:daily`, `pfp:weekly`, dan `pfp:menu` (alert toast).
+    - Owner memiliki akses penuh ke perintah dan callback navigasi.
+  - **Resiliensi & Error Handling:**
+    - Penanganan hilangnya konfigurasi `KEEP_CH_ID`.
+    - Fallback pesan individual jika batch forward Telegram Bot API gagal karena post terhapus.
+    - Fallback IPC ke userbot (`checker.py`) jika Bot API tidak memiliki izin di channel privat.
+    - Tangkapan aman `BadRequest: Message is not modified` saat tombol refresh ditekan berulang kali.
+    - Pembersihan tabel `pfp_logs` saat eksekusi `reset_all_data_except_users`.
+- Seluruh 28 pengujian berhasil lulus 100% tanpa kendala (`28 passed in 1.73s`).

@@ -117,44 +117,59 @@ async def process_userbot_requests(conn):
                 # format: FORWARD:<from_chat>:<start_id>:<end_id>
                 try:
                     parts = action.split(":")
+                    if len(parts) < 4:
+                        raise ValueError(f"Malformed FORWARD action: expected 4+ parts, got {len(parts)}")
                     if len(parts) >= 4:
                         from_chat = parts[1]
                         if from_chat.startswith("-") and from_chat[1:].isdigit():
                             from_chat = int(from_chat)
                         elif from_chat.isdigit():
                             from_chat = int(from_chat)
-                        start_id = int(parts[2])
-                        end_id = int(parts[3])
+                        p2, p3 = int(parts[2]), int(parts[3])
+                        start_id = min(p2, p3)
+                        end_id = max(p2, p3)
                         m_ids = list(range(start_id, end_id + 1))
                         
                         target_keep = KEEP_CH_ID or int(os.getenv("KEEP_CH_ID", "0"))
+                        if not target_keep:
+                            raise ValueError("KEEP_CH_ID belum dikonfigurasi di checker")
+
                         fwd_count = 0
-                        if target_keep:
-                            chunk_size = 100
-                            for i in range(0, len(m_ids), chunk_size):
-                                chunk = m_ids[i:i + chunk_size]
-                                try:
-                                    await app.forward_messages(
-                                        chat_id=target_keep,
-                                        from_chat_id=from_chat,
-                                        message_ids=chunk
-                                    )
-                                    fwd_count += len(chunk)
-                                except Exception as fe:
-                                    log.warning(f"Batch forward failed via userbot ({fe}), falling back to single")
-                                    for mid in chunk:
-                                        try:
-                                            await app.forward_messages(
-                                                chat_id=target_keep,
-                                                from_chat_id=from_chat,
-                                                message_ids=[mid]
-                                            )
-                                            fwd_count += 1
-                                            await asyncio.sleep(0.15)
-                                        except Exception as se:
-                                            log.debug(f"Userbot skip message {mid}: {se}")
-                                if i + chunk_size < len(m_ids):
-                                    await asyncio.sleep(1)
+                        chunk_size = 100
+                        for i in range(0, len(m_ids), chunk_size):
+                            chunk = m_ids[i:i + chunk_size]
+                            try:
+                                res = await app.forward_messages(
+                                    chat_id=target_keep,
+                                    from_chat_id=from_chat,
+                                    message_ids=chunk
+                                )
+                                # Gunakan jumlah hasil aktual, bukan len(chunk),
+                                # karena pesan terhapus mungkin di-skip oleh Telegram
+                                fwd_count += len(res) if res else len(chunk)
+                            except Exception as fe:
+                                fe_str = str(fe).lower()
+                                log.warning(f"Batch forward failed via userbot ({fe}), falling back to single")
+                                fatal = any(k in fe_str for k in ("channel_private", "chat_admin_required", "peer_id_invalid", "username_not_occupied", "chat_forbidden"))
+                                if fatal:
+                                    log.warning(f"Userbot tidak memiliki izin akses ke {from_chat}: {fe}")
+                                    break
+                                for mid in chunk:
+                                    try:
+                                        await app.forward_messages(
+                                            chat_id=target_keep,
+                                            from_chat_id=from_chat,
+                                            message_ids=[mid]
+                                        )
+                                        fwd_count += 1
+                                        await asyncio.sleep(0.15)
+                                    except Exception as se:
+                                        se_str = str(se).lower()
+                                        if any(k in se_str for k in ("channel_private", "chat_admin_required", "peer_id_invalid", "username_not_occupied", "chat_forbidden")):
+                                            break
+                                        log.debug(f"Userbot skip message {mid}: {se}")
+                            if i + chunk_size < len(m_ids):
+                                await asyncio.sleep(1)
                         import json
                         result_json = json.dumps({"forwarded": fwd_count})
                         await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))

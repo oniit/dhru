@@ -19,11 +19,11 @@ PHASE_FINISHED = "finished"
 # ==============================================================================
 NAMA_KARTU = {
     "rektor": "Dika",          # Rektor (Str 90) - +15 Str vs Warek 1 & Warek 2
-    "warek1": "Nivia",         # Wakil Rektor 1 (Str 75) - +20 Str vs Str lebih tinggi & batalkan bonus lawan
-    "warek2": "Nuansa",        # Wakil Rektor 2 (Str 75) - +20 Str vs Sekretaris
-    "sekre1": "Leonie",        # Sekretaris 1 (Str 60) - Menyalin Power lawan
-    "sekre2": "Dyah",          # Sekretaris 2 (Str 60) - Membatalkan seluruh bonus lawan
-    "sekre3": "Neil",          # Sekretaris 3 (Str 60) - Jika kalah, lawan -20 Str di ronde berikutnya
+    "warek1": "Nuansa",         # Wakil Rektor 1 (Str 75) - +20 Str vs Str lebih tinggi & batalkan bonus lawan
+    "warek2": "Ivana",        # Wakil Rektor 2 (Str 75) - +20 Str vs Sekretaris
+    "sekre1": "Dyah",        # Sekretaris 1 (Str 60) - Menyalin Power lawan
+    "sekre2": "Sachi",          # Sekretaris 2 (Str 60) - Membatalkan seluruh bonus lawan
+    "sekre3": "Prati",          # Sekretaris 3 (Str 60) - Jika kalah, lawan -20 Str di ronde berikutnya
     "pusaka": "Kartu Pusaka",  # Pusaka (Str -) - Membalikkan hasil duel (Menang <-> Kalah)
 }
 

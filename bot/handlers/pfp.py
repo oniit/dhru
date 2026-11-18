@@ -40,17 +40,20 @@ def parse_telegram_post_link(link: str) -> tuple[str | int, int] | None:
     channel_identifier berupa:
       - '@username' untuk channel publik
       - -100xxxxxxxxxx (int) untuk channel privat
+    Mendukung format standar (t.me/...), preview publik (t.me/s/...), dan privat (t.me/c/...).
     """
     if not link:
         return None
-    raw = link.strip().strip("<>()[]\"'").strip()
+    raw = link.strip().strip("<>()[]\"'`").strip()
     if "?" in raw:
         raw = raw.split("?", 1)[0]
+    if "#" in raw:
+        raw = raw.split("#", 1)[0]
     raw = raw.rstrip("/")
 
-    # Channel privat: t.me/c/<channel_id>/<msg_id>
+    # Channel privat: t.me/c/<channel_id>/<msg_id> atau t.me/s/c/<channel_id>/<msg_id>
     m_priv = re.search(
-        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/c/(\d+)/(\d+)",
+        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?c/(\d+)/(\d+)",
         raw,
         re.IGNORECASE,
     )
@@ -59,9 +62,9 @@ def parse_telegram_post_link(link: str) -> tuple[str | int, int] | None:
         msg_id = int(m_priv.group(2))
         return int(f"-100{ch_num}"), msg_id
 
-    # Channel publik: t.me/<channel_username>/<msg_id>
+    # Channel publik: t.me/<channel_username>/<msg_id> atau t.me/s/<channel_username>/<msg_id>
     m_pub = re.search(
-        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/([a-zA-Z0-9_]+)/(\d+)",
+        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?([a-zA-Z0-9_]+)/(\d+)",
         raw,
         re.IGNORECASE,
     )
@@ -81,7 +84,7 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
       - ('TUTOR', None) jika argumen kosong
       - ('DAILY', None) jika 'daily'
       - ('WEEKLY', None) jika 'weekly'
-      - ('RANGE', (link1, link2)) jika ada pemisah 'to'
+      - ('RANGE', (link1, link2)) jika ada pemisah rentang ('to', '-', 'sampai', 's/d', 'sd')
       - ('SINGLE', link) jika tautan tunggal
       - ('INVALID', None) jika tidak dikenali
     """
@@ -95,7 +98,7 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
     if low == "weekly":
         return "WEEKLY", None
 
-    parts = re.split(r"\s+to\s+", raw, flags=re.IGNORECASE)
+    parts = re.split(r"\s+(?:to|-|sampai|s/d|sd)\s+", raw, flags=re.IGNORECASE)
     if len(parts) == 2:
         return "RANGE", (parts[0].strip(), parts[1].strip())
     elif len(parts) == 1:
@@ -195,12 +198,13 @@ async def forward_posts_to_keep(
                         break
                     # Abaikan pesan yang terhapus/tidak ada di rentang
 
-    if (bot_failed or forwarded_count == 0) and conn and db:
+    if forwarded_count == 0 and conn and db:
         ipc_count = await _forward_via_userbot_ipc(conn, db, from_chat, start_id, end_id)
         if ipc_count > 0:
             return ipc_count, None
 
-    return forwarded_count, None if forwarded_count > 0 else "Gagal mem-forward pesan."
+    err_msg = None if forwarded_count > 0 else "Gagal mem-forward pesan."
+    return forwarded_count, err_msg
 
 
 def get_pfp_tutorial_text(is_user_owner: bool) -> tuple[str, InlineKeyboardMarkup | None]:
@@ -244,6 +248,21 @@ def get_pfp_tutorial_text(is_user_owner: bool) -> tuple[str, InlineKeyboardMarku
 
 async def get_pfp_daily_content(conn, db: Database) -> tuple[str, InlineKeyboardMarkup]:
     """Menghasilkan konten rekap harian PFP untuk hari ini."""
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🔄 Refresh", callback_data="pfp:daily"),
+                InlineKeyboardButton("📅 PFP Weekly", callback_data="pfp:weekly"),
+            ],
+            [
+                InlineKeyboardButton("🔙 Panduan /pfp", callback_data="pfp:menu"),
+            ],
+        ]
+    )
+
+    if not conn or not db:
+        return "⚠️ <i>Database belum terhubung.</i>", keyboard
+
     today = get_today_wib()
     start_ts = datetime.combine(today, datetime.min.time(), tzinfo=TZ).timestamp()
     end_ts = datetime.combine(today, datetime.max.time(), tzinfo=TZ).timestamp()
@@ -260,6 +279,8 @@ async def get_pfp_daily_content(conn, db: Database) -> tuple[str, InlineKeyboard
     else:
         lines.append("<b>Daftar Pengguna:</b>")
         total_posts_sum = 0
+        truncated = False
+        current_len = sum(len(l) for l in lines)
         for idx, r in enumerate(rows, start=1):
             fn = (r.get("first_name") or "").strip()
             un = (r.get("username") or "").strip()
@@ -275,17 +296,30 @@ async def get_pfp_daily_content(conn, db: Database) -> tuple[str, InlineKeyboard
             else:
                 user_lbl = f"Pengguna (<code>{uid}</code>)"
 
-            lines.append(f"{idx}. {user_lbl} — <b>{posts}</b> post ({cmds}x fwd)")
+            entry_line = f"{idx}. {user_lbl} — <b>{posts}</b> post ({cmds}x fwd)"
+            if not truncated:
+                if current_len + len(entry_line) > 3300:
+                    remaining = len(rows) - idx + 1
+                    lines.append(f"<i>...dan {remaining} pengguna lainnya.</i>")
+                    truncated = True
+                else:
+                    lines.append(entry_line)
+                    current_len += len(entry_line)
 
         lines.append("\n━━━━━━━━━━━━━━━━━━━")
         lines.append(f"👥 <b>Total Pengguna:</b> {len(rows)} orang")
         lines.append(f"📦 <b>Total Post Ter-forward:</b> {total_posts_sum} post")
 
+    return "\n".join(lines), keyboard
+
+
+async def get_pfp_weekly_content(conn, db: Database) -> tuple[str, InlineKeyboardMarkup]:
+    """Menghasilkan konten rekap mingguan PFP untuk 7 hari terakhir."""
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🔄 Refresh", callback_data="pfp:daily"),
-                InlineKeyboardButton("📅 PFP Weekly", callback_data="pfp:weekly"),
+                InlineKeyboardButton("🔄 Refresh", callback_data="pfp:weekly"),
+                InlineKeyboardButton("📊 PFP Daily", callback_data="pfp:daily"),
             ],
             [
                 InlineKeyboardButton("🔙 Panduan /pfp", callback_data="pfp:menu"),
@@ -293,11 +327,9 @@ async def get_pfp_daily_content(conn, db: Database) -> tuple[str, InlineKeyboard
         ]
     )
 
-    return "\n".join(lines), keyboard
+    if not conn or not db:
+        return "⚠️ <i>Database belum terhubung.</i>", keyboard
 
-
-async def get_pfp_weekly_content(conn, db: Database) -> tuple[str, InlineKeyboardMarkup]:
-    """Menghasilkan konten rekap mingguan PFP untuk 7 hari terakhir."""
     today = get_today_wib()
     days = [today - timedelta(days=i) for i in range(6, -1, -1)]
     start_ts = datetime.combine(days[0], datetime.min.time(), tzinfo=TZ).timestamp()
@@ -337,18 +369,6 @@ async def get_pfp_weekly_content(conn, db: Database) -> tuple[str, InlineKeyboar
     lines.append("\n━━━━━━━━━━━━━━━━━━━")
     lines.append(f"👥 <b>Total Pengguna Unik:</b> {len(all_users)} orang")
     lines.append(f"📦 <b>Total Seluruh Post:</b> {total_week_posts} post")
-
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🔄 Refresh", callback_data="pfp:weekly"),
-                InlineKeyboardButton("📊 PFP Daily", callback_data="pfp:daily"),
-            ],
-            [
-                InlineKeyboardButton("🔙 Panduan /pfp", callback_data="pfp:menu"),
-            ],
-        ]
-    )
 
     return "\n".join(lines), keyboard
 
@@ -461,10 +481,14 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    status_msg = await update.effective_message.reply_text(
-        f"⏳ <i>Sedang mem-forward {total_requested} pesan ke channel penyimpanan...</i>",
-        parse_mode="HTML",
-    )
+    status_msg = None
+    try:
+        status_msg = await update.effective_message.reply_text(
+            f"⏳ <i>Sedang mem-forward {total_requested} pesan ke channel penyimpanan...</i>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        log.warning("Gagal mengirim pesan status awal /pfp: %s", e)
 
     forwarded_count, err = await forward_posts_to_keep(
         context.bot,
@@ -478,10 +502,11 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if forwarded_count > 0:
         if conn and db:
+            chat_id = update.effective_chat.id if update.effective_chat else uid
             await db.log_pfp_forward(
                 conn=conn,
                 user_id=uid,
-                chat_id=update.effective_chat.id,
+                chat_id=chat_id,
                 channel_id=str(channel_id),
                 first_msg_id=start_id,
                 last_msg_id=end_id,
@@ -496,27 +521,33 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"✅ Berhasil mem-forward <b>{forwarded_count}</b> dari <b>{total_requested}</b> "
                 f"post ke channel penyimpanan."
             )
-        try:
-            await status_msg.edit_text(reply_text, parse_mode="HTML")
-        except Exception:
+        if status_msg:
+            try:
+                await status_msg.edit_text(reply_text, parse_mode="HTML")
+            except Exception:
+                await update.effective_message.reply_text(reply_text, parse_mode="HTML")
+        else:
             await update.effective_message.reply_text(reply_text, parse_mode="HTML")
     else:
-        err_detail = f"\n<i>Detail: {html.escape(err)}</i>" if err else ""
+        err_detail = f"\n<i>Detail: {html.escape(str(err))}</i>" if err else ""
         fail_text = (
             "❌ <b>Gagal mem-forward post.</b>\n"
             "Pastikan channel sumber bersifat publik atau bot memiliki izin akses, "
             f"dan konten tidak dibatasi dari forwarding.{err_detail}"
         )
-        try:
-            await status_msg.edit_text(fail_text, parse_mode="HTML")
-        except Exception:
+        if status_msg:
+            try:
+                await status_msg.edit_text(fail_text, parse_mode="HTML")
+            except Exception:
+                await update.effective_message.reply_text(fail_text, parse_mode="HTML")
+        else:
             await update.effective_message.reply_text(fail_text, parse_mode="HTML")
 
 
 async def cb_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """CallbackQueryHandler untuk menu interaktif /pfp."""
     query = update.callback_query
-    if not query:
+    if not query or not update.effective_user:
         return
 
     uid = update.effective_user.id
@@ -528,34 +559,28 @@ async def cb_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = _conn(context)
     db = _db(context)
 
-    if data == "pfp:daily":
-        text, kb = await get_pfp_daily_content(conn, db)
-        try:
+    try:
+        if data == "pfp:daily":
+            text, kb = await get_pfp_daily_content(conn, db)
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                log.warning("Gagal edit message pfp:daily: %s", e)
-        await query.answer()
-
-    elif data == "pfp:weekly":
-        text, kb = await get_pfp_weekly_content(conn, db)
-        try:
+        elif data == "pfp:weekly":
+            text, kb = await get_pfp_weekly_content(conn, db)
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                log.warning("Gagal edit message pfp:weekly: %s", e)
-        await query.answer()
-
-    elif data == "pfp:menu":
-        text, kb = get_pfp_tutorial_text(is_owner(uid))
-        try:
+        elif data == "pfp:menu":
+            text, kb = get_pfp_tutorial_text(is_owner(uid))
             await query.edit_message_text(
                 text,
                 parse_mode="HTML",
                 reply_markup=kb,
                 disable_web_page_preview=True,
             )
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                log.warning("Gagal edit message pfp:menu: %s", e)
-        await query.answer()
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            log.warning("Gagal edit message %s: %s", data, e)
+    except Exception as e:
+        log.warning("Error in cb_pfp %s: %s", data, e)
+    finally:
+        try:
+            await query.answer()
+        except Exception:
+            pass
