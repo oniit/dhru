@@ -30,6 +30,8 @@ app = Client("checker", api_id=API_ID, api_hash=API_HASH)
 
 BACKUP_CH_ID = os.getenv("BACKUP_CH_ID", "")
 BACKUP_CH_ID = int(BACKUP_CH_ID) if BACKUP_CH_ID.strip() else 0
+KEEP_CH_ID = os.getenv("KEEP_CH_ID", "")
+KEEP_CH_ID = int(KEEP_CH_ID) if KEEP_CH_ID.strip() else 0
 
 if BACKUP_CH_ID:
     @app.on_message(filters.chat(BACKUP_CH_ID))
@@ -109,6 +111,57 @@ async def process_userbot_requests(conn):
                     log.info(f"Resolved {len(result_data)} usernames via userbot")
                 except Exception as e:
                     log.error(f"Error resolving usernames via userbot: {e}")
+                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.commit()
+            elif action.startswith("FORWARD:"):
+                # format: FORWARD:<from_chat>:<start_id>:<end_id>
+                try:
+                    parts = action.split(":")
+                    if len(parts) >= 4:
+                        from_chat = parts[1]
+                        if from_chat.startswith("-") and from_chat[1:].isdigit():
+                            from_chat = int(from_chat)
+                        elif from_chat.isdigit():
+                            from_chat = int(from_chat)
+                        start_id = int(parts[2])
+                        end_id = int(parts[3])
+                        m_ids = list(range(start_id, end_id + 1))
+                        
+                        target_keep = KEEP_CH_ID or int(os.getenv("KEEP_CH_ID", "0"))
+                        fwd_count = 0
+                        if target_keep:
+                            chunk_size = 100
+                            for i in range(0, len(m_ids), chunk_size):
+                                chunk = m_ids[i:i + chunk_size]
+                                try:
+                                    await app.forward_messages(
+                                        chat_id=target_keep,
+                                        from_chat_id=from_chat,
+                                        message_ids=chunk
+                                    )
+                                    fwd_count += len(chunk)
+                                except Exception as fe:
+                                    log.warning(f"Batch forward failed via userbot ({fe}), falling back to single")
+                                    for mid in chunk:
+                                        try:
+                                            await app.forward_messages(
+                                                chat_id=target_keep,
+                                                from_chat_id=from_chat,
+                                                message_ids=[mid]
+                                            )
+                                            fwd_count += 1
+                                            await asyncio.sleep(0.15)
+                                        except Exception as se:
+                                            log.debug(f"Userbot skip message {mid}: {se}")
+                                if i + chunk_size < len(m_ids):
+                                    await asyncio.sleep(1)
+                        import json
+                        result_json = json.dumps({"forwarded": fwd_count})
+                        await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                        await conn.commit()
+                        log.info(f"Userbot forwarded {fwd_count} messages for req {req_id}")
+                except Exception as e:
+                    log.error(f"Error in userbot FORWARD: {e}")
                     await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
                     await conn.commit()
         return len(pending_rows)

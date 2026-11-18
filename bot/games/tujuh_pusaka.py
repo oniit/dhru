@@ -11,26 +11,98 @@ PHASE_REGISTRATION = "registration"
 PHASE_PLAYING = "playing"
 PHASE_FINISHED = "finished"
 
-CARDS = {
-    "dika": {"name": "Dika", "base_str": 90, "type": "rektor"},
-    "nivia": {"name": "Nivia", "base_str": 75, "type": "wakil_rektor"},
-    "nuansa": {"name": "Nuansa", "base_str": 75, "type": "wakil_rektor"},
-    "leonie": {"name": "Leonie", "base_str": 60, "type": "sekretaris"},
-    "dyah": {"name": "Dyah", "base_str": 60, "type": "sekretaris"},
-    "neil": {"name": "Neil", "base_str": 60, "type": "sekretaris"},
-    "pusaka": {"name": "Kartu Pusaka", "base_str": 0, "type": "pusaka"},
+# ==============================================================================
+# DAFTAR NAMA KARTU TUJUH PUSAKA
+# Ubah nama kartu di sini kapan saja (misal jika ada pergantian karakter/staf).
+# Key: jabatan/slot kartu (rektor, warek1, warek2, sekre1, sekre2, sekre3, pusaka).
+# Value: nama karakter/staf yang akan tampil di game.
+# ==============================================================================
+NAMA_KARTU = {
+    "rektor": "Dika",          # Rektor (Str 90) - +15 Str vs Warek 1 & Warek 2
+    "warek1": "Nivia",         # Wakil Rektor 1 (Str 75) - +20 Str vs Str lebih tinggi & batalkan bonus lawan
+    "warek2": "Nuansa",        # Wakil Rektor 2 (Str 75) - +20 Str vs Sekretaris
+    "sekre1": "Leonie",        # Sekretaris 1 (Str 60) - Menyalin Power lawan
+    "sekre2": "Dyah",          # Sekretaris 2 (Str 60) - Membatalkan seluruh bonus lawan
+    "sekre3": "Neil",          # Sekretaris 3 (Str 60) - Jika kalah, lawan -20 Str di ronde berikutnya
+    "pusaka": "Kartu Pusaka",  # Pusaka (Str -) - Membalikkan hasil duel (Menang <-> Kalah)
 }
 
-CARD_INFO = """
-📜 <b>Tujuh Pusaka</b>
-1. <b>Dika</b> (Str 90) - +15 Str vs Nivia/Nuansa.
-2. <b>Nivia</b> (Str 75) - +20 Str vs kartu Str lebih tinggi, dan target kehilangan bonus Str-nya.
-3. <b>Nuansa</b> (Str 75) - +20 Str vs Leonie/Dyah/Neil.
-4. <b>Leonie</b> (Str 60) - Menyalin Power lawan, Str tetap 60.
-5. <b>Dyah</b> (Str 60) - Membatalkan seluruh bonus Str lawan.
-6. <b>Neil</b> (Str 60) - Jika kalah, Str lawan -20 di ronde berikutnya.
-7. <b>Pusaka</b> (Str -) - Membalikkan hasil duel (Menang jadi Kalah, Kalah jadi Menang). Pusaka vs Pusaka = Draw.
-"""
+CARDS = {
+    "rektor": {"name": NAMA_KARTU["rektor"], "base_str": 90, "type": "rektor"},
+    "warek1": {"name": NAMA_KARTU["warek1"], "base_str": 75, "type": "wakil_rektor"},
+    "warek2": {"name": NAMA_KARTU["warek2"], "base_str": 75, "type": "wakil_rektor"},
+    "sekre1": {"name": NAMA_KARTU["sekre1"], "base_str": 60, "type": "sekretaris"},
+    "sekre2": {"name": NAMA_KARTU["sekre2"], "base_str": 60, "type": "sekretaris"},
+    "sekre3": {"name": NAMA_KARTU["sekre3"], "base_str": 60, "type": "sekretaris"},
+    "pusaka": {"name": NAMA_KARTU["pusaka"], "base_str": 0, "type": "pusaka"},
+}
+
+LEGACY_KEYS = {
+    "dika": "rektor",
+    "nivia": "warek1",
+    "nuansa": "warek2",
+    "leonie": "sekre1",
+    "dyah": "sekre2",
+    "neil": "sekre3",
+    "pusaka": "pusaka",
+}
+
+def get_card_info() -> str:
+    n_rek = CARDS["rektor"]["name"]
+    n_w1 = CARDS["warek1"]["name"]
+    n_w2 = CARDS["warek2"]["name"]
+    n_s1 = CARDS["sekre1"]["name"]
+    n_s2 = CARDS["sekre2"]["name"]
+    n_s3 = CARDS["sekre3"]["name"]
+    n_pus = CARDS["pusaka"]["name"]
+    return (
+        f"📜 <b>Tujuh Pusaka</b>\n"
+        f"1. <b>{n_rek}</b> (Str 90) - +15 Str vs {n_w1}/{n_w2}.\n"
+        f"2. <b>{n_w1}</b> (Str 75) - +20 Str vs kartu Str lebih tinggi, dan target kehilangan bonus Str-nya.\n"
+        f"3. <b>{n_w2}</b> (Str 75) - +20 Str vs {n_s1}/{n_s2}/{n_s3}.\n"
+        f"4. <b>{n_s1}</b> (Str 60) - Menyalin Power lawan, Str tetap 60.\n"
+        f"5. <b>{n_s2}</b> (Str 60) - Membatalkan seluruh bonus Str lawan.\n"
+        f"6. <b>{n_s3}</b> (Str 60) - Jika kalah, Str lawan -20 di ronde berikutnya.\n"
+        f"7. <b>{n_pus}</b> (Str -) - Membalikkan hasil duel (Menang jadi Kalah, Kalah jadi Menang). {n_pus} vs {n_pus} = Draw."
+    )
+
+CARD_INFO = get_card_info()
+
+
+def resolve_card_id(card_choice: str) -> str | None:
+    """Mencocokkan input pemain dengan ID kartu secara fleksibel & case-insensitive."""
+    if not card_choice:
+        return None
+    choice = card_choice.strip().lower()
+    clean_choice = choice.replace(" ", "")
+
+    # 1. Cocokkan langsung dengan ID role internal (contoh: "rektor", "warek1", "sekre1", "pusaka")
+    if clean_choice in CARDS:
+        return clean_choice
+
+    # 2. Cocokkan dengan key nama legacy (contoh: "dika", "nivia", "leonie")
+    if clean_choice in LEGACY_KEYS:
+        return LEGACY_KEYS[clean_choice]
+
+    # 3. Cocokkan dengan nama tampilan yang sedang aktif (contoh: "Dika", "Kartu Pusaka")
+    for cid, info in CARDS.items():
+        if choice == info["name"].strip().lower():
+            return cid
+
+    # 4. Cocokkan jika nama memakai awalan 'Kartu ' (contoh: ketik "pusaka" untuk "Kartu Pusaka")
+    for cid, info in CARDS.items():
+        clean_name = info["name"].strip().lower()
+        if clean_name.startswith("kartu ") and choice == clean_name[6:].strip():
+            return cid
+
+    # 5. Fallback urutan nomor 1-7
+    card_keys = list(CARDS.keys())
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(card_keys):
+            return card_keys[idx]
+
+    return None
 
 async def mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn):
     chat_id = update.effective_chat.id
@@ -133,13 +205,14 @@ async def job_tujuh_pusaka_autostart(context: ContextTypes.DEFAULT_TYPE):
         
         await db.update_game_session_state(conn, session_id, state)
         
+    ex_card = CARDS["rektor"]["name"].lower()
     await context.bot.send_message(
         chat_id=chat_id,
         text=(
             f"⚔️ <b>Permainan Dimulai Secara Otomatis!</b>\n\n"
             f"<b>Ronde 1</b>\n"
             f"Silakan setiap pemain memilih 1 kartu dengan mengetik:\n"
-            f"<code>/pusaka &lt;nama_kartu&gt;</code> (Contoh: <code>/pusaka dika</code>)\n\n"
+            f"<code>/pusaka &lt;nama_kartu&gt;</code> (Contoh: <code>/pusaka {ex_card}</code>)\n\n"
             f"Sistem akan langsung memproses ronde jika semua pemain telah memilih."
         ),
         parse_mode="HTML"
@@ -211,11 +284,12 @@ async def paksa_mulai_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT
         
         await db.update_game_session_state(conn, session_id, state)
     
+    ex_card = CARDS["rektor"]["name"].lower()
     await update.message.reply_text(
         f"⚔️ <b>Permainan Dimulai!</b>\n\n"
         f"<b>Ronde 1</b>\n"
         f"Silakan setiap pemain memilih 1 kartu dengan mengetik:\n"
-        f"<code>/pusaka &lt;nama_kartu&gt;</code> (Contoh: <code>/pusaka dika</code>)\n\n"
+        f"<code>/pusaka &lt;nama_kartu&gt;</code> (Contoh: <code>/pusaka {ex_card}</code>)\n\n"
         f"Sistem akan langsung memproses ronde jika semua pemain telah memilih.",
         parse_mode="HTML"
     )
@@ -257,7 +331,7 @@ async def proses_pesan_tujuh_pusaka(update: Update, context: ContextTypes.DEFAUL
         
     if cmd == "/pusaka" or cmd.startswith("/pusaka@"):
         if len(parts) < 2: return
-        card_choice = parts[1]
+        card_choice = " ".join(parts[1:]).strip()
         await pilih_kartu(update, context, db, conn, session, card_choice)
 
 async def pilih_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, conn, session: dict, card_choice: str):
@@ -277,20 +351,33 @@ async def pilih_kartu(update: Update, context: ContextTypes.DEFAULT_TYPE, db, co
         if uid_str not in state["players"]:
             return
             
-        if card_choice not in CARDS:
-            await update.message.reply_text(f"⚠️ {card_choice} bukan kartu yang valid. (Pilih: dika, nivia, nuansa, leonie, dyah, neil, pusaka)")
+        card_id = resolve_card_id(card_choice)
+        if not card_id or card_id not in CARDS:
+            valid_list = ", ".join(info["name"] for info in CARDS.values())
+            await update.message.reply_text(
+                f"⚠️ <b>{html.escape(card_choice)}</b> bukan kartu yang valid.\n\n"
+                f"Pilihan kartu: {html.escape(valid_list)}",
+                parse_mode="HTML"
+            )
             return
             
         player_data = state["players"][uid_str]
-        if card_choice not in player_data["cards"]:
-            await update.message.reply_text(f"⚠️ {player_data['name']}, Anda sudah menggunakan kartu {card_choice}!")
+        if card_id not in player_data["cards"]:
+            chosen_name = CARDS[card_id]["name"]
+            await update.message.reply_text(
+                f"⚠️ {html.escape(player_data['name'])}, Anda sudah menggunakan kartu <b>{html.escape(chosen_name)}</b>!",
+                parse_mode="HTML"
+            )
             return
             
         if uid_str in state["choices"]:
-            await update.message.reply_text(f"⚠️ {player_data['name']}, Anda sudah memilih kartu ronde ini!")
+            await update.message.reply_text(
+                f"⚠️ {html.escape(player_data['name'])}, Anda sudah memilih kartu ronde ini!",
+                parse_mode="HTML"
+            )
             return
             
-        state["choices"][uid_str] = card_choice
+        state["choices"][uid_str] = card_id
         await db.update_game_session_state(conn, session_id, state)
         
         # Check if everyone has chosen
@@ -324,6 +411,8 @@ async def job_timeout_round(context: ContextTypes.DEFAULT_TYPE):
     await resolve_round(context, db, conn, chat_id, session_id, expected_round=round_num)
 
 def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
+    p_card_id = LEGACY_KEYS.get(p_card_id, p_card_id)
+    b_card_id = LEGACY_KEYS.get(b_card_id, b_card_id)
     # Base strengths
     p_str = CARDS[p_card_id]["base_str"] - p_penalty
     b_str = CARDS[b_card_id]["base_str"] - b_penalty
@@ -340,14 +429,14 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
         c_type = CARDS[c_id]["type"]
         opp_type = CARDS[opp_id]["type"]
         
-        if c_id == "dika" and opp_type == "wakil_rektor":
+        if (c_id == "rektor" or c_id == "dika") and opp_type == "wakil_rektor":
             bonus = 15
-        elif c_id == "nivia" and current_str < opp_current_str:
+        elif (c_id == "warek1" or c_id == "nivia") and current_str < opp_current_str:
             bonus = 20
             cancel_opp_bonus = True
-        elif c_id == "nuansa" and opp_type == "sekretaris":
+        elif (c_id == "warek2" or c_id == "nuansa") and opp_type == "sekretaris":
             bonus = 20
-        elif c_id == "dyah":
+        elif c_id in ("sekre2", "dyah"):
             cancel_opp_bonus = True
             
         return bonus, cancel_opp_bonus
@@ -357,11 +446,11 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
     p_cancel_b = False
     b_cancel_p = False
     
-    # Handle Leonie
+    # Handle Leonie / Sekre 1
     p_virtual_id = p_card_id
     b_virtual_id = b_card_id
-    if p_card_id == "leonie": p_virtual_id = b_card_id
-    if b_card_id == "leonie": b_virtual_id = p_card_id
+    if p_card_id in ("sekre1", "leonie"): p_virtual_id = b_card_id
+    if b_card_id in ("sekre1", "leonie"): b_virtual_id = p_card_id
 
     # Normal effects
     p_bonus, p_cancel_b = get_effective(p_virtual_id, b_virtual_id, p_str, b_str)
@@ -390,12 +479,12 @@ def calculate_duel(p_card_id, b_card_id, p_penalty, b_penalty):
     if reverse and result != "draw":
         result = "bot" if result == "player" else "player"
         
-    # Neil penalty
+    # Neil penalty / Sekre 3
     p_next_pen = 0
     b_next_pen = 0
-    if result == "bot" and p_card_id == "neil":
+    if result == "bot" and p_card_id in ("sekre3", "neil"):
         b_next_pen = 20
-    if result == "player" and b_card_id == "neil":
+    if result == "player" and b_card_id in ("sekre3", "neil"):
         p_next_pen = 20
         
     desc = f"{CARDS[p_card_id]['name']} ({final_p}) vs {CARDS[b_card_id]['name']} ({final_b})"
@@ -497,8 +586,8 @@ async def status_tujuh_pusaka(update: Update, context: ContextTypes.DEFAULT_TYPE
         uid_str = str(update.effective_user.id)
         if uid_str in state["players"]:
             p_data = state["players"][uid_str]
-            sisa = ", ".join([c.title() for c in p_data["cards"]]) if p_data["cards"] else "Habis"
-            msg += f"\n\n🃏 <b>Sisa Kartu {p_data['name']}:</b>\n{sisa}"
+            sisa = ", ".join([CARDS.get(c, {}).get("name", c.title()) for c in p_data["cards"]]) if p_data["cards"] else "Habis"
+            msg += f"\n\n🃏 <b>Sisa Kartu {html.escape(p_data['name'])}:</b>\n{html.escape(sisa)}"
             
     await update.message.reply_text(msg, parse_mode="HTML")
 

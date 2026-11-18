@@ -25,6 +25,7 @@ bot/
     ├── kontrak.py    # Pembuatan dan manajemen kontrak.
     ├── kts.py        # Generator Kartu Tanda Shisya (KTS).
     ├── messages.py   # Tracker grup, pemantau username, penangkap teks fallback.
+    ├── pfp.py        # Forward postingan channel ke KEEP channel & rekap statistik Owner.
     ├── triggers.py   # Logika auto-reply kustom.
     └── tugas.py      # Pengumpulan dan review tugas.
 ```

@@ -33,6 +33,8 @@ Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi in
 - `idx_agra_actor`: Index pada `agra_ledger(actor_telegram_id)`.
 - `idx_users_created_at`: Index pada `users(created_at)` untuk sorting kronologis cepat user terdaftar.
 - `idx_pcr_telegram_id`: Index pada `profile_change_requests(telegram_id)` untuk lookup riwayat permohonan profil.
+- `idx_pfp_logs_created_at`: Index pada `pfp_logs(created_at)` untuk filtering cepat rekap harian & mingguan tanpa *full table scan*.
+- `idx_pfp_logs_user_date`: Index komposit `pfp_logs(user_id, created_at)` untuk aggregasi cepat per user.
 - `idx_task_sub_student`: Index pada `task_submissions(student_telegram_id)` untuk lookup pengumpulan tugas mahasiswa.
 
 Selain index, worker background (seperti `checker.py`) menggunakan *adaptive polling*: jika antrean kosong (*idle*), interval sleep dinaikkan menjadi 3.5 detik; jika ada antrean yang diproses, interval turun ke 1 detik agar proses berlangsung cepat.
@@ -195,6 +197,18 @@ Tabel cermin (*mirroring*) cloud remote untuk data kelulusan, nilai mata kuliah,
 - `created_at` (REAL NOT NULL): Timestamp pembuatan arsip
 - `updated_at` (REAL NOT NULL): Timestamp pembaruan arsip
 - *Indexes:* `idx_grad_records_nama` ON `nama`, `idx_grad_records_gen` ON `generasi`
+
+### 22. `pfp_logs`
+Tabel pencatatan riwayat eksekusi forward channel post (`/pfp`) yang berhasil diforward ke `KEEP_CH_ID`.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
+- `user_id` (INTEGER NOT NULL): ID Telegram pengguna yang mengeksekusi perintah
+- `chat_id` (INTEGER NOT NULL): ID chat/grup tempat perintah dikirim
+- `channel_id` (TEXT NOT NULL): Username atau ID channel sumber
+- `first_msg_id` (INTEGER NOT NULL): ID postingan awal yang diforward
+- `last_msg_id` (INTEGER NOT NULL): ID postingan akhir yang diforward
+- `forwarded_count` (INTEGER NOT NULL): Jumlah total postingan yang berhasil diforward
+- `created_at` (REAL NOT NULL): Timestamp eksekusi perintah (epoch seconds)
+- *Indexes:* `idx_pfp_logs_created_at` ON `pfp_logs(created_at)`, `idx_pfp_logs_user_date` ON `pfp_logs(user_id, created_at)`
 
 ---
 

@@ -462,6 +462,19 @@ CREATE TABLE IF NOT EXISTS graduation_records (
 );
 CREATE INDEX IF NOT EXISTS idx_grad_records_nama ON graduation_records(nama);
 CREATE INDEX IF NOT EXISTS idx_grad_records_gen ON graduation_records(generasi);
+
+CREATE TABLE IF NOT EXISTS pfp_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    chat_id INTEGER NOT NULL,
+    channel_id TEXT NOT NULL,
+    first_msg_id INTEGER NOT NULL,
+    last_msg_id INTEGER NOT NULL,
+    forwarded_count INTEGER NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pfp_logs_created_at ON pfp_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_pfp_logs_user_date ON pfp_logs(user_id, created_at);
 """
 
 class AiosqliteRowMock:
@@ -653,6 +666,7 @@ class Database:
             ("charyarthi_questions", "id", "CREATE TABLE IF NOT EXISTS charyarthi_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, division_id TEXT NOT NULL, question_order INTEGER NOT NULL, question_text TEXT NOT NULL, created_at REAL NOT NULL)"),
             ("charyarthi_answers", "id", "CREATE TABLE IF NOT EXISTS charyarthi_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, division_id TEXT NOT NULL, question_id INTEGER NOT NULL, answer_text TEXT NOT NULL, updated_at REAL NOT NULL, UNIQUE (telegram_id, division_id, question_id))"),
             ("graduation_records", "nim", "CREATE TABLE IF NOT EXISTS graduation_records (nim TEXT PRIMARY KEY, nama TEXT NOT NULL, generasi TEXT NOT NULL, data_json TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)"),
+            ("pfp_logs", "id", "CREATE TABLE IF NOT EXISTS pfp_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, chat_id INTEGER NOT NULL, channel_id TEXT NOT NULL, first_msg_id INTEGER NOT NULL, last_msg_id INTEGER NOT NULL, forwarded_count INTEGER NOT NULL, created_at REAL NOT NULL)"),
         ]
         for tbl, col, sql in migrations:
             try:
@@ -678,6 +692,8 @@ class Database:
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_nama ON graduation_records(nama)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_grad_records_gen ON graduation_records(generasi)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pfp_logs_created_at ON pfp_logs(created_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pfp_logs_user_date ON pfp_logs(user_id, created_at)")
         except Exception:
             pass
             
@@ -1788,6 +1804,8 @@ class Database:
 
         cur = await conn.execute("DELETE FROM charyarthi_answers")
         charyarthi_answers = self._rowcount(cur)
+
+        await conn.execute("DELETE FROM pfp_logs")
 
         await conn.commit()
         return {
@@ -3050,6 +3068,73 @@ class Database:
             except Exception:
                 pass
         return res
+
+    async def log_pfp_forward(
+        self,
+        conn: aiosqlite.Connection,
+        user_id: int,
+        chat_id: int,
+        channel_id: str,
+        first_msg_id: int,
+        last_msg_id: int,
+        forwarded_count: int,
+        created_at: float,
+    ) -> None:
+        await conn.execute(
+            """
+            INSERT INTO pfp_logs (
+                user_id, chat_id, channel_id, first_msg_id, last_msg_id, forwarded_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, chat_id, str(channel_id), first_msg_id, last_msg_id, forwarded_count, created_at),
+        )
+        await conn.commit()
+
+    async def get_pfp_daily_stats(
+        self,
+        conn: aiosqlite.Connection,
+        start_ts: float,
+        end_ts: float,
+    ) -> list[dict]:
+        cur = await conn.execute(
+            """
+            SELECT 
+                l.user_id,
+                COALESCE(u.first_name, '') AS first_name,
+                COALESCE(u.username, '') AS username,
+                SUM(l.forwarded_count) AS total_posts,
+                COUNT(l.id) AS total_commands
+            FROM pfp_logs l
+            LEFT JOIN users u ON l.user_id = u.telegram_id
+            WHERE l.created_at >= ? AND l.created_at <= ?
+            GROUP BY l.user_id
+            ORDER BY total_posts DESC, l.user_id ASC
+            """,
+            (start_ts, end_ts),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_pfp_weekly_stats(
+        self,
+        conn: aiosqlite.Connection,
+        start_ts: float,
+        end_ts: float,
+    ) -> list[dict]:
+        cur = await conn.execute(
+            """
+            SELECT 
+                l.user_id,
+                l.forwarded_count,
+                l.created_at
+            FROM pfp_logs l
+            WHERE l.created_at >= ? AND l.created_at <= ?
+            ORDER BY l.created_at ASC
+            """,
+            (start_ts, end_ts),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
 
 __all__ = [

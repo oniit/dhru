@@ -31,6 +31,13 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/lpm <link>` — Men-submit link pesan promosi dari grup publik untuk divalidasi dan mendapatkan reward Agra.
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
+## Fitur Penyimpanan & Forward Post (/pfp)
+- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp`. Jika pemanggil adalah Owner, menampilkan sub-menu khusus Owner (`pfp daily` & `pfp weekly`).
+- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`) maupun privat (`t.me/c/12345/123`).
+- `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus).
+- `/pfp daily` — (Khusus Owner) Menampilkan rekap pengguna yang berhasil mem-forward postingan hari ini beserta jumlah post yang diforward.
+- `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).
+
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/help_owner` atau `/ownerhelp` — (Hanya Owner) Menampilkan ensiklopedia panduan lengkap seluruh perintah, wewenang, dan fungsi administratif eksklusif tingkat Founder / Owner.
 - `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
@@ -95,7 +102,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/tebak <angka>` — (Khusus Game) Menebak angka saat fase tebak berlangsung (contoh: Kantong Rempah).
 - `/ikut` — Bergabung ke dalam game (contoh: Tujuh Pusaka).
 - `/mulai_game` — (Admin/Pemulai) Memulai ronde 1 pada game (contoh: Tujuh Pusaka).
-- `/pusaka <kartu>` — (Khusus Game Tujuh Pusaka) Memilih kartu pusaka yang akan dikeluarkan.
+- `/pusaka <nama_kartu/nomor>` — (Khusus Game Tujuh Pusaka) Memilih kartu pusaka yang akan dikeluarkan (mendukung nama kartu fleksibel, case-insensitive, atau nomor urut kartu 1-7).
 - `/status <game_name>` — Mengecek status dan skor sementara game yang sedang berjalan.
 - `/berhenti <game_name>` — (Admin/Pemulai) Menghentikan game dan menampilkan skor akhir.
 - `/hasil <game_name>` — Menampilkan skor akhir dari sesi game terakhir jika tertinggal.

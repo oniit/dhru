@@ -533,6 +533,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "/profile — Profil akun & total Agra",
         "/lengkapi — Isi data wajib awal (sekali)",
         "/ubah — Ajukan perubahan (disetujui admin)",
+        "/pfp — Forward post channel ke KEEP channel",
         "",
     ]
     if role in (ROLE_STUDENT, ROLE_BEM, ROLE_PURNA):
@@ -660,6 +661,7 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "• <code>/promo</code> — Menu pengaturan syarat kata kunci validasi LPM dan link target Story Telegram.",
         "• <code>/ospek_mode [on|off]</code> — Menghidupkan/mematikan rutinitas otomatis kegiatan Ospek Maba.\n",
         "<b>📢 Penyiaran & Komunikasi</b>",
+        "• <code>/pfp [daily|weekly]</code> — Forward post channel ke KEEP channel & statistik harian/mingguan Owner.",
         "• <code>/broadcast [role|all] [pesan]</code> — Mengirimkan pesan siaran resmi dari bot ke seluruh pengguna sesuai role.",
         "• <code>/trigger</code> — Menu pembuatan dan pengelolaan auto-responder kata kunci bot.\n",
         "<b>📜 Kelulusan & Transkrip Akademik</b>",
