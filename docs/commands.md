@@ -10,6 +10,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/ubah` — Meminta perubahan data yang sudah terkunci (masuk ke antrean _pending_).
 - `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
 - `/charyarthi` — Memulai formulir pendaftaran calon staf (Chāryārthī) secara interaktif.
+- `/kode [kode]` — Memasukkan kode akses registrasi peran standar atau menukarkan Warkat Kehormatan. Jika menukarkan Warkat Kehormatan, pengguna dapat memilih antara **Jalur Khusus Charya** (langsung memilih 3 divisi, bebas promo & tes tertulis, mengirim berkas CV ke `@HRDhruvaBot`) atau **Bebas Pravesa** (langsung diangkat menjadi Shishya/Mahasiswa tanpa mengikuti Ospek).
 - `/cancel` atau `/batal` — Membatalkan proses pengisian data atau interaksi aktif dan kembali ke kondisi awal.
 
 ## Akademik & Kelas
@@ -32,13 +33,17 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
 ## Fitur Penyimpanan & Forward Post (/pfp)
-- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp`. Jika pemanggil adalah Owner, menampilkan sub-menu khusus Owner (`pfp daily` & `pfp weekly`).
-- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`) maupun privat (`t.me/c/12345/123`).
-- `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus).
+- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward). Jika pemanggil adalah Owner, menampilkan sub-menu khusus Owner (`pfp daily` & `pfp weekly`).
+- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`) maupun privat (`t.me/c/12345/123`). Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna.
+- `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus). Memberikan reward +1 Agra per post yang berhasil diforward.
 - `/pfp daily` — (Khusus Owner) Menampilkan rekap pengguna yang berhasil mem-forward postingan hari ini beserta jumlah post yang diforward.
 - `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
+- `/gencode [jumlah] [role]` — (Hanya Owner) Membuat kode akses registrasi standar (default role: student).
+- `/gencode_avail` — (Hanya Owner) Melihat daftar kode akses standar yang belum diklaim.
+- `/gencode_warkat [jumlah]` / `/genwarkat` — (Hanya Owner) Membuat Warkat Kehormatan untuk alumni/purnata terpilih. Mendukung dua jalur: Jalur Khusus Charya (masa berlaku 60 hari) dan Bebas Pravesa (masa berlaku hingga 2 generasi).
+- `/gencode_warkat_avail` / `/genwarkat_avail` — (Hanya Owner) Melihat daftar Warkat Kehormatan yang belum digunakan beserta status keaktifan jalur Charya dan Pravesa.
 - `/help_owner` atau `/ownerhelp` — (Hanya Owner) Menampilkan ensiklopedia panduan lengkap seluruh perintah, wewenang, dan fungsi administratif eksklusif tingkat Founder / Owner.
 - `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.

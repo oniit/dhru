@@ -275,7 +275,8 @@ def test_system_ddl_and_indexes(db, conn):
         "users", "agra_ledger", "attendance_sessions", "attendance_records",
         "task_assignments", "task_submissions", "profile_change_requests",
         "bot_settings", "menfess_history", "manosraya_history", "triggers",
-        "charyarthi_questions", "charyarthi_answers", "graduation_records"
+        "charyarthi_questions", "charyarthi_answers", "graduation_records",
+        "pfp_logs", "warkat_codes"
     ]
     for tbl in expected_critical_tables:
         if tbl in tables:
@@ -290,7 +291,8 @@ def test_system_ddl_and_indexes(db, conn):
     critical_indexes = [
         "idx_agra_target", "idx_attendance_session", "idx_pending_profile",
         "idx_users_username_lower", "idx_grad_records_nama", "idx_grad_records_gen",
-        "idx_users_role"
+        "idx_users_role", "idx_pfp_logs_created_at", "idx_pfp_logs_user_date",
+        "idx_warkat_used_by", "idx_warkat_created_at"
     ]
     for idx in critical_indexes:
         if idx in idx_names:
@@ -802,6 +804,223 @@ def test_security_and_edge_cases(db, conn):
     reporter.log_test("State/FSM", "Session Isolation", "User data dictionary separation", "PASS", "Zero crosstalk between session contexts")
 
 # ============================================================================
+# 9. PFP FORWARD & WARKAT KEHORMATAN SUBSYSTEMS
+# ============================================================================
+
+def test_pfp_and_warkat_subsystems(db, conn):
+    print("\n--- 9. Testing PFP & Warkat Kehormatan Subsystems ---", flush=True)
+    from bot.handlers import pfp
+    from bot.handlers.messages import handle_input_code
+
+    owner_id = 999999
+    owner = create_test_user(db, conn, owner_id, "founder", "Owner", ROLE_OWNER)
+    student_id = 80001
+    student = create_test_user(db, conn, student_id, "alumni_shishya", "Bima", ROLE_PURNA)
+
+    # 9.1 /pfp tutorial & syntax
+    up_tutor = make_mock_update(student, "/pfp")
+    ctx_tutor = make_mock_context(db, conn, args=[])
+    run_sync(pfp.cmd_pfp(up_tutor, ctx_tutor))
+    rep_tutor = up_tutor.message.reply_text.call_args_list[-1][0][0]
+    assert "Panduan Penggunaan" in rep_tutor and "/pfp" in rep_tutor
+    assert "+1 Agra" in rep_tutor
+    reporter.log_test("/pfp", "Happy Path", "Display /pfp tutorial with Agra reward info", "PASS", "Tutorial rendered with +1 Agra note")
+
+    # 9.2 /pfp execution with automatic Agra reward
+    bal_before = run_sync(db.agra_total(conn, student_id))
+    status_msg = AsyncMock()
+    up_pfp = make_mock_update(student, "/pfp https://t.me/test_ch/42")
+    up_pfp.message.reply_text = AsyncMock(return_value=status_msg)
+    up_pfp.effective_message.reply_text = AsyncMock(return_value=status_msg)
+    ctx_pfp = make_mock_context(db, conn, args=["https://t.me/test_ch/42"])
+    ctx_pfp.bot.forward_message = AsyncMock(return_value=MagicMock())
+    with patch("bot.handlers.pfp.KEEP_CH_ID", -1004387877391):
+        run_sync(pfp.cmd_pfp(up_pfp, ctx_pfp))
+    bal_after = run_sync(db.agra_total(conn, student_id))
+    assert bal_after == bal_before + 1
+    reporter.log_test("/pfp", "Logic/Reward", "Automatic +1 Agra per forwarded post", "PASS", f"Balance incremented by 1 (from {bal_before} to {bal_after})")
+
+    # 9.3 /pfp daily & weekly owner stats
+    up_daily = make_mock_update(owner, "/pfp daily")
+    ctx_daily = make_mock_context(db, conn, args=["daily"])
+    with patch("bot.handlers.pfp.is_owner", return_value=True):
+        run_sync(pfp.cmd_pfp(up_daily, ctx_daily))
+    rep_daily = up_daily.message.reply_text.call_args_list[-1][0][0]
+    assert "Laporan PFP Daily" in rep_daily
+    reporter.log_test("/pfp daily", "Happy Path", "Owner views daily forward stats", "PASS", "Daily summary rendered")
+
+    # 9.4 /gencode_warkat creation & security
+    up_gen_fail = make_mock_update(student, "/gencode_warkat 2")
+    ctx_gen_fail = make_mock_context(db, conn, args=["2"])
+    with patch("bot.handlers.commands.is_owner", return_value=False):
+        run_sync(commands.cmd_gencode_warkat(up_gen_fail, ctx_gen_fail))
+    assert "Hanya owner yang berhak" in up_gen_fail.message.reply_text.call_args_list[-1][0][0]
+    reporter.log_test("/gencode_warkat", "Security/Auth", "Block non-owner from generating warkat", "PASS", "Access denied for non-owner")
+
+    up_gen = make_mock_update(owner, "/gencode_warkat 2")
+    ctx_gen = make_mock_context(db, conn, args=["2"])
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(commands.cmd_gencode_warkat(up_gen, ctx_gen))
+    rep_gen = up_gen.message.reply_text.call_args_list[-1][0][0]
+    assert "Berhasil Membuat 2 Warkat Kehormatan" in rep_gen
+    assert "Masa Berlaku Charya:</b> 60 Hari" in rep_gen
+    assert "Masa Berlaku Pravesa:</b> 2 Generasi" in rep_gen
+    reporter.log_test("/gencode_warkat", "Happy Path", "Owner creates dual-expiry warkat codes", "PASS", "2 warkat codes created with 60d / 2gen validity")
+
+    # 9.5 /gencode_warkat_avail listing
+    up_avail = make_mock_update(owner, "/gencode_warkat_avail")
+    ctx_avail = make_mock_context(db, conn, args=[])
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(commands.cmd_gencode_warkat_avail(up_avail, ctx_avail))
+    rep_avail = up_avail.message.reply_text.call_args_list[-1][0][0]
+    assert "Warkat Kehormatan Belum Digunakan" in rep_avail
+    reporter.log_test("/gencode_warkat_avail", "Happy Path", "Owner views unredeemed warkat codes", "PASS", "Available warkats listed")
+
+    # 9.6 /kode with Warkat Kehormatan -> options menu
+    avail_codes = run_sync(db.get_available_warkat_codes(conn))
+    assert len(avail_codes) >= 2
+    test_code_charya = avail_codes[0]["code"]
+    test_code_pravesa = avail_codes[1]["code"]
+
+    up_input_kode = make_mock_update(student, f"/kode {test_code_charya}")
+    ctx_input_kode = make_mock_context(db, conn, args=[test_code_charya])
+    run_sync(handle_input_code(up_input_kode, ctx_input_kode, test_code_charya))
+    rep_input = up_input_kode.message.reply_text.call_args_list[-1][0][0]
+    assert "Warkat Kehormatan Terverifikasi!" in rep_input
+    assert "Jalur Khusus Charya" in rep_input
+    assert "Bebas Pravesa" in rep_input
+    kb_input = up_input_kode.message.reply_text.call_args_list[-1][1].get("reply_markup")
+    assert kb_input is not None
+    reporter.log_test("/kode", "Happy Path", "Verify warkat and render dual-track options", "PASS", "Dual-track selection menu displayed")
+
+    # 9.7 Track 1: Jalur Khusus Charya flow (Div 1 -> Div 2 -> Div 3 -> CV note -> Submit)
+    candidate_id = 80002
+    candidate = create_test_user(db, conn, candidate_id, "calon_charya", "Citra", ROLE_PUBLIC)
+    ctx_candidate = make_mock_context(db, conn, user_data={})
+
+    # Start Charya flow
+    cb_charya = MagicMock(spec=CallbackQuery)
+    cb_charya.from_user = candidate
+    cb_charya.data = f"warkat:charya:{test_code_charya}"
+    cb_charya.answer = AsyncMock()
+    cb_charya.edit_message_text = AsyncMock()
+    up_cb_charya = MagicMock(callback_query=cb_charya, effective_user=candidate)
+    run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
+    assert "Pilihan Divisi 1" in cb_charya.edit_message_text.call_args[0][0]
+
+    # Select Div 1
+    cb_charya.data = f"warkat:cdiv1:{test_code_charya}:d_it"
+    run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
+    assert "Pilihan Divisi 2" in cb_charya.edit_message_text.call_args[0][0]
+    assert ctx_candidate.user_data["warkat_flow"]["d1"] == "d_it"
+
+    # Select Div 2
+    cb_charya.data = f"warkat:cdiv2:{test_code_charya}:d_medkraf"
+    run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
+    assert "Pilihan Divisi 3" in cb_charya.edit_message_text.call_args[0][0]
+    assert ctx_candidate.user_data["warkat_flow"]["d2"] == "d_medkraf"
+
+    # Select Div 3
+    cb_charya.data = f"warkat:cdiv3:{test_code_charya}:d_humas"
+    run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
+    assert "@HRDhruvaBot" in cb_charya.edit_message_text.call_args[0][0]
+    assert ctx_candidate.user_data["warkat_flow"]["d3"] == "d_humas"
+
+    # Submit application
+    cb_charya.data = f"warkat:csubmit:{test_code_charya}"
+    with patch("bot.handlers.commands.PENDAFTAR_CH_ID", 10091), patch("bot.handlers.commands.SDM_CH_ID", 10092):
+        run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
+    assert "Pendaftaran Jalur Khusus Charya Berhasil Dikirim!" in cb_charya.edit_message_text.call_args[0][0]
+
+    row_c = run_sync(db.get_user(conn, candidate_id))
+    assert row_c["role"] == ROLE_CHARYARTHI
+    prof_c = common.profile_from_row(row_c)
+    assert prof_c["target_division_1"] == "d_it"
+    assert prof_c["target_division_2"] == "d_medkraf"
+    assert prof_c["target_division_3"] == "d_humas"
+    assert prof_c["application_status"] == "PENDING"
+    reporter.log_test("Warkat (Charya)", "E2E Flow", "Select 3 divisions & submit with @HRDhruvaBot instruction", "PASS", "Submitted with 3 divisions, role updated to charyarthi")
+
+    # 9.8 Admin accepts Divisi 3
+    cb_acc = MagicMock(spec=CallbackQuery)
+    cb_acc.from_user = owner
+    cb_acc.data = f"charyarthi:acc:{candidate_id}:3"
+    cb_acc.answer = AsyncMock()
+    cb_acc.edit_message_text = AsyncMock()
+    cb_acc.message.text_html = "Pendaftaran"
+    up_cb_acc = MagicMock(callback_query=cb_acc, effective_user=owner)
+    ctx_acc = make_mock_context(db, conn)
+    with patch("bot.handlers.commands.is_admin_elevated", return_value=True):
+        run_sync(commands.on_callback(up_cb_acc, ctx_acc))
+    row_c_acc = run_sync(db.get_user(conn, candidate_id))
+    assert row_c_acc["role"] == ROLE_INTERNAL
+    prof_c_acc = common.profile_from_row(row_c_acc)
+    assert prof_c_acc["application_status"] == "ACCEPTED"
+    assert "d_humas" in prof_c_acc["position_detail"]
+    reporter.log_test("Charyarthi Acc", "Logic", "Admin accepts candidate on Choice 3", "PASS", "Promoted to internal on choice 3")
+
+    # 9.9 Track 2: Bebas Pravesa flow (Direct Shishya / ROLE_STUDENT)
+    pravesa_user_id = 80003
+    pravesa_user = create_test_user(db, conn, pravesa_user_id, "alumni_pravesa", "Dewi", ROLE_PURNA)
+    ctx_pravesa = make_mock_context(db, conn)
+
+    cb_pravesa = MagicMock(spec=CallbackQuery)
+    cb_pravesa.from_user = pravesa_user
+    cb_pravesa.data = f"warkat:pravesa:{test_code_pravesa}"
+    cb_pravesa.answer = AsyncMock()
+    cb_pravesa.edit_message_text = AsyncMock()
+    up_cb_pravesa = MagicMock(callback_query=cb_pravesa, effective_user=pravesa_user)
+    run_sync(commands.handle_warkat_callback(up_cb_pravesa, ctx_pravesa))
+    assert "resmi menjadi <b>Shishya (Mahasiswa)</b>" in cb_pravesa.edit_message_text.call_args[0][0]
+
+    row_p = run_sync(db.get_user(conn, pravesa_user_id))
+    assert row_p["role"] == ROLE_STUDENT
+    w_p = run_sync(db.get_warkat_code(conn, test_code_pravesa))
+    assert w_p["used_by"] == pravesa_user_id
+    assert w_p["chosen_track"] == "pravesa"
+    reporter.log_test("Warkat (Pravesa)", "E2E Flow", "Direct promotion to student without Ospek", "PASS", "Role set to student, warkat redeemed")
+
+    # 9.10 Anti-Double Redemption Check
+    cb_double = MagicMock(spec=CallbackQuery)
+    cb_double.from_user = student
+    cb_double.data = f"warkat:pravesa:{test_code_pravesa}"
+    cb_double.answer = AsyncMock()
+    cb_double.edit_message_text = AsyncMock()
+    up_cb_double = MagicMock(callback_query=cb_double, effective_user=student)
+    run_sync(commands.handle_warkat_callback(up_cb_double, ctx_pravesa))
+    assert "sudah tidak valid atau telah digunakan" in cb_double.edit_message_text.call_args[0][0]
+    reporter.log_test("Warkat", "Security/Integrity", "Prevent double redemption of used warkat", "PASS", "Double redemption rejected")
+
+    # 9.11 Expiry validations (Charya expired vs Pravesa expired)
+    now = time.time()
+    code_expired_charya = "WARKAT-EXP-CHA"
+    code_expired_both = "WARKAT-EXP-ALL"
+    run_sync(db.create_warkat_codes(conn, [
+        (code_expired_charya, now - 100, owner_id, now - 10, 1, 3), # Charya expired, Pravesa active
+        (code_expired_both, now - 100, owner_id, now - 10, 1, 1),   # Both expired (current_gen is at least 1)
+    ]))
+    run_sync(db.set_setting(conn, "current_generasi", "2")) # Advance to Gen 2 -> code_expired_both Pravesa also expired
+
+    # Test expired charya: click Charya callback -> rejected
+    cb_exp_c = MagicMock(spec=CallbackQuery)
+    cb_exp_c.from_user = student
+    cb_exp_c.data = f"warkat:charya:{code_expired_charya}"
+    cb_exp_c.answer = AsyncMock()
+    cb_exp_c.edit_message_text = AsyncMock()
+    up_cb_exp_c = MagicMock(callback_query=cb_exp_c, effective_user=student)
+    run_sync(commands.handle_warkat_callback(up_cb_exp_c, ctx_pravesa))
+    assert "telah kedaluwarsa" in cb_exp_c.edit_message_text.call_args[0][0]
+    reporter.log_test("Warkat", "Boundary/Expiry", "Reject expired Charya (>60d)", "PASS", "Expired Charya track rejected")
+
+    # Test both expired via /kode
+    up_exp_both = make_mock_update(student, f"/kode {code_expired_both}")
+    ctx_exp_both = make_mock_context(db, conn)
+    run_sync(handle_input_code(up_exp_both, ctx_exp_both, code_expired_both))
+    rep_exp_both = up_exp_both.message.reply_text.call_args_list[-1][0][0]
+    assert "Warkat Kehormatan Kedaluwarsa" in rep_exp_both
+    reporter.log_test("Warkat", "Boundary/Expiry", "Reject warkat when both tracks expired", "PASS", "Full expiry message returned")
+
+# ============================================================================
 # MASTER RUNNER
 # ============================================================================
 
@@ -844,6 +1063,7 @@ def run_master_audit():
         test_admin_and_owner_controls(db, conn)
         test_cards_games_and_groups(db, conn)
         test_security_and_edge_cases(db, conn)
+        test_pfp_and_warkat_subsystems(db, conn)
     finally:
         if orig_to_thread:
             asyncio.to_thread = orig_to_thread

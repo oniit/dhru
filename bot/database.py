@@ -475,6 +475,23 @@ CREATE TABLE IF NOT EXISTS pfp_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_pfp_logs_created_at ON pfp_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_pfp_logs_user_date ON pfp_logs(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS warkat_codes (
+    code TEXT PRIMARY KEY,
+    created_at REAL NOT NULL,
+    created_by INTEGER NOT NULL,
+    expires_charya REAL NOT NULL,
+    created_gen INTEGER NOT NULL DEFAULT 1,
+    max_generasi INTEGER NOT NULL,
+    used_by INTEGER,
+    used_at REAL,
+    chosen_track TEXT,
+    charya_div_1 TEXT,
+    charya_div_2 TEXT,
+    charya_div_3 TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_warkat_used_by ON warkat_codes(used_by);
+CREATE INDEX IF NOT EXISTS idx_warkat_created_at ON warkat_codes(created_at);
 """
 
 class AiosqliteRowMock:
@@ -667,6 +684,7 @@ class Database:
             ("charyarthi_answers", "id", "CREATE TABLE IF NOT EXISTS charyarthi_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, division_id TEXT NOT NULL, question_id INTEGER NOT NULL, answer_text TEXT NOT NULL, updated_at REAL NOT NULL, UNIQUE (telegram_id, division_id, question_id))"),
             ("graduation_records", "nim", "CREATE TABLE IF NOT EXISTS graduation_records (nim TEXT PRIMARY KEY, nama TEXT NOT NULL, generasi TEXT NOT NULL, data_json TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL)"),
             ("pfp_logs", "id", "CREATE TABLE IF NOT EXISTS pfp_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, chat_id INTEGER NOT NULL, channel_id TEXT NOT NULL, first_msg_id INTEGER NOT NULL, last_msg_id INTEGER NOT NULL, forwarded_count INTEGER NOT NULL, created_at REAL NOT NULL)"),
+            ("warkat_codes", "code", "CREATE TABLE IF NOT EXISTS warkat_codes (code TEXT PRIMARY KEY, created_at REAL NOT NULL, created_by INTEGER NOT NULL, expires_charya REAL NOT NULL, created_gen INTEGER NOT NULL DEFAULT 1, max_generasi INTEGER NOT NULL, used_by INTEGER, used_at REAL, chosen_track TEXT, charya_div_1 TEXT, charya_div_2 TEXT, charya_div_3 TEXT)"),
         ]
         for tbl, col, sql in migrations:
             try:
@@ -694,6 +712,8 @@ class Database:
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pfp_logs_created_at ON pfp_logs(created_at)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pfp_logs_user_date ON pfp_logs(user_id, created_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_warkat_used_by ON warkat_codes(used_by)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_warkat_created_at ON warkat_codes(created_at)")
         except Exception:
             pass
             
@@ -932,6 +952,13 @@ class Database:
                 "old_role": old_role,
                 "nim": nim,
             })
+
+        if processed:
+            try:
+                cur_gen = int(await self.get_setting(conn, "current_generasi", "1"))
+                await self.set_setting(conn, "current_generasi", str(cur_gen + 1))
+            except Exception:
+                pass
 
         return len(processed), counts, processed
 
@@ -1806,6 +1833,7 @@ class Database:
         charyarthi_answers = self._rowcount(cur)
 
         await conn.execute("DELETE FROM pfp_logs")
+        await conn.execute("DELETE FROM warkat_codes")
 
         await conn.commit()
         return {
@@ -3132,6 +3160,75 @@ class Database:
             ORDER BY l.created_at ASC
             """,
             (start_ts, end_ts),
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def create_warkat_codes(
+        self,
+        conn: aiosqlite.Connection,
+        codes_data: list[tuple[str, float, int, float, int, int]],
+    ) -> None:
+        """
+        Menyimpan banyak kode warkat sekaligus.
+        Format tuple: (code, created_at, created_by, expires_charya, created_gen, max_generasi)
+        """
+        for code, created_at, created_by, expires_charya, created_gen, max_generasi in codes_data:
+            await conn.execute(
+                """
+                INSERT INTO warkat_codes (
+                    code, created_at, created_by, expires_charya, created_gen, max_generasi
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (code, created_at, created_by, expires_charya, created_gen, max_generasi),
+            )
+        await conn.commit()
+
+    async def get_warkat_code(
+        self,
+        conn: aiosqlite.Connection,
+        code: str,
+    ) -> dict | None:
+        """Mengambil data warkat berdasarkan kodenya."""
+        cur = await conn.execute(
+            "SELECT * FROM warkat_codes WHERE code = ?",
+            (code.strip().upper(),),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def redeem_warkat_code(
+        self,
+        conn: aiosqlite.Connection,
+        code: str,
+        user_id: int,
+        chosen_track: str,
+        div1: str | None = None,
+        div2: str | None = None,
+        div3: str | None = None,
+    ) -> bool:
+        """
+        Mengklaim warkat secara atomik.
+        Returns True jika berhasil, False jika warkat sudah pernah digunakan.
+        """
+        cur = await conn.execute(
+            """
+            UPDATE warkat_codes
+            SET used_by = ?, used_at = ?, chosen_track = ?, charya_div_1 = ?, charya_div_2 = ?, charya_div_3 = ?
+            WHERE code = ? AND used_by IS NULL
+            """,
+            (user_id, time.time(), chosen_track, div1, div2, div3, code.strip().upper()),
+        )
+        await conn.commit()
+        return getattr(cur, "rowcount", 0) > 0
+
+    async def get_available_warkat_codes(
+        self,
+        conn: aiosqlite.Connection,
+    ) -> list[dict]:
+        """Mengambil daftar kode warkat yang belum digunakan."""
+        cur = await conn.execute(
+            "SELECT * FROM warkat_codes WHERE used_by IS NULL ORDER BY created_at DESC"
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]

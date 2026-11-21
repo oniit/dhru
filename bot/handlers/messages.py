@@ -35,6 +35,7 @@ from .common import (
     render_charyarthi_quiz_view,
     render_greeting_message,
 )
+from bot.timefmt import format_local_time
 from .kartu import STEP_KARTU_PHOTO, on_foto
 
 ADMIN_PROFILE_TARGET_UD = "admin_profile_target"
@@ -402,144 +403,211 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    if step == "INPUT_CODE":
-        code = text.strip()
-        cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
-        code_row = await cur.fetchone()
-        if code_row:
-            target_role = code_row["target_role"] if "target_role" in code_row.keys() else "student"
-            
-            if row["role"] == target_role:
-                prof = profile_from_row(row)
-                if target_role == "maba" and "maba_group" not in prof:
-                    pass
-                else:
-                    await db.set_onboarding_step(conn, uid, None)
-                    await update.message.reply_text(f"Gagal, ini adalah kode {target_role}, peranmu sebelumnya {row['role']}")
-                    return
-                
-            cur_up = await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ? AND used_by IS NULL", (uid, time.time(), code))
-            if getattr(cur_up, "rowcount", 0) <= 0:
-                await db.set_onboarding_step(conn, uid, None)
-                await update.message.reply_text("❌ Kode akses ini baru saja digunakan oleh orang lain atau sudah tidak valid.")
-                return
-            await db.set_role(conn, uid, target_role)
+async def handle_input_code(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_code: str) -> None:
+    conn = _conn(context)
+    db = _db(context)
+    uid = update.effective_user.id
+    code = raw_code.strip().upper()
+
+    # 1. Cek apakah ini Warkat Kehormatan
+    w = await db.get_warkat_code(conn, code)
+    if w:
+        if w.get("used_by"):
             await db.set_onboarding_step(conn, uid, None)
-            await conn.commit()
-            
-            from bot.settings import OWNER_ID, BACKUP_CH_ID
+            await update.message.reply_text("❌ Warkat Kehormatan ini sudah pernah digunakan sebelumnya.")
+            return
 
-            u = update.effective_user
-            username_str = f"@{u.username}" if u.username else "Tanpa Username"
-            name_str = u.first_name
-            if u.last_name: name_str += f" {u.last_name}"
+        now = time.time()
+        charya_valid = now <= w["expires_charya"]
+        cur_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+        pravesa_valid = cur_gen <= w["max_generasi"]
 
-            if OWNER_ID and str(OWNER_ID) != "0":
-                try:
-                    await context.bot.send_message(
-                        chat_id=OWNER_ID,
-                        text=f"🔑 <b>Kode Akses Digunakan</b>\n"
-                             f"<b>Oleh:</b> {name_str} ({username_str})\n"
-                             f"<b>ID:</b> <code>{u.id}</code>\n"
-                             f"<b>Role:</b> <code>{target_role}</code>\n"
-                             f"<b>Kode:</b> <code>{code}</code>"
-                    )
-                except Exception:
-                    pass
+        if not charya_valid and not pravesa_valid:
+            await db.set_onboarding_step(conn, uid, None)
+            await update.message.reply_text(
+                "❌ <b>Warkat Kehormatan Kedaluwarsa</b>\n\n"
+                "Masa berlaku warkat ini telah berakhir untuk kedua jalur:\n"
+                f"• Jalur Khusus Charya (maks. 60 hari): ❌ Kedaluwarsa\n"
+                f"• Bebas Pravesa (maks. Gen {w['max_generasi']}): ❌ Kedaluwarsa (Generasi saat ini: {cur_gen})",
+                parse_mode="HTML"
+            )
+            return
 
-            if target_role == "maba" and BACKUP_CH_ID:
-                try:
-                    await context.bot.send_message(
-                        chat_id=BACKUP_CH_ID,
-                        text=f"🔑 <b>Kode Akses Digunakan</b>\n"
-                             f"<b>Oleh:</b> {name_str} ({username_str})\n"
-                             f"<b>Kode:</b> <code>{code}</code>"
-                    )
-                except Exception:
-                    pass
-            
-            if target_role == "internal":
-                await update.message.reply_text("🔑 Kode akses internal valid! Peran Anda kini diubah menjadi Staf Internal.\nSilakan lengkapi profil Anda dengan mengetik /lengkapi.")
-            elif target_role == "maba":
-                # --- TIERED ROUND-ROBIN + BALANCER ---
-                user_tier = await db.get_user_chat_tier(conn, uid)
-                
-                # Fetch all current mabas
-                cur_mabas = await conn.execute("SELECT telegram_id, profile_json FROM users WHERE role = 'maba'")
-                all_mabas = await cur_mabas.fetchall()
-                
-                tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
-                total_counts = {1: 0, 2: 0, 3: 0, 4: 0}
-                
-                # Retrieve all tiers at once to be efficient
-                all_tiers = await db.get_all_users_chat_tiers(conn)
-                
-                for r in all_mabas:
-                    if str(r["telegram_id"]) == str(uid):
-                        continue # Skip current user
-                    prof = json.loads(r["profile_json"]) if r["profile_json"] else {}
-                    mg_raw = prof.get("maba_group", 0)
-                    mg = int(mg_raw) if mg_raw and str(mg_raw).isdigit() else 0
-                    if 1 <= mg <= 4:
-                        total_counts[mg] += 1
-                        t = all_tiers.get(r["telegram_id"], "C")
-                        if t == user_tier:
-                            tier_counts[mg] += 1
-                            
-                # Priority 1: Distribute based on Tier
-                min_tier_count = min(tier_counts.values())
-                candidate_groups = [g for g, c in tier_counts.items() if c == min_tier_count]
-                
-                # Priority 2: Balancer (Pick the group with the lowest total members)
-                if len(candidate_groups) == 1:
-                    maba_group = candidate_groups[0]
-                else:
-                    min_total = min(total_counts[g] for g in candidate_groups)
-                    best_groups = [g for g in candidate_groups if total_counts[g] == min_total]
-                    maba_group = best_groups[0]
-                
-                await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
-                
-                await _mark_lengkapi_done_if_complete(conn, db, uid)
-                row_u = await user_row(conn, db, uid)
-                prof_u = profile_from_row(row_u) if row_u else {}
-                
-                from bot.settings import KELOMPOK_GID
-                if KELOMPOK_GID:
-                    try:
-                        name_str = prof_u.get("full_name", "Tanpa Nama")
-                        username_str = f"@{row_u['username']}" if row_u and row_u.get("username") else "-"
-                        msg_kelompok = (
-                            f"📣 <b>Alokasi Kelompok MABA</b>\n\n"
-                            f"<b>Nama:</b> <a href=\"tg://user?id={uid}\">{name_str}</a>\n"
-                            f"<b>Username:</b> {username_str}\n"
-                            f"<b>Kelompok:</b> {MABA_GROUP_NAMES.get(maba_group, maba_group)}"
-                        )
-                        await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
-                    except Exception as e:
-                        log.warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
-                
-                if _is_lengkapi_done(prof_u):
-                    link = "(Grup kelompok belum disetel oleh admin)"
-                    try:
-                        if len(MABA_GROUP_GIDS) >= maba_group:
-                            gid = MABA_GROUP_GIDS[maba_group - 1]
-                            invite = await context.bot.create_chat_invite_link(
-                                chat_id=gid, 
-                                member_limit=1, 
-                                name=f"Maba {uid}"
-                            )
-                            link = invite.invite_link
-                    except Exception as e:
-                        log.warning(f"Gagal membuat invite link Maba {uid}: {e}")
-                        link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
-                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
-                else:
-                    await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
+        buttons = []
+        if charya_valid:
+            buttons.append([InlineKeyboardButton("🏛 Ambil Jalur Khusus Charya (Calon Staf)", callback_data=f"warkat:charya:{code}")])
+        if pravesa_valid:
+            buttons.append([InlineKeyboardButton("🎓 Ambil Bebas Pravesa (Langsung Shishya)", callback_data=f"warkat:pravesa:{code}")])
+        buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
+
+        charya_info = f"✅ Aktif (s/d {format_local_time(w['expires_charya'])})" if charya_valid else "❌ Kedaluwarsa (Maks. 60 Hari)"
+        pravesa_info = f"✅ Aktif (s/d Generasi {w['max_generasi']})" if pravesa_valid else f"❌ Kedaluwarsa (Generasi saat ini: {cur_gen})"
+
+        await db.set_onboarding_step(conn, uid, None)
+        await update.message.reply_text(
+            "📜 <b>Warkat Kehormatan Terverifikasi!</b>\n\n"
+            "Selamat! Anda memiliki Warkat Kehormatan Institut Dhruva Ekāgra. "
+            "Warkat ini memberikan hak istimewa untuk memilih salah satu jalur berikut:\n\n"
+            "1. 🏛 <b>Jalur Khusus Charya (Calon Staf)</b>\n"
+            "   • Bebas tugas promosi & bebas tes esai tertulis.\n"
+            "   • Langsung memilih 3 divisi peminatan.\n"
+            "   • Kirim berkas CV ke bot resmi <b>@HRDhruvaBot</b>.\n"
+            f"   • Status: {charya_info}\n\n"
+            "2. 🎓 <b>Bebas Pravesa (Mahasiswa/Shishya)</b>\n"
+            "   • Langsung diangkat menjadi Shishya (Mahasiswa) tanpa mengikuti Ospek/Pravesa.\n"
+            f"   • Status: {pravesa_info}\n\n"
+            "<i>Silakan tentukan pilihan Anda dengan menekan salah satu tombol di bawah:</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
+        return
+
+    # 2. Cek Kode Akses Registrasi Standar
+    row = await user_row(conn, db, uid)
+    if not row:
+        await update.message.reply_text("Silakan ketik /start terlebih dahulu.")
+        return
+
+    cur = await conn.execute("SELECT * FROM access_codes WHERE code = ? AND used_by IS NULL", (code,))
+    code_row = await cur.fetchone()
+    if code_row:
+        target_role = code_row["target_role"] if "target_role" in code_row.keys() else "student"
+        
+        if row["role"] == target_role:
+            prof = profile_from_row(row)
+            if target_role == "maba" and "maba_group" not in prof:
+                pass
             else:
-                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
+                await db.set_onboarding_step(conn, uid, None)
+                await update.message.reply_text(f"Gagal, ini adalah kode {target_role}, peranmu sebelumnya {row['role']}")
+                return
+            
+        cur_up = await conn.execute("UPDATE access_codes SET used_by = ?, used_at = ? WHERE code = ? AND used_by IS NULL", (uid, time.time(), code))
+        if getattr(cur_up, "rowcount", 0) <= 0:
+            await db.set_onboarding_step(conn, uid, None)
+            await update.message.reply_text("❌ Kode akses ini baru saja digunakan oleh orang lain atau sudah tidak valid.")
+            return
+        await db.set_role(conn, uid, target_role)
+        await db.set_onboarding_step(conn, uid, None)
+        await conn.commit()
+        
+        from bot.settings import OWNER_ID, BACKUP_CH_ID
+
+        u = update.effective_user
+        username_str = f"@{u.username}" if u.username else "Tanpa Username"
+        name_str = u.first_name
+        if u.last_name: name_str += f" {u.last_name}"
+
+        if OWNER_ID and str(OWNER_ID) != "0":
+            try:
+                await context.bot.send_message(
+                    chat_id=OWNER_ID,
+                    text=f"🔑 <b>Kode Akses Digunakan</b>\n"
+                         f"<b>Oleh:</b> {name_str} ({username_str})\n"
+                         f"<b>ID:</b> <code>{u.id}</code>\n"
+                         f"<b>Role:</b> <code>{target_role}</code>\n"
+                         f"<b>Kode:</b> <code>{code}</code>"
+                )
+            except Exception:
+                pass
+
+        if target_role == "maba" and BACKUP_CH_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=BACKUP_CH_ID,
+                    text=f"🔑 <b>Kode Akses Digunakan</b>\n"
+                         f"<b>Oleh:</b> {name_str} ({username_str})\n"
+                         f"<b>Kode:</b> <code>{code}</code>"
+                )
+            except Exception:
+                pass
+        
+        if target_role == "internal":
+            await update.message.reply_text("🔑 Kode akses internal valid! Peran Anda kini diubah menjadi Staf Internal.\nSilakan lengkapi profil Anda dengan mengetik /lengkapi.")
+        elif target_role == "maba":
+            # --- TIERED ROUND-ROBIN + BALANCER ---
+            user_tier = await db.get_user_chat_tier(conn, uid)
+            
+            # Fetch all current mabas
+            cur_mabas = await conn.execute("SELECT telegram_id, profile_json FROM users WHERE role = 'maba'")
+            all_mabas = await cur_mabas.fetchall()
+            
+            tier_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+            total_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+            
+            # Retrieve all tiers at once to be efficient
+            all_tiers = await db.get_all_users_chat_tiers(conn)
+            
+            for r in all_mabas:
+                if str(r["telegram_id"]) == str(uid):
+                    continue # Skip current user
+                prof = json.loads(r["profile_json"]) if r["profile_json"] else {}
+                mg_raw = prof.get("maba_group", 0)
+                mg = int(mg_raw) if mg_raw and str(mg_raw).isdigit() else 0
+                if 1 <= mg <= 4:
+                    total_counts[mg] += 1
+                    t = all_tiers.get(r["telegram_id"], "C")
+                    if t == user_tier:
+                        tier_counts[mg] += 1
+                        
+            # Priority 1: Distribute based on Tier
+            min_tier_count = min(tier_counts.values())
+            candidate_groups = [g for g, c in tier_counts.items() if c == min_tier_count]
+            
+            # Priority 2: Balancer (Pick the group with the lowest total members)
+            if len(candidate_groups) == 1:
+                maba_group = candidate_groups[0]
+            else:
+                min_total = min(total_counts[g] for g in candidate_groups)
+                best_groups = [g for g in candidate_groups if total_counts[g] == min_total]
+                maba_group = best_groups[0]
+            
+            await db.set_profile_partial(conn, uid, {"maba_group": maba_group})
+            
+            await _mark_lengkapi_done_if_complete(conn, db, uid)
+            row_u = await user_row(conn, db, uid)
+            prof_u = profile_from_row(row_u) if row_u else {}
+            
+            from bot.settings import KELOMPOK_GID
+            if KELOMPOK_GID:
+                try:
+                    name_str = prof_u.get("full_name", "Tanpa Nama")
+                    username_str = f"@{row_u['username']}" if row_u and row_u.get("username") else "-"
+                    msg_kelompok = (
+                        f"📣 <b>Alokasi Kelompok MABA</b>\n\n"
+                        f"<b>Nama:</b> <a href=\"tg://user?id={uid}\">{name_str}</a>\n"
+                        f"<b>Username:</b> {username_str}\n"
+                        f"<b>Kelompok:</b> {MABA_GROUP_NAMES.get(maba_group, maba_group)}"
+                    )
+                    await context.bot.send_message(chat_id=KELOMPOK_GID, text=msg_kelompok, parse_mode="HTML")
+                except Exception as e:
+                    log.warning(f"Gagal mengirim info kelompok ke {KELOMPOK_GID}: {e}")
+            
+            if _is_lengkapi_done(prof_u):
+                link = "(Grup kelompok belum disetel oleh admin)"
+                try:
+                    if len(MABA_GROUP_GIDS) >= maba_group:
+                        gid = MABA_GROUP_GIDS[maba_group - 1]
+                        invite = await context.bot.create_chat_invite_link(
+                            chat_id=gid, 
+                            member_limit=1, 
+                            name=f"Maba {uid}"
+                        )
+                        link = invite.invite_link
+                except Exception as e:
+                    log.warning(f"Gagal membuat invite link Maba {uid}: {e}")
+                    link = "(Gagal mendapatkan tautan grup. Pastikan bot adalah admin di grup kelompok.)"
+                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\n\nKarena data awal Anda sudah lengkap sebelumnya, silakan langsung bergabung ke grup kelompok Anda:\n{link}")
+            else:
+                await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi MABA (Kelompok {MABA_GROUP_NAMES.get(maba_group, maba_group)}).\nSilakan ketik /lengkapi untuk mulai melengkapi data diri (Nama Lengkap).")
         else:
-            await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
+            await update.message.reply_text(f"Kode valid! Role Anda telah diperbarui menjadi {target_role}.\nSilakan ketik /lengkapi untuk mulai melengkapi data diri.")
+    else:
+        await update.message.reply_text("Kode tidak valid atau sudah digunakan. Silakan coba lagi, atau ketik /start untuk membatalkan.")
+
+
+    if step == "INPUT_CODE":
+        await handle_input_code(update, context, text)
         return
 
     if step == STEP_KARTU_PHOTO:

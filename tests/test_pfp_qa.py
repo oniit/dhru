@@ -134,6 +134,7 @@ def qa_db():
     CREATE TABLE task_submissions (id INTEGER PRIMARY KEY);
     CREATE TABLE task_assignments (id INTEGER PRIMARY KEY);
     CREATE TABLE charyarthi_answers (id INTEGER PRIMARY KEY);
+    CREATE TABLE warkat_codes (id INTEGER PRIMARY KEY);
     """)
     conn = AsyncSqliteMockConn(raw_conn)
     db = Database()

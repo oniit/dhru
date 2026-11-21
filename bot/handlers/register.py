@@ -96,6 +96,8 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("kontrak", kontrak.cmd_kontrak_router))
     application.add_handler(CommandHandler("gencode", commands.cmd_gencode))
     application.add_handler(CommandHandler("gencode_avail", commands.cmd_gencode_avail))
+    application.add_handler(CommandHandler(["gencode_warkat", "genwarkat"], commands.cmd_gencode_warkat))
+    application.add_handler(CommandHandler(["gencode_warkat_avail", "genwarkat_avail"], commands.cmd_gencode_warkat_avail))
     application.add_handler(CommandHandler("charyarthi", commands.cmd_charyarthi))
     application.add_handler(CommandHandler("acc_charyarthi", commands.cmd_acc_charyarthi))
     application.add_handler(CommandHandler("reject_charyarthi", commands.cmd_reject_charyarthi))

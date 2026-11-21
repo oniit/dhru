@@ -34,6 +34,7 @@ from bot.settings import (
     CHOICES,
     ADMIN_IDS,
     OWNER_ID,
+    BACKUP_CH_ID,
     PROFILE_FIELDS,
     choice_label,
     field_applies_to_role,
@@ -294,15 +295,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if role == ROLE_CHARYARTHI:
         p1 = profile.get("target_division_1")
         p2 = profile.get("target_division_2")
+        p3 = profile.get("target_division_3")
         p1_label = get_division_label(p1) if p1 else "—"
-        p2_label = get_division_label(p2) if p2 else "—"
-        
+        p2_label = get_division_label(p2) if p2 else None
+        p3_label = get_division_label(p3) if p3 else None
+
+        div_parts = [p1_label]
+        if p2_label and p2 != p1:
+            div_parts.append(p2_label)
+        if p3_label and p3 not in (p1, p2):
+            div_parts.append(p3_label)
+        div_str = " / ".join(div_parts)
+
         status_text = (
             "🏛 <b>Status Pendaftaran Chāryārthī (Calon Staf)</b>\n\n"
             f"👤 <b>Nama:</b> {html.escape(profile.get('full_name') or u.first_name or '—')}\n"
-            f"🏛 <b>Divisi Pilihan:</b> {p1_label}\n"
+            f"🏛 <b>Divisi Pilihan:</b> {div_str}\n"
             "📋 <b>Status:</b> ⏳ <i>Menunggu Peninjauan / Pengumuman</i>\n\n"
-            "Berkas pendaftaran dan syarat promosi Anda telah diterima. Tim Seleksi sedang meninjau formulir pendaftaran. "
+            "Berkas pendaftaran dan kelengkapan Anda telah diterima. Tim Seleksi sedang meninjau formulir pendaftaran. "
             "Hasil kelulusan akan diumumkan langsung melalui bot ini. Harap bersabar!"
         )
         await update.message.reply_text(status_text, parse_mode="HTML")
@@ -452,6 +462,13 @@ async def cmd_kode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not row:
         await update.message.reply_text("Silakan ketik /start terlebih dahulu.")
         return
+
+    parts = (update.message.text or "").split(maxsplit=1)
+    if len(parts) > 1 and parts[1].strip():
+        from .messages import handle_input_code
+        await handle_input_code(update, context, parts[1].strip())
+        return
+
     await db.set_onboarding_step(conn, update.effective_user.id, "INPUT_CODE")
     await update.message.reply_text("Silakan ketikkan/tempel kode akses (huruf besar) yang Anda terima dari pihak akademik:")
 
@@ -520,6 +537,438 @@ async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         buf.append(l)
         char_count += len(l) + 1
     await update.message.reply_text("\n".join(buf), parse_mode="HTML")
+
+
+async def cmd_gencode_warkat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang berhak membuat Warkat Kehormatan.")
+        return
+
+    parts = (update.message.text or "").split()
+    count = 1
+    if len(parts) > 1 and parts[1].isdigit():
+        count = int(parts[1])
+    if count > 50:
+        count = 50
+
+    now = time.time()
+    expires_charya = now + (60 * 86400)  # 60 hari untuk Jalur Charya
+    current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+    max_gen = current_gen + 2  # 2 generasi untuk Bebas Pravesa
+
+    import secrets
+    codes_data = []
+    for _ in range(count):
+        token = secrets.token_hex(3).upper()
+        code = f"WARKAT-{token[:3]}-{token[3:]}"
+        codes_data.append((code, now, update.effective_user.id, expires_charya, current_gen, max_gen))
+
+    await db.create_warkat_codes(conn, codes_data)
+
+    charya_exp_str = format_local_time(expires_charya)
+    lines = [
+        f"📜 <b>Berhasil Membuat {count} Warkat Kehormatan</b>\n",
+        f"• <b>Masa Berlaku Charya:</b> 60 Hari (s/d {charya_exp_str})",
+        f"• <b>Masa Berlaku Pravesa:</b> 2 Generasi (s/d Generasi {max_gen})\n",
+        "<b>Daftar Kode Warkat:</b>",
+    ]
+    for item in codes_data:
+        lines.append(f"• <code>{item[0]}</code>")
+
+    lines.append("\n💡 <i>Penerima warkat dapat menukarkannya melalui perintah <code>/kode [KODE]</code> di chat bot.</i>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def cmd_gencode_warkat_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    conn = _conn(context)
+    db = _db(context)
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Tidak diizinkan.")
+        return
+
+    rows = await db.get_available_warkat_codes(conn)
+    if not rows:
+        await update.message.reply_text("Tidak ada Warkat Kehormatan yang belum digunakan.")
+        return
+
+    current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+    lines = [f"📜 <b>Terdapat {len(rows)} Warkat Kehormatan Belum Digunakan (Gen Saat Ini: {current_gen}):</b>\n"]
+    now = time.time()
+    for r in rows:
+        charya_status = "✅ Aktif" if now <= r["expires_charya"] else "❌ Expired"
+        pravesa_status = "✅ Aktif" if current_gen <= r["max_generasi"] else "❌ Expired"
+        lines.append(
+            f"• <code>{r['code']}</code> | Charya: {charya_status} | Pravesa: {pravesa_status} (s/d Gen {r['max_generasi']})"
+        )
+
+    buf = []
+    char_count = 0
+    for l in lines:
+        if char_count + len(l) + 1 > 3800:
+            buf.append("\n...(terpotong karena terlalu panjang)")
+            break
+        buf.append(l)
+        char_count += len(l) + 1
+    await update.message.reply_text("\n".join(buf), parse_mode="HTML")
+
+
+async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    q = update.callback_query
+    if not q:
+        return
+    await q.answer()
+    data = q.data or ""
+    parts = data.split(":")
+    if len(parts) < 2:
+        return
+
+    action = parts[1]
+    conn = _conn(context)
+    db = _db(context)
+    uid = q.from_user.id
+
+    if action == "cancel":
+        context.user_data.pop("warkat_flow", None)
+        try:
+            await q.edit_message_text("❌ Proses penukaran Warkat Kehormatan dibatalkan.")
+        except Exception:
+            pass
+        return
+
+    elif action == "pravesa":
+        code = parts[2] if len(parts) > 2 else ""
+        w = await db.get_warkat_code(conn, code)
+        if not w or w.get("used_by"):
+            await q.edit_message_text("❌ Warkat ini sudah tidak valid atau telah digunakan sebelumnya.")
+            return
+
+        cur_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+        if cur_gen > w["max_generasi"]:
+            await q.edit_message_text(
+                f"❌ Masa berlaku warkat untuk jalur Bebas Pravesa telah berakhir (maks. Generasi {w['max_generasi']}, saat ini Generasi {cur_gen})."
+            )
+            return
+
+        redeemed = await db.redeem_warkat_code(conn, code, uid, chosen_track="pravesa")
+        if not redeemed:
+            await q.edit_message_text("❌ Gagal menukarkan warkat (mungkin sudah digunakan oleh pengguna lain).")
+            return
+
+        await db.set_role(conn, uid, ROLE_STUDENT)
+        await db.set_onboarding_step(conn, uid, None)
+        await db.set_profile_partial(conn, uid, {"warkat_code": code, "track": "pravesa"})
+
+        await q.edit_message_text(
+            "🎉 <b>Selamat! Penukaran Warkat Berhasil.</b>\n\n"
+            "Anda telah resmi menjadi <b>Shishya (Mahasiswa)</b> Institut Dhruva Ekāgra melalui jalur <b>Bebas Pravesa</b> tanpa perlu mengikuti kegiatan Ospek!\n\n"
+            "Silakan ketik /lengkapi untuk memeriksa atau memperbarui profil data diri Anda.",
+            parse_mode="HTML"
+        )
+
+        u = q.from_user
+        username_str = f"@{u.username}" if u.username else "Tanpa Username"
+        name_str = u.first_name + (f" {u.last_name}" if u.last_name else "")
+
+        if OWNER_ID and str(OWNER_ID) != "0":
+            try:
+                await context.bot.send_message(
+                    chat_id=OWNER_ID,
+                    text=f"📜 <b>Warkat Kehormatan Digunakan (Bebas Pravesa)</b>\n"
+                         f"<b>Oleh:</b> {html.escape(name_str)} ({username_str})\n"
+                         f"<b>ID:</b> <code>{u.id}</code>\n"
+                         f"<b>Kode:</b> <code>{code}</code>\n"
+                         f"<b>Role Baru:</b> <code>student</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+
+        if BACKUP_CH_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=BACKUP_CH_ID,
+                    text=f"📜 <b>Warkat Kehormatan Digunakan (Bebas Pravesa)</b>\n"
+                         f"<b>Oleh:</b> {html.escape(name_str)} ({username_str})\n"
+                         f"<b>Kode:</b> <code>{code}</code>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+        return
+
+    elif action == "charya":
+        code = parts[2] if len(parts) > 2 else ""
+        w = await db.get_warkat_code(conn, code)
+        if not w or w.get("used_by"):
+            await q.edit_message_text("❌ Warkat ini sudah tidak valid atau telah digunakan sebelumnya.")
+            return
+
+        now = time.time()
+        if now > w["expires_charya"]:
+            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Khusus Charya telah kedaluwarsa (maksimal 60 hari).")
+            return
+
+        context.user_data["warkat_flow"] = {"code": code, "d1": None, "d2": None, "d3": None}
+
+        active_divs = await get_active_charyarthi_divisions(db, conn)
+        if not active_divs:
+            active_divs = get_charyarthi_divisions()
+
+        buttons = []
+        row_btn = []
+        for did, dlbl in active_divs:
+            row_btn.append(InlineKeyboardButton(dlbl, callback_data=f"warkat:cdiv1:{code}:{did}"))
+            if len(row_btn) == 2:
+                buttons.append(row_btn)
+                row_btn = []
+        if row_btn:
+            buttons.append(row_btn)
+        buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
+
+        await q.edit_message_text(
+            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 1</b>\n\n"
+            "Silakan pilih <b>Divisi Pilihan Pertama (1)</b> yang paling Anda minati:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
+        return
+
+    elif action == "cdiv1":
+        code = parts[2] if len(parts) > 2 else ""
+        did1 = parts[3] if len(parts) > 3 else ""
+
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["d1"] = did1
+        context.user_data["warkat_flow"] = flow
+
+        d1_lbl = get_division_label(did1)
+        active_divs = await get_active_charyarthi_divisions(db, conn)
+        if not active_divs:
+            active_divs = get_charyarthi_divisions()
+
+        buttons = []
+        row_btn = []
+        for did, dlbl in active_divs:
+            if did == did1:
+                continue
+            row_btn.append(InlineKeyboardButton(dlbl, callback_data=f"warkat:cdiv2:{code}:{did}"))
+            if len(row_btn) == 2:
+                buttons.append(row_btn)
+                row_btn = []
+        if row_btn:
+            buttons.append(row_btn)
+        buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
+
+        await q.edit_message_text(
+            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 2</b>\n\n"
+            f"Pilihan 1: <b>{d1_lbl}</b>\n\n"
+            "Silakan pilih <b>Divisi Pilihan Kedua (2)</b>:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
+        return
+
+    elif action == "cdiv2":
+        code = parts[2] if len(parts) > 2 else ""
+        did2 = parts[3] if len(parts) > 3 else ""
+
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["d2"] = did2
+        context.user_data["warkat_flow"] = flow
+
+        d1_id = flow.get("d1")
+        d1_lbl = get_division_label(d1_id) if d1_id else "-"
+        d2_lbl = get_division_label(did2)
+
+        active_divs = await get_active_charyarthi_divisions(db, conn)
+        if not active_divs:
+            active_divs = get_charyarthi_divisions()
+
+        buttons = []
+        row_btn = []
+        for did, dlbl in active_divs:
+            if did in (d1_id, did2):
+                continue
+            row_btn.append(InlineKeyboardButton(dlbl, callback_data=f"warkat:cdiv3:{code}:{did}"))
+            if len(row_btn) == 2:
+                buttons.append(row_btn)
+                row_btn = []
+        if row_btn:
+            buttons.append(row_btn)
+        buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
+
+        await q.edit_message_text(
+            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 3</b>\n\n"
+            f"Pilihan 1: <b>{d1_lbl}</b>\n"
+            f"Pilihan 2: <b>{d2_lbl}</b>\n\n"
+            "Silakan pilih <b>Divisi Pilihan Ketiga (3)</b>:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
+        return
+
+    elif action == "cdiv3":
+        code = parts[2] if len(parts) > 2 else ""
+        did3 = parts[3] if len(parts) > 3 else ""
+
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["d3"] = did3
+        context.user_data["warkat_flow"] = flow
+
+        d1_id = flow.get("d1")
+        d2_id = flow.get("d2")
+        d1_lbl = get_division_label(d1_id) if d1_id else "-"
+        d2_lbl = get_division_label(d2_id) if d2_id else "-"
+        d3_lbl = get_division_label(did3)
+
+        buttons = [
+            [InlineKeyboardButton("🚀 Saya Sudah Kirim CV & Submit Pendaftaran", callback_data=f"warkat:csubmit:{code}")],
+            [InlineKeyboardButton("🔄 Ubah Pilihan Divisi", callback_data=f"warkat:charya:{code}")],
+            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")],
+        ]
+
+        await q.edit_message_text(
+            "🏛 <b>Konfirmasi Pendaftaran Jalur Khusus Charya</b>\n\n"
+            "<b>Pilihan Divisi:</b>\n"
+            f"1. <b>{d1_lbl}</b>\n"
+            f"2. <b>{d2_lbl}</b>\n"
+            f"3. <b>{d3_lbl}</b>\n\n"
+            "📄 <b>Pengiriman Berkas CV / Portofolio:</b>\n"
+            "Pendaftar Jalur Khusus Charya diwajibkan mengirim berkas CV (PDF/Gambar) ke bot resmi HR Dhruva:\n"
+            "👉 <b>@HRDhruvaBot</b>\n\n"
+            "<i>Jika Anda sudah menentukan pilihan divisi dan merasa sudah mengirimkan berkas CV ke @HRDhruvaBot, silakan klik tombol di bawah untuk menyelesaikan pendaftaran:</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
+        return
+
+    elif action == "csubmit":
+        code = parts[2] if len(parts) > 2 else ""
+        w = await db.get_warkat_code(conn, code)
+        if not w or w.get("used_by"):
+            await q.edit_message_text("❌ Warkat ini sudah tidak valid atau telah digunakan sebelumnya.")
+            return
+
+        now = time.time()
+        if now > w["expires_charya"]:
+            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Khusus Charya telah kedaluwarsa.")
+            return
+
+        flow = context.user_data.get("warkat_flow") or {}
+        d1_id = flow.get("d1")
+        d2_id = flow.get("d2")
+        d3_id = flow.get("d3")
+        if not (d1_id and d2_id and d3_id):
+            await q.edit_message_text("❌ Data pilihan divisi tidak lengkap. Silakan ulangi penukaran warkat dengan /kode.")
+            return
+
+        d1_lbl = get_division_label(d1_id)
+        d2_lbl = get_division_label(d2_id)
+        d3_lbl = get_division_label(d3_id)
+
+        redeemed = await db.redeem_warkat_code(conn, code, uid, chosen_track="charya", div1=d1_id, div2=d2_id, div3=d3_id)
+        if not redeemed:
+            await q.edit_message_text("❌ Gagal menukarkan warkat (mungkin sudah digunakan oleh pengguna lain).")
+            return
+
+        await db.set_role(conn, uid, ROLE_CHARYARTHI)
+        await db.set_profile_partial(conn, uid, {
+            "target_division_1": d1_id,
+            "target_division_2": d2_id,
+            "target_division_3": d3_id,
+            "charyarthi_reason": "Jalur Khusus Warkat Kehormatan (CV dikirim ke @HRDhruvaBot)",
+            "application_status": "PENDING",
+            "applied_at": time.time(),
+            "warkat_code": code,
+        })
+        await db.set_onboarding_step(conn, uid, None)
+        context.user_data.pop("warkat_flow", None)
+
+        await q.edit_message_text(
+            "✅ <b>Pendaftaran Jalur Khusus Charya Berhasil Dikirim!</b>\n\n"
+            "Warkat Kehormatan Anda telah berhasil digunakan. Data pilihan divisi Anda:\n"
+            f"1. <b>{d1_lbl}</b>\n"
+            f"2. <b>{d2_lbl}</b>\n"
+            f"3. <b>{d3_lbl}</b>\n\n"
+            "Tim SDM dan Petinggi akan meninjau berkas CV yang Anda kirimkan ke <b>@HRDhruvaBot</b>. "
+            "Hasil kelulusan seleksi akan diumumkan langsung melalui bot ini. Terima kasih! ✨",
+            parse_mode="HTML"
+        )
+
+        u_row = await user_row(conn, db, uid)
+        prof = profile_from_row(u_row)
+        first_name = u_row["first_name"] if u_row and u_row["first_name"] else "Tanpa Nama"
+        nama = html.escape(str(prof.get("full_name") or first_name))
+        uname = f"@{html.escape(u_row['username'])}" if u_row and u_row["username"] else "Tanpa Username"
+
+        msg_admin = (
+            "📑 <b>PENDAFTARAN CHARYA (JALUR KHUSUS WARKAT)</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Nama:</b> <a href=\"tg://user?id={uid}\">{nama}</a>\n"
+            f"🔗 <b>Username:</b> {uname}\n"
+            f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+            f"📜 <b>Kode Warkat:</b> <code>{code}</code>\n"
+            f"🏛 <b>Pilihan 1:</b> {d1_lbl}\n"
+            f"🏛 <b>Pilihan 2:</b> {d2_lbl}\n"
+            f"🏛 <b>Pilihan 3:</b> {d3_lbl}\n"
+            "📄 <b>Berkas CV:</b> Dikirim ke @HRDhruvaBot\n"
+            "📢 <b>Catatan:</b> Bebas promo & bebas tes tertulis (Jalur Khusus Warkat)\n"
+            f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "<i>Silakan periksa CV di @HRDhruvaBot sebelum memutuskan:</i>"
+        )
+
+        admin_buttons = [
+            [InlineKeyboardButton(f"✅ Terima Pilihan 1 ({d1_lbl})", callback_data=f"charyarthi:acc:{uid}:1")],
+            [InlineKeyboardButton(f"✅ Terima Pilihan 2 ({d2_lbl})", callback_data=f"charyarthi:acc:{uid}:2")],
+            [InlineKeyboardButton(f"✅ Terima Pilihan 3 ({d3_lbl})", callback_data=f"charyarthi:acc:{uid}:3")],
+            [InlineKeyboardButton("❌ Tolak Lamaran", callback_data=f"charyarthi:rej:{uid}")],
+        ]
+
+        if PENDAFTAR_CH_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=PENDAFTAR_CH_ID,
+                    text=msg_admin,
+                    reply_markup=InlineKeyboardMarkup(admin_buttons),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                log.warning("Gagal mengirim info pendaftar charya warkat ke %s: %s", PENDAFTAR_CH_ID, e)
+
+        sdm_target = SDM_CH_ID or SDM_GID
+        if sdm_target:
+            try:
+                sdm_msg = (
+                    "📜 <b>PENDAFTARAN JALUR KHUSUS WARKAT (TIM SDM)</b>\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 <b>Pelamar:</b> <a href=\"tg://user?id={uid}\">{nama}</a> ({uname})\n"
+                    f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+                    f"📜 <b>Kode Warkat:</b> <code>{code}</code>\n"
+                    f"🏛 <b>Pilihan 1:</b> {d1_lbl}\n"
+                    f"🏛 <b>Pilihan 2:</b> {d2_lbl}\n"
+                    f"🏛 <b>Pilihan 3:</b> {d3_lbl}\n"
+                    "📄 <b>Berkas CV:</b> Dikirim ke @HRDhruvaBot (Bebas tugas promo & bebas tes tertulis)\n"
+                    f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
+                    "━━━━━━━━━━━━━━━━━━"
+                )
+                await context.bot.send_message(
+                    chat_id=sdm_target,
+                    text=sdm_msg,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                log.warning("Gagal mengirim info warkat charya ke SDM (%s): %s", sdm_target, e)
+        return
 
 
 def help_for_role(role: str, profile: dict | None = None) -> str:
@@ -658,6 +1107,8 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "<b>🎫 Kode Akses & Promosi</b>",
         "• <code>/gencode [jumlah] [role]</code> — Membuat kode akses registrasi baru (default role: student).",
         "• <code>/gencode_avail</code> — Melihat daftar kode akses yang belum diklaim.",
+        "• <code>/gencode_warkat [jumlah]</code> — Membuat Warkat Kehormatan (Jalur Khusus Charya / Bebas Pravesa).",
+        "• <code>/gencode_warkat_avail</code> — Melihat daftar Warkat Kehormatan yang belum digunakan.",
         "• <code>/promo</code> — Menu pengaturan syarat kata kunci validasi LPM dan link target Story Telegram.",
         "• <code>/ospek_mode [on|off]</code> — Menghidupkan/mematikan rutinitas otomatis kegiatan Ospek Maba.\n",
         "<b>📢 Penyiaran & Komunikasi</b>",
@@ -1188,6 +1639,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             
         return
 
+    if data.startswith("warkat:"):
+        await handle_warkat_callback(update, context)
+        return
+
     if data.startswith("charyarthi:"):
         action = data.split(":")[1]
         conn = _conn(context)
@@ -1244,6 +1699,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await db.set_profile_partial(conn, uid, {
                 "target_division_1": None,
                 "target_division_2": None,
+                "target_division_3": None,
                 "charyarthi_reason": None,
                 "application_status": None,
             })
@@ -1813,9 +2269,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 except Exception:
                     pass
                 return
-            accepted_div = prof_t.get("target_division_1") if choice_num == "1" else prof_t.get("target_division_2")
-            if not accepted_div and choice_num == "2":
+            if choice_num == "1":
                 accepted_div = prof_t.get("target_division_1")
+            elif choice_num == "2":
+                accepted_div = prof_t.get("target_division_2") or prof_t.get("target_division_1")
+            else:
+                accepted_div = prof_t.get("target_division_3") or prof_t.get("target_division_1")
             accepted_lbl = get_division_label(accepted_div)
 
             cur_jabs = normalize_multi_choice_value(prof_t.get("position_detail"))
@@ -1884,6 +2343,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 "application_status": "REJECTED",
                 "target_division_1": None,
                 "target_division_2": None,
+                "target_division_3": None,
                 "charyarthi_reason": None,
             })
             await db.clear_charyarthi_user_answers(conn, target_uid)
@@ -6459,7 +6919,7 @@ async def cmd_acc_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         await update.message.reply_text("ID pengguna harus berupa angka.")
         return
-    choice_num = parts[2] if len(parts) > 2 and parts[2] in ("1", "2") else "1"
+    choice_num = parts[2] if len(parts) > 2 and parts[2] in ("1", "2", "3") else "1"
 
     conn = _conn(context)
     db = _db(context)
@@ -6472,9 +6932,12 @@ async def cmd_acc_charyarthi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     prof_t = profile_from_row(row_t)
-    accepted_div = prof_t.get("target_division_1") if choice_num == "1" else prof_t.get("target_division_2")
-    if not accepted_div and choice_num == "2":
+    if choice_num == "1":
         accepted_div = prof_t.get("target_division_1")
+    elif choice_num == "2":
+        accepted_div = prof_t.get("target_division_2") or prof_t.get("target_division_1")
+    else:
+        accepted_div = prof_t.get("target_division_3") or prof_t.get("target_division_1")
     accepted_lbl = get_division_label(accepted_div)
 
     cur_jabs = normalize_multi_choice_value(prof_t.get("position_detail"))
@@ -6541,6 +7004,7 @@ async def cmd_reject_charyarthi(update: Update, context: ContextTypes.DEFAULT_TY
         "application_status": "REJECTED",
         "target_division_1": None,
         "target_division_2": None,
+        "target_division_3": None,
         "charyarthi_reason": None,
     })
     await db.clear_charyarthi_user_answers(conn, target_uid)

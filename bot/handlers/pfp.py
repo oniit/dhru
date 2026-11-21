@@ -221,6 +221,7 @@ def get_pfp_tutorial_text(is_user_owner: bool) -> tuple[str, InlineKeyboardMarku
         "<code>/pfp &lt;link_awal&gt; to &lt;link_akhir&gt;</code>\n"
         "<i>Contoh:</i> <code>/pfp https://t.me/namachannel/100 to https://t.me/namachannel/120</code>\n\n"
         "<b>Catatan:</b>\n"
+        "• Setiap 1 post yang berhasil diforward otomatis mendapatkan <b>+1 Agra</b>.\n"
         "• Tautan awal dan akhir harus berasal dari channel yang sama.\n"
         "• Maksimal forward 100 post dalam sekali perintah.\n"
         "• Mendukung link publik (<code>t.me/channel/123</code>) dan privat (<code>t.me/c/12345/123</code>)."
@@ -513,13 +514,26 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 forwarded_count=forwarded_count,
                 created_at=time.time(),
             )
+            # Reward: 1 post = 1 Agra (tanpa batas)
+            try:
+                await db.add_agra(
+                    conn=conn,
+                    target_id=uid,
+                    actor_id=uid,
+                    amount=forwarded_count,
+                    description=f"Reward forward {forwarded_count} post (/pfp)",
+                    chat_id=chat_id,
+                    message_id=None,
+                )
+            except Exception as e:
+                log.warning("Gagal menambahkan Agra untuk pfp forward user %s: %s", uid, e)
 
         if total_requested == 1:
-            reply_text = "✅ <b>1 post</b> berhasil diforward ke channel penyimpanan."
+            reply_text = "✅ <b>1 post</b> berhasil diforward ke channel penyimpanan. (<b>+1 Agra</b>)"
         else:
             reply_text = (
                 f"✅ Berhasil mem-forward <b>{forwarded_count}</b> dari <b>{total_requested}</b> "
-                f"post ke channel penyimpanan."
+                f"post ke channel penyimpanan. (<b>+{forwarded_count} Agra</b>)"
             )
         if status_msg:
             try:

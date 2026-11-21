@@ -35,6 +35,8 @@ Seluruh tabel antrean, relasi, dan kolom yang sering difilter kini dilengkapi in
 - `idx_pcr_telegram_id`: Index pada `profile_change_requests(telegram_id)` untuk lookup riwayat permohonan profil.
 - `idx_pfp_logs_created_at`: Index pada `pfp_logs(created_at)` untuk filtering cepat rekap harian & mingguan tanpa *full table scan*.
 - `idx_pfp_logs_user_date`: Index komposit `pfp_logs(user_id, created_at)` untuk aggregasi cepat per user.
+- `idx_warkat_used_by`: Index pada `warkat_codes(used_by)` untuk lookup cepat ketersediaan warkat yang belum digunakan.
+- `idx_warkat_created_at`: Index pada `warkat_codes(created_at)` untuk sorting kronologis daftar warkat.
 - `idx_task_sub_student`: Index pada `task_submissions(student_telegram_id)` untuk lookup pengumpulan tugas mahasiswa.
 
 Selain index, worker background (seperti `checker.py`) menggunakan *adaptive polling*: jika antrean kosong (*idle*), interval sleep dinaikkan menjadi 3.5 detik; jika ada antrean yang diproses, interval turun ke 1 detik agar proses berlangsung cepat.
@@ -209,6 +211,22 @@ Tabel pencatatan riwayat eksekusi forward channel post (`/pfp`) yang berhasil di
 - `forwarded_count` (INTEGER NOT NULL): Jumlah total postingan yang berhasil diforward
 - `created_at` (REAL NOT NULL): Timestamp eksekusi perintah (epoch seconds)
 - *Indexes:* `idx_pfp_logs_created_at` ON `pfp_logs(created_at)`, `idx_pfp_logs_user_date` ON `pfp_logs(user_id, created_at)`
+
+### 23. `warkat_codes`
+Tabel penyimpanan voucher/kode akses khusus Warkat Kehormatan untuk alumni/purnata terpilih.
+- `code` (TEXT PRIMARY KEY): Kode unik warkat (format `WARKAT-XXX-YYY`)
+- `created_at` (REAL NOT NULL): Timestamp pembuatan warkat (epoch seconds)
+- `created_by` (INTEGER NOT NULL): ID Telegram owner yang membuat warkat
+- `expires_charya` (REAL NOT NULL): Batas waktu masa berlaku untuk Jalur Khusus Charya (60 hari dari pembuatan)
+- `created_gen` (INTEGER NOT NULL DEFAULT 1): Nomor generasi saat warkat dibuat
+- `max_generasi` (INTEGER NOT NULL): Batas generasi maksimum untuk Jalur Bebas Pravesa (`created_gen + 2`)
+- `used_by` (INTEGER): ID Telegram pengguna yang menukarkan warkat (NULL jika belum dipakai)
+- `used_at` (REAL): Timestamp penukaran warkat
+- `chosen_track` (TEXT): Jalur yang dipilih (`charya` atau `pravesa`)
+- `charya_div_1` (TEXT): Divisi pilihan 1 jika memilih jalur Charya
+- `charya_div_2` (TEXT): Divisi pilihan 2 jika memilih jalur Charya
+- `charya_div_3` (TEXT): Divisi pilihan 3 jika memilih jalur Charya
+- *Indexes:* `idx_warkat_used_by` ON `warkat_codes(used_by)`, `idx_warkat_created_at` ON `warkat_codes(created_at)`
 
 ---
 
