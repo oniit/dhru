@@ -6730,18 +6730,32 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not update.effective_user or not update.message:
         return
     uid = update.effective_user.id
-    if not is_owner(uid):
+    row = await user_row(_conn(context), _db(context), uid)
+    if not (is_owner(uid) or (row and row.get("role") == ROLE_OWNER)):
         await update.message.reply_text("Tidak diizinkan. Hanya owner yang dapat me-reload bot.")
         return
 
-    import os, json
+    import os, json, subprocess, sys
     msg = await update.message.reply_text("Memulai ulang bot...")
     try:
         with open(".restart.json", "w") as f:
             json.dump({"chat_id": msg.chat_id, "message_id": msg.message_id}, f)
     except Exception:
         pass
-    os.system("sudo systemctl restart botdhru")
+
+    # 1. Coba restart via systemctl secara non-interaktif (-n agar tidak memblokir jika butuh password)
+    try:
+        res = subprocess.run(["sudo", "-n", "systemctl", "restart", "botdhru"], capture_output=True, timeout=5)
+        if res.returncode == 0:
+            return
+    except Exception:
+        pass
+
+    # 2. Fallback jika sudo butuh password: restart in-place via os.execv (tanpa root/sudo)
+    try:
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        await msg.edit_text(f"Gagal me-reload bot secara otomatis: {e}\nSilakan restart manual melalui VPS terminal.")
 
 async def _async_to_thread(func, *args, **kwargs):
     try:

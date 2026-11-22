@@ -334,6 +334,50 @@ def test_cmd_push_and_cmd_pull():
             assert "Git Push Berhasil" in mock_push_msg_dirty.edit_text.call_args[0][0]
 
 
+def test_cmd_reload():
+    owner_user = MagicMock()
+    owner_user.id = OWNER_ID
+    owner_user.username = "owner"
+
+    student_user = MagicMock()
+    student_user.id = 3001
+    student_user.username = "student"
+
+    ctx = MagicMock()
+    ctx.bot_data = {"db": MagicMock(), "conn": MagicMock()}
+
+    def mock_user_row(conn, db, uid):
+        if uid == OWNER_ID:
+            return {"telegram_id": OWNER_ID, "role": ROLE_OWNER, "profile_json": "{}"}
+        return {"telegram_id": 3001, "role": ROLE_STUDENT, "profile_json": "{}"}
+
+    with unittest_mock_patch("bot.handlers.commands.user_row", side_effect=mock_user_row):
+        # 1. Non-owner blocked
+        up_student = make_mock_update(student_user, "/reload")
+        run_sync(commands.cmd_reload(up_student, ctx))
+        assert "Tidak diizinkan" in up_student.message.reply_text.call_args[0][0]
+
+        # 2. Owner allowed - systemctl succeeds
+        up_owner = make_mock_update(owner_user, "/reload")
+        mock_msg = MagicMock()
+        mock_msg.chat_id = 123
+        mock_msg.message_id = 456
+        up_owner.message.reply_text = AsyncMock(return_value=mock_msg)
+
+        with unittest_mock_patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_subp, \
+             unittest_mock_patch("builtins.open", unittest_mock_patch("io.open")) as mock_open:
+            run_sync(commands.cmd_reload(up_owner, ctx))
+            mock_subp.assert_called_once()
+            assert "sudo" in mock_subp.call_args[0][0]
+            assert "botdhru" in mock_subp.call_args[0][0]
+
+        # 3. Owner allowed - systemctl fails, fallback to os.execv
+        with unittest_mock_patch("subprocess.run", return_value=MagicMock(returncode=1)), \
+             unittest_mock_patch("os.execv") as mock_execv:
+            run_sync(commands.cmd_reload(up_owner, ctx))
+            mock_execv.assert_called_once()
+
+
 def main():
     print("==================================================================")
     print("STARTING TEST SUITE: /help, /help_owner & ZIP JSON INCLUSION")
@@ -342,8 +386,9 @@ def main():
     test_export_zip_includes_json()
     test_export_kelulusan_restricted_to_owner()
     test_cmd_push_and_cmd_pull()
+    test_cmd_reload()
     print("\n==================================================================")
-    print("ALL TESTS PASSED! (4/4 Suites)")
+    print("ALL TESTS PASSED! (5/5 Suites)")
     print("==================================================================")
 
 

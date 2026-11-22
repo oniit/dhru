@@ -59,8 +59,8 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pindah_data <id_lama|@username_lama> <id_baru|@username_baru>` — (Khusus Owner) Memindahkan seluruh data profil, peran/role, saldo Agra, riwayat presensi, tugas, dll dari akun lama ke akun baru.
 - `/orreset_user <id> <tipe>`: (Owner) Reset data profil user (onboarding, rank, dll).
 - `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
-- `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
-- `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
+- `/reload`: (Khusus Owner) Me-restart bot secara aman (mencoba `sudo -n systemctl restart botdhru`, lalu otomatis fallback ke restart in-place via `os.execv` jika sudo membutuhkan password/tidak tersedia). Menyimpan pesan status ke `.restart.json` dan menyunting pesan kembali saat bot aktif.
+- `/pull [force]`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull`. Opsi `force` menjalankan hard-reset ke `origin/main` untuk menyelaraskan repository server VPS jika riwayat branch terpisah.
 - `/push [pesan]`: (Khusus Owner) Melakukan staging (`git add -A`), auto-commit, dan `git push` ke repositori remote untuk menyinkronkan data atau perubahan yang dihasilkan di server VPS ke GitHub (misal: arsip kelulusan, file konfigurasi dinamis) agar dapat ditarik ke lokal.
 - `/ospek_mode [on|off]`: (Hanya Owner) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purna`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm). Menyesuaikan otomatis dengan wewenang Dosen/Dekan dan menyertakan staf pada filter fakultas/jurusan.
