@@ -6752,10 +6752,29 @@ async def _async_to_thread(func, *args, **kwargs):
         raise
 
 
-def _exec_git_pull() -> str:
+def _exec_git_pull(force: bool = False) -> str:
     import subprocess, os
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
+    if force:
+        subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+            check=True
+        )
+        res = subprocess.run(
+            ["git", "reset", "--hard", "origin/main"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+            check=True
+        )
+        return f"Force pull / reset ke origin/main berhasil:\n{res.stdout.strip()}"
+
     res = subprocess.run(
         ["git", "pull"],
         capture_output=True,
@@ -6855,13 +6874,17 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     import subprocess
-    msg = await update.message.reply_text("Sedang menarik pembaruan...")
+    parts = (update.message.text or "").split()
+    is_force = len(parts) > 1 and parts[1].lower() in ("force", "reset", "hard")
+
+    msg = await update.message.reply_text("Sedang menarik pembaruan..." if not is_force else "Sedang melakukan force pull / reset ke origin/main...")
     try:
-        output = await _async_to_thread(_exec_git_pull)
+        output = await _async_to_thread(_exec_git_pull, is_force)
         await msg.edit_text(f"<pre>{output}</pre>", parse_mode="HTML")
     except subprocess.CalledProcessError as e:
         error_output = e.stderr.strip() or e.stdout.strip() or "Terjadi kesalahan yang tidak diketahui."
-        await msg.edit_text(f"Gagal melakukan git pull:\n<pre>{error_output}</pre>", parse_mode="HTML")
+        tip = "\n\n💡 <i>Tip: Jika riwayat git di server berbeda, ketik <code>/pull force</code> untuk menyelaraskan paksa ke GitHub.</i>" if not is_force else ""
+        await msg.edit_text(f"Gagal melakukan git pull:\n<pre>{error_output}</pre>{tip}", parse_mode="HTML")
     except Exception as e:
         await msg.edit_text(f"Terjadi kesalahan sistem:\n<pre>{str(e)}</pre>", parse_mode="HTML")
 
