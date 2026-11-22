@@ -4,6 +4,7 @@ PyYAML
 aiosqlite
 Pillow>=10.0
 libsql-client
-openpyxl>=3.1.0
+openpyxl>=3.1.5
+numpy<2.0.0
 pyrofork
 tgcrypto
