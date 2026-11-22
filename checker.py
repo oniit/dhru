@@ -144,9 +144,11 @@ async def process_userbot_requests(conn):
                                     from_chat_id=from_chat,
                                     message_ids=chunk
                                 )
-                                # Gunakan jumlah hasil aktual, bukan len(chunk),
-                                # karena pesan terhapus mungkin di-skip oleh Telegram
-                                fwd_count += len(res) if res else len(chunk)
+                                # Safely handle list of messages or single message object
+                                if isinstance(res, list):
+                                    fwd_count += len(res)
+                                elif res is not None:
+                                    fwd_count += 1
                             except Exception as fe:
                                 fe_str = str(fe).lower()
                                 log.warning(f"Batch forward failed via userbot ({fe}), falling back to single")
@@ -190,7 +192,11 @@ async def process_pending_links():
     
     while True:
         pending_count = 0
+        userbot_count = 0
         try:
+            # Prioritaskan userbot requests terlebih dahulu agar respons perintah interaktif (seperti /pfp) cepat
+            userbot_count = await process_userbot_requests(conn)
+
             # Get pending verifications
             cur = await conn.execute("SELECT * FROM promo_verifications WHERE status = 'PENDING'")
             pending_rows = await cur.fetchall()
@@ -468,9 +474,6 @@ async def process_pending_links():
 
         except Exception as e:
             log.error(f"Database error in checker loop: {e}")
-            
-        # Process userbot requests
-        userbot_count = await process_userbot_requests(conn)
             
         # Adaptive polling delay:
         # Jika ada antrean yang diproses, segera loop kembali (1s) agar antrean cepat selesai.

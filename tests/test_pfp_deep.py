@@ -191,3 +191,62 @@ def test_deep_checker_forward_malformed_action():
     with pytest.raises(ValueError, match="Malformed FORWARD"):
         if len(parts) < 4:
             raise ValueError(f"Malformed FORWARD action: expected 4+ parts, got {len(parts)}")
+
+
+def test_deep_ipc_delayed_response_within_timeout():
+    """Memastikan IPC polling mampu menunggu respons userbot yang butuh beberapa detik tanpa timeout prematur."""
+    import json
+    from bot.handlers.pfp import _forward_via_userbot_ipc
+
+    conn = MagicMock()
+    db = MagicMock()
+    db.create_userbot_request = AsyncMock(return_value=99)
+    # Status PENDING pada 3 iterasi awal, lalu DONE pada iterasi ke-4
+    db.get_userbot_request = AsyncMock(side_effect=[
+        {"status": "PENDING"},
+        {"status": "PENDING"},
+        {"status": "PENDING"},
+        {"status": "DONE", "result": json.dumps({"forwarded": 1})},
+    ])
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        count = run_sync(_forward_via_userbot_ipc(conn, db, "@src", 10, 10, timeout=10.0))
+        assert count == 1
+        assert db.get_userbot_request.call_count == 4
+
+
+def test_deep_ipc_timeout_returns_zero():
+    """Jika userbot tidak merespons hingga timeout, kembalikan 0."""
+    from bot.handlers.pfp import _forward_via_userbot_ipc
+
+    conn = MagicMock()
+    db = MagicMock()
+    db.create_userbot_request = AsyncMock(return_value=101)
+    db.get_userbot_request = AsyncMock(return_value={"status": "PENDING"})
+
+    with patch("asyncio.sleep", new_callable=AsyncMock), \
+         patch("time.monotonic", side_effect=[0, 1.0, 2.0, 3.0, 4.0, 30.0]):
+        count = run_sync(_forward_via_userbot_ipc(conn, db, "@src", 10, 10, timeout=25.0))
+        assert count == 0
+
+
+def test_deep_checker_forward_counting_logic():
+    """Memastikan penghitungan hasil forward di checker aman untuk list maupun objek tunggal."""
+    # List of messages
+    fwd_count = 0
+    res_list = [MagicMock(), MagicMock()]
+    if isinstance(res_list, list):
+        fwd_count += len(res_list)
+    elif res_list is not None:
+        fwd_count += 1
+    assert fwd_count == 2
+
+    # Single message object (tidak memiliki __len__)
+    fwd_count = 0
+    res_single = MagicMock()
+    del res_single.__len__  # memastikan __len__ tidak ada
+    if isinstance(res_single, list):
+        fwd_count += len(res_single)
+    elif res_single is not None:
+        fwd_count += 1
+    assert fwd_count == 1

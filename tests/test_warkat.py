@@ -127,6 +127,25 @@ def warkat_db():
     );
     CREATE INDEX idx_warkat_used_by ON warkat_codes(used_by);
     CREATE INDEX idx_warkat_created_at ON warkat_codes(created_at);
+
+    CREATE TABLE agra_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_telegram_id INTEGER NOT NULL,
+        actor_telegram_id INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        chat_id INTEGER,
+        message_id INTEGER,
+        created_at REAL NOT NULL
+    );
+
+    CREATE TABLE audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_id INTEGER,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at REAL NOT NULL
+    );
     """)
     conn = AsyncSqliteMockConn(raw_conn)
     db = Database()
@@ -423,3 +442,35 @@ def test_admin_acc_charyarthi_choice_3(warkat_db):
     assert prof["application_status"] == "ACCEPTED"
     assert prof["accepted_division"] == "d_humas"
     assert "d_humas" in prof["position_detail"]
+
+
+def test_on_private_message_text_lc_full_name(warkat_db):
+    """Memastikan on_private_message berhasil menangani input nama lengkap pada step TEXT_LC:full_name."""
+    from bot.handlers.messages import on_private_message
+
+    db, conn, raw = warkat_db
+    raw.execute(
+        "INSERT INTO users (telegram_id, username, first_name, role, onboarding_step) VALUES (?, ?, ?, ?, ?)",
+        (333, "newuser", "Newbie", "public", "TEXT_LC:full_name"),
+    )
+    raw.commit()
+
+    user = MagicMock(id=333, first_name="Newbie", username="newuser")
+    message = MagicMock(text="Budi Santoso", photo=None, caption=None, chat_id=333)
+    message.reply_text = AsyncMock()
+    update = MagicMock(effective_user=user, message=message)
+    context = MagicMock()
+    context.application.bot_data = {"conn": conn, "db": db}
+
+    run_sync(on_private_message(update, context))
+
+    assert message.reply_text.called
+    reply_msg = message.reply_text.call_args[0][0]
+    assert "disimpan" in reply_msg or "lengkap" in reply_msg
+
+    cur = raw.execute("SELECT profile_json, onboarding_step FROM users WHERE telegram_id = 333")
+    row = cur.fetchone()
+    assert row["onboarding_step"] is None
+    import json
+    prof = json.loads(row["profile_json"])
+    assert prof["full_name"] == "Budi Santoso"

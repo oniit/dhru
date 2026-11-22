@@ -108,7 +108,7 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
 
 
 async def _forward_via_userbot_ipc(
-    conn, db: Database, from_chat: str | int, start_id: int, end_id: int
+    conn, db: Database, from_chat: str | int, start_id: int, end_id: int, timeout: float = 25.0
 ) -> int:
     """Fallback mem-forward pesan menggunakan userbot (checker.py) via IPC."""
     if not conn or not db:
@@ -117,14 +117,25 @@ async def _forward_via_userbot_ipc(
         req_id = await db.create_userbot_request(
             conn, "0", f"FORWARD:{from_chat}:{start_id}:{end_id}"
         )
-        for _ in range(12):  # Polling hingga maksimal 6 detik
-            await asyncio.sleep(0.5)
+        start_time = time.monotonic()
+        # Polling setiap 1.0 detik hingga maksimal timeout (default 25s)
+        # Menjaga efisiensi kuota Turso dan memberi waktu cukup bagi userbot
+        while time.monotonic() - start_time < timeout:
+            await asyncio.sleep(1.0)
             req_row = await db.get_userbot_request(conn, req_id)
-            if req_row and req_row["status"] == "DONE":
-                res = json.loads(req_row["result"])
-                return int(res.get("forwarded", 0))
-            if req_row and req_row["status"] == "ERROR":
-                break
+            if req_row:
+                status = req_row.get("status")
+                if status == "DONE":
+                    res_raw = req_row.get("result", "{}")
+                    try:
+                        res = json.loads(res_raw)
+                        return int(res.get("forwarded", 0))
+                    except Exception:
+                        return 1
+                elif status == "ERROR":
+                    log.warning("Userbot IPC request %s failed: %s", req_id, req_row.get("result"))
+                    break
+        log.warning("Userbot IPC request %s timed out after %.1fs", req_id, timeout)
     except Exception as e:
         log.warning("Gagal forward via userbot IPC: %s", e)
     return 0
