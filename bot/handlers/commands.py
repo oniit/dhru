@@ -6844,7 +6844,19 @@ def _exec_git_push(commit_msg: str) -> str:
         )
         commit_out = commit_res.stdout.strip() + "\n"
 
-    # 2. Jalankan git push (tambahkan buffer 500MB agar tidak error 502 Bad Gateway saat push payload)
+    # 2. Sinkronkan commit remote terbaru (--rebase) agar push tidak tertolak ('fetch first')
+    try:
+        subprocess.run(
+            ["git", "pull", "--rebase"],
+            capture_output=True,
+            text=True,
+            timeout=25,
+            env=env
+        )
+    except Exception:
+        pass
+
+    # 3. Jalankan git push (tambahkan buffer 500MB agar tidak error 502 Bad Gateway saat push payload)
     gh_token = os.getenv("GITHUB_TOKEN", "").strip()
     push_cmd = ["git", "-c", "http.postBuffer=524288000", "push"]
 
