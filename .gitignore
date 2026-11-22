@@ -8,3 +8,9 @@ checker.session
 *.log
 output/
 scratch/
+venv/
+.venv/
+env/
+*.sql
+dump.sql
+.restart.json
