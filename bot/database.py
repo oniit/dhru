@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS access_codes (
     used_at REAL,
     target_role TEXT NOT NULL DEFAULT 'student'
 );
+CREATE INDEX IF NOT EXISTS idx_access_codes_used_by ON access_codes(used_by);
 
 CREATE TABLE IF NOT EXISTS triggers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -714,6 +715,7 @@ class Database:
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pfp_logs_user_date ON pfp_logs(user_id, created_at)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_warkat_used_by ON warkat_codes(used_by)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_warkat_created_at ON warkat_codes(created_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_access_codes_used_by ON access_codes(used_by)")
         except Exception:
             pass
             

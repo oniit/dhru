@@ -4,5 +4,7 @@ __pycache__/
 data/bot.db
 /test_*
 checker.session
+*.session*
+*.log
 output/
 scratch/

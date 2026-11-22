@@ -39,8 +39,9 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("leaderboard", commands.cmd_agratop))
     application.add_handler(CommandHandler("agralog", commands.cmd_agralog))
     application.add_handler(CommandHandler("setrole", commands.cmd_setrole))
-    application.add_handler(CommandHandler("tutup_generasi", commands.cmd_tutup_generasi))
-    application.add_handler(CommandHandler("tutupgenerasi", commands.cmd_tutup_generasi))
+    application.add_handler(CommandHandler("generasi", commands.cmd_generasi))
+    application.add_handler(CommandHandler("generasi_atur", commands.cmd_generasi_atur))
+    application.add_handler(CommandHandler("generasi_tutup", commands.cmd_generasi_tutup))
     application.add_handler(CommandHandler("owner_reset", commands.cmd_owner_reset))
     application.add_handler(CommandHandler("daftar", commands.cmd_daftar))
     application.add_handler(CommandHandler("laporan", commands.cmd_daftar))
@@ -61,6 +62,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CommandHandler("users", commands.cmd_users))
     application.add_handler(CommandHandler("reload", commands.cmd_reload))
     application.add_handler(CommandHandler("pull", commands.cmd_pull))
+    application.add_handler(CommandHandler("push", commands.cmd_push))
     application.add_handler(CommandHandler("export_photos", commands.cmd_export_photos))
     application.add_handler(
         MessageHandler(

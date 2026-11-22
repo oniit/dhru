@@ -476,36 +476,80 @@ async def cmd_kode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_gencode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
-    conn = _conn(context)
-    db = _db(context)
-    row = await user_row(conn, db, update.effective_user.id)
-    if not row or row["role"] != ROLE_OWNER:
+    if not is_owner(update.effective_user.id):
         await update.message.reply_text("Tidak diizinkan.")
         return
-    
+
+    conn = _conn(context)
+    db = _db(context)
+
     parts = (update.message.text or "").split()
+    args = context.args or (parts[1:] if len(parts) > 1 else [])
+
+    if not args:
+        # Tampilkan Sub Menu
+        cur_std = await conn.execute("SELECT COUNT(*) as c FROM access_codes WHERE used_by IS NULL")
+        row_std = await cur_std.fetchone()
+        count_std = int(row_std["c"]) if row_std else 0
+
+        cur_wkt = await conn.execute("SELECT COUNT(*) as c FROM warkat_codes WHERE used_by IS NULL")
+        row_wkt = await cur_wkt.fetchone()
+        count_wkt = int(row_wkt["c"]) if row_wkt else 0
+
+        current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"📦 Kode Standar Tersedia ({count_std})", callback_data="gencode:avail_std")],
+            [InlineKeyboardButton(f"📜 Warkat Kehormatan Tersedia ({count_wkt})", callback_data="gencode:avail_wkt")],
+        ])
+
+        menu_text = (
+            "🎫 <b>Manajemen Kode Akses & Warkat Kehormatan</b>\n\n"
+            f"<b>Status Stok Saat Ini (Generasi {current_gen}):</b>\n"
+            f"• Kode Akses Standar Tersedia: <b>{count_std}</b> kode\n"
+            f"• Warkat Kehormatan Tersedia: <b>{count_wkt}</b> warkat\n\n"
+            "<b>Sub Menu / Perintah Terkait:</b>\n"
+            "• <code>/gencode &lt;jumlah&gt; [role]</code> — Membuat kode akses registrasi baru (default: student).\n"
+            "  <i>Contoh:</i> <code>/gencode 5 student</code> atau <code>/gencode 1 bem</code>\n"
+            "• <code>/gencode_avail</code> — Melihat daftar kode akses standar yang belum diklaim.\n"
+            "• <code>/gencode_warkat [jumlah]</code> (atau <code>/genwarkat</code>) — Membuat Warkat Kehormatan.\n"
+            "  <i>Contoh:</i> <code>/gencode_warkat 3</code>\n"
+            "• <code>/gencode_warkat_avail</code> (atau <code>/genwarkat_avail</code>) — Melihat daftar Warkat Kehormatan yang belum digunakan."
+        )
+        await update.message.reply_text(menu_text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
     count = 1
     target_role = "student"
-    
-    if len(parts) > 1 and parts[1].isdigit():
-        count = int(parts[1])
-    if len(parts) > 2:
-        target_role = parts[2].lower()
-        if target_role not in (ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_CHARYARTHI):
-            await update.message.reply_text("Role target tidak valid. Gunakan: admin, internal, bem, student, maba, atau charyarthi.")
-            return
 
-    if count > 100: count = 100
-    
+    if args[0].isdigit():
+        count = int(args[0])
+        if len(args) > 1:
+            target_role = args[1].lower()
+    else:
+        target_role = args[0].lower()
+
+    if target_role not in (ROLE_ADMIN, ROLE_INTERNAL, ROLE_BEM, ROLE_STUDENT, ROLE_MABA, ROLE_CHARYARTHI):
+        await update.message.reply_text("Role target tidak valid. Gunakan: admin, internal, bem, student, maba, atau charyarthi.")
+        return
+
+    if count > 100:
+        count = 100
+    if count < 1:
+        count = 1
+
     codes = []
     now = time.time()
     for _ in range(count):
         codes.append((''.join(random.choices(string.ascii_uppercase + string.digits, k=10)), now, target_role))
-    
+
     await conn.executemany("INSERT INTO access_codes (code, created_at, target_role) VALUES (?, ?, ?)", codes)
     await conn.commit()
-    
-    await update.message.reply_text(f"Berhasil generate {count} kode akses (Role: {target_role}):\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes), parse_mode="HTML")
+
+    await update.message.reply_text(
+        f"Berhasil generate {count} kode akses (Role: {target_role}):\n\n" + "\n".join(f"<code>{c[0]}</code>" for c in codes),
+        parse_mode="HTML"
+    )
 
 
 async def cmd_gencode_avail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -558,7 +602,7 @@ async def cmd_gencode_warkat(update: Update, context: ContextTypes.DEFAULT_TYPE)
     now = time.time()
     expires_charya = now + (60 * 86400)  # 60 hari untuk Jalur Charya
     current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
-    max_gen = current_gen + 2  # 2 generasi untuk Bebas Pravesa
+    max_gen = current_gen + 1  # Berlaku 2 generasi: generasi berjalan saat rilis dan 1 generasi berikutnya
 
     import secrets
     codes_data = []
@@ -572,8 +616,8 @@ async def cmd_gencode_warkat(update: Update, context: ContextTypes.DEFAULT_TYPE)
     charya_exp_str = format_local_time(expires_charya)
     lines = [
         f"📜 <b>Berhasil Membuat {count} Warkat Kehormatan</b>\n",
-        f"• <b>Masa Berlaku Charya:</b> 60 Hari (s/d {charya_exp_str})",
-        f"• <b>Masa Berlaku Pravesa:</b> 2 Generasi (s/d Generasi {max_gen})\n",
+        f"• <b>Masa Berlaku Prakarsha (Staf):</b> 60 Hari (s/d {charya_exp_str})",
+        f"• <b>Masa Berlaku Svatantra (Pravesa):</b> 2 Generasi (s/d Generasi {max_gen})\n",
         "<b>Daftar Kode Warkat:</b>",
     ]
     for item in codes_data:
@@ -604,7 +648,7 @@ async def cmd_gencode_warkat_avail(update: Update, context: ContextTypes.DEFAULT
         charya_status = "✅ Aktif" if now <= r["expires_charya"] else "❌ Expired"
         pravesa_status = "✅ Aktif" if current_gen <= r["max_generasi"] else "❌ Expired"
         lines.append(
-            f"• <code>{r['code']}</code> | Charya: {charya_status} | Pravesa: {pravesa_status} (s/d Gen {r['max_generasi']})"
+            f"• <code>{r['code']}</code> | Prakarsha: {charya_status} | Svatantra: {pravesa_status} (s/d Gen {r['max_generasi']})"
         )
 
     buf = []
@@ -634,6 +678,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
     uid = q.from_user.id
 
     if action == "cancel":
+        await db.set_onboarding_step(conn, uid, None)
         context.user_data.pop("warkat_flow", None)
         try:
             await q.edit_message_text("❌ Proses penukaran Warkat Kehormatan dibatalkan.")
@@ -651,7 +696,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         cur_gen = int(await db.get_setting(conn, "current_generasi", "1"))
         if cur_gen > w["max_generasi"]:
             await q.edit_message_text(
-                f"❌ Masa berlaku warkat untuk jalur Bebas Pravesa telah berakhir (maks. Generasi {w['max_generasi']}, saat ini Generasi {cur_gen})."
+                f"❌ Masa berlaku warkat untuk Jalur Svatantra (Bebas Pravesa) telah berakhir (maks. Generasi {w['max_generasi']}, saat ini Generasi {cur_gen})."
             )
             return
 
@@ -666,7 +711,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         await q.edit_message_text(
             "🎉 <b>Selamat! Penukaran Warkat Berhasil.</b>\n\n"
-            "Anda telah resmi menjadi <b>Shishya (Mahasiswa)</b> Institut Dhruva Ekāgra melalui jalur <b>Bebas Pravesa</b> tanpa perlu mengikuti kegiatan Ospek!\n\n"
+            "Anda telah resmi menjadi <b>Shishya (Mahasiswa)</b> Institut Dhruva Ekāgra melalui jalur <b>Svatantra (Bebas Pravesa)</b> tanpa perlu mengikuti kegiatan Ospek!\n\n"
             "Silakan ketik /lengkapi untuk memeriksa atau memperbarui profil data diri Anda.",
             parse_mode="HTML"
         )
@@ -679,7 +724,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
             try:
                 await context.bot.send_message(
                     chat_id=OWNER_ID,
-                    text=f"📜 <b>Warkat Kehormatan Digunakan (Bebas Pravesa)</b>\n"
+                    text=f"📜 <b>Warkat Kehormatan Digunakan (Jalur Svatantra)</b>\n"
                          f"<b>Oleh:</b> {html.escape(name_str)} ({username_str})\n"
                          f"<b>ID:</b> <code>{u.id}</code>\n"
                          f"<b>Kode:</b> <code>{code}</code>\n"
@@ -693,7 +738,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
             try:
                 await context.bot.send_message(
                     chat_id=BACKUP_CH_ID,
-                    text=f"📜 <b>Warkat Kehormatan Digunakan (Bebas Pravesa)</b>\n"
+                    text=f"📜 <b>Warkat Kehormatan Digunakan (Jalur Svatantra)</b>\n"
                          f"<b>Oleh:</b> {html.escape(name_str)} ({username_str})\n"
                          f"<b>Kode:</b> <code>{code}</code>",
                     parse_mode="HTML"
@@ -711,10 +756,10 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         now = time.time()
         if now > w["expires_charya"]:
-            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Khusus Charya telah kedaluwarsa (maksimal 60 hari).")
+            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Prakarsha telah kedaluwarsa (maksimal 60 hari).")
             return
 
-        context.user_data["warkat_flow"] = {"code": code, "d1": None, "d2": None, "d3": None}
+        context.user_data["warkat_flow"] = {"code": code, "d1": None, "d2": None, "d3": None, "r1": None, "r2": None, "r3": None}
 
         active_divs = await get_active_charyarthi_divisions(db, conn)
         if not active_divs:
@@ -732,7 +777,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
 
         await q.edit_message_text(
-            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 1</b>\n\n"
+            "🏛 <b>Jalur Prakarsha — Pilihan Divisi 1</b>\n\n"
             "Silakan pilih <b>Divisi Pilihan Pertama (1)</b> yang paling Anda minati:",
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="HTML"
@@ -767,7 +812,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
 
         await q.edit_message_text(
-            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 2</b>\n\n"
+            "🏛 <b>Jalur Prakarsha — Pilihan Divisi 2</b>\n\n"
             f"Pilihan 1: <b>{d1_lbl}</b>\n\n"
             "Silakan pilih <b>Divisi Pilihan Kedua (2)</b>:",
             reply_markup=InlineKeyboardMarkup(buttons),
@@ -806,7 +851,7 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
 
         await q.edit_message_text(
-            "🏛 <b>Jalur Khusus Charya — Pilihan Divisi 3</b>\n\n"
+            "🏛 <b>Jalur Prakarsha — Pilihan Divisi 3</b>\n\n"
             f"Pilihan 1: <b>{d1_lbl}</b>\n"
             f"Pilihan 2: <b>{d2_lbl}</b>\n\n"
             "Silakan pilih <b>Divisi Pilihan Ketiga (3)</b>:",
@@ -830,23 +875,20 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         d2_lbl = get_division_label(d2_id) if d2_id else "-"
         d3_lbl = get_division_label(did3)
 
-        buttons = [
-            [InlineKeyboardButton("🚀 Saya Sudah Kirim CV & Submit Pendaftaran", callback_data=f"warkat:csubmit:{code}")],
-            [InlineKeyboardButton("🔄 Ubah Pilihan Divisi", callback_data=f"warkat:charya:{code}")],
-            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")],
-        ]
+        await db.set_onboarding_step(conn, uid, f"WARKAT_REASON_1:{code}")
+
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")]
+        ])
 
         await q.edit_message_text(
-            "🏛 <b>Konfirmasi Pendaftaran Jalur Khusus Charya</b>\n\n"
-            "<b>Pilihan Divisi:</b>\n"
+            "🏛 <b>Jalur Prakarsha (Calon Staf) — Alasan Pemilihan Divisi</b>\n\n"
+            "Divisi yang Anda pilih:\n"
             f"1. <b>{d1_lbl}</b>\n"
             f"2. <b>{d2_lbl}</b>\n"
             f"3. <b>{d3_lbl}</b>\n\n"
-            "📄 <b>Pengiriman Berkas CV / Portofolio:</b>\n"
-            "Pendaftar Jalur Khusus Charya diwajibkan mengirim berkas CV (PDF/Gambar) ke bot resmi HR Dhruva:\n"
-            "👉 <b>@HRDhruvaBot</b>\n\n"
-            "<i>Jika Anda sudah menentukan pilihan divisi dan merasa sudah mengirimkan berkas CV ke @HRDhruvaBot, silakan klik tombol di bawah untuk menyelesaikan pendaftaran:</i>",
-            reply_markup=InlineKeyboardMarkup(buttons),
+            f"Sebagai bahan pertimbangan penempatan divisi oleh tim SDM, silakan ketikkan <b>alasan Anda memilih Divisi 1 ({d1_lbl})</b>:",
+            reply_markup=cancel_kb,
             parse_mode="HTML"
         )
         return
@@ -860,13 +902,16 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         now = time.time()
         if now > w["expires_charya"]:
-            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Khusus Charya telah kedaluwarsa.")
+            await q.edit_message_text("❌ Masa berlaku warkat untuk Jalur Prakarsha telah kedaluwarsa.")
             return
 
         flow = context.user_data.get("warkat_flow") or {}
         d1_id = flow.get("d1")
         d2_id = flow.get("d2")
         d3_id = flow.get("d3")
+        r1 = flow.get("r1") or "-"
+        r2 = flow.get("r2") or "-"
+        r3 = flow.get("r3") or "-"
         if not (d1_id and d2_id and d3_id):
             await q.edit_message_text("❌ Data pilihan divisi tidak lengkap. Silakan ulangi penukaran warkat dengan /kode.")
             return
@@ -885,21 +930,28 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
             "target_division_1": d1_id,
             "target_division_2": d2_id,
             "target_division_3": d3_id,
-            "charyarthi_reason": "Jalur Khusus Warkat Kehormatan (CV dikirim ke @HRDhruvaBot)",
+            "reason_division_1": r1,
+            "reason_division_2": r2,
+            "reason_division_3": r3,
+            "charyarthi_reason": f"Pilihan 1 ({d1_lbl}): {r1}\nPilihan 2 ({d2_lbl}): {r2}\nPilihan 3 ({d3_lbl}): {r3}",
             "application_status": "PENDING",
             "applied_at": time.time(),
             "warkat_code": code,
+            "track": "prakarsha",
         })
         await db.set_onboarding_step(conn, uid, None)
         context.user_data.pop("warkat_flow", None)
 
         await q.edit_message_text(
-            "✅ <b>Pendaftaran Jalur Khusus Charya Berhasil Dikirim!</b>\n\n"
-            "Warkat Kehormatan Anda telah berhasil digunakan. Data pilihan divisi Anda:\n"
+            "✅ <b>Pendaftaran Jalur Prakarsha Berhasil Dikirim!</b>\n\n"
+            "Warkat Kehormatan Anda telah berhasil digunakan. Data pilihan divisi & alasan Anda:\n"
             f"1. <b>{d1_lbl}</b>\n"
+            f"   <i>Alasan:</i> {html.escape(r1)}\n\n"
             f"2. <b>{d2_lbl}</b>\n"
-            f"3. <b>{d3_lbl}</b>\n\n"
-            "Tim SDM dan Petinggi akan meninjau berkas CV yang Anda kirimkan ke <b>@HRDhruvaBot</b>. "
+            f"   <i>Alasan:</i> {html.escape(r2)}\n\n"
+            f"3. <b>{d3_lbl}</b>\n"
+            f"   <i>Alasan:</i> {html.escape(r3)}\n\n"
+            "Tim SDM dan Petinggi akan meninjau berkas CV yang Anda kirimkan ke <b>@HRDhruvaBot</b> beserta pertimbangan alasan di atas. "
             "Hasil kelulusan seleksi akan diumumkan langsung melalui bot ini. Terima kasih! ✨",
             parse_mode="HTML"
         )
@@ -911,17 +963,20 @@ async def handle_warkat_callback(update: Update, context: ContextTypes.DEFAULT_T
         uname = f"@{html.escape(u_row['username'])}" if u_row and u_row["username"] else "Tanpa Username"
 
         msg_admin = (
-            "📑 <b>PENDAFTARAN CHARYA (JALUR KHUSUS WARKAT)</b>\n"
+            "📑 <b>PENDAFTARAN CHARYA (JALUR PRAKARSHA)</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>Nama:</b> <a href=\"tg://user?id={uid}\">{nama}</a>\n"
             f"🔗 <b>Username:</b> {uname}\n"
             f"🆔 <b>ID:</b> <code>{uid}</code>\n"
             f"📜 <b>Kode Warkat:</b> <code>{code}</code>\n"
             f"🏛 <b>Pilihan 1:</b> {d1_lbl}\n"
+            f"   <i>Alasan:</i> {html.escape(r1)}\n\n"
             f"🏛 <b>Pilihan 2:</b> {d2_lbl}\n"
+            f"   <i>Alasan:</i> {html.escape(r2)}\n\n"
             f"🏛 <b>Pilihan 3:</b> {d3_lbl}\n"
+            f"   <i>Alasan:</i> {html.escape(r3)}\n\n"
             "📄 <b>Berkas CV:</b> Dikirim ke @HRDhruvaBot\n"
-            "📢 <b>Catatan:</b> Bebas promo & bebas tes tertulis (Jalur Khusus Warkat)\n"
+            "📢 <b>Catatan:</b> Bebas promo & bebas tes tertulis (Jalur Prakarsha)\n"
             f"⏱ <b>Waktu:</b> {format_local_time(time.time())}\n"
             "━━━━━━━━━━━━━━━━━━\n"
             "<i>Silakan periksa CV di @HRDhruvaBot sebelum memutuskan:</i>"
@@ -982,9 +1037,16 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "/profile — Profil akun & total Agra",
         "/lengkapi — Isi data wajib awal (sekali)",
         "/ubah — Ajukan perubahan (disetujui admin)",
-        "/pfp — Forward post channel ke KEEP channel",
+        "/kode [kode] — Tukar Kode Akses / Warkat Kehormatan",
+        "/pfp — Forward post channel ke KEEP channel (+1 Agra)",
         "",
     ]
+    if role == ROLE_PUBLIC:
+        lines.append(
+            "<b>Pendaftaran & Publik</b>\n"
+            "/charyarthi — Formulir pendaftaran calon staf (Chāryārthī)\n"
+            "/maba — Pendaftaran Mahasiswa Baru\n"
+        )
     if role in (ROLE_STUDENT, ROLE_BEM, ROLE_PURNA):
         lines.append(
             "<b>Shishya & Akademik</b>\n/hadir — Presensi ke sesi yang dibuka\n"
@@ -1001,6 +1063,15 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             "/kartu — Kartu Pegawai\n"
             "/foto — Ganti pas foto Pegawai\n"
             "/kontrak — Kontrak Kerja\n"
+        )
+    if role != ROLE_PUBLIC:
+        lines.append(
+            "<b>Komunitas & Agra</b>\n"
+            "/transfer [@user] [nominal] — Transfer saldo Agra\n"
+            "/leaderboard — Peringkat saldo Agra terbanyak\n"
+            "/menfess — Kirim Menfess anonim\n"
+            "/menfess_read — Baca Menfess masuk\n"
+            "/manosraya — Salurkan aspirasi / curhat mahasiswa\n"
         )
     if can_report(role, prof) or can_open_presensi:
         lines.extend([
@@ -1056,6 +1127,8 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "<i>Atau balas pesan user lalu</i> <code>/admin_data</code>",
                 "<code>/transkrip [nim/nama]</code> — Cetak Transkrip Shishya",
                 "<code>/ijazah [nim/nama]</code> — Cetak Ijazah Shishya",
+                "<code>/kick [@user|id]</code> — Keluarkan anggota dari grup",
+                "<code>/setting_charyarthi</code> — Pengaturan pendaftaran calon staf",
                 "",
             ]
         )
@@ -1094,25 +1167,34 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     lines = [
         "👑 <b>Panduan Lengkap Perintah Khusus Owner / Founder</b>\n",
         "Berikut seluruh perintah dan wewenang eksklusif tingkat Owner di sistem Dhruva:\n",
-        "<b>🎓 Penutupan Generasi & Peran (Role)</b>",
+        "<b>🎓 Manajemen Generasi & Peran (Role)</b>",
+        "• <code>/generasi</code> — Status generasi aktif & panduan sub menu generasi.",
+        "• <code>/generasi_atur &lt;nomor&gt;</code> — Mengatur nomor generasi aktif sistem (contoh: <code>/generasi_atur 1</code>).",
+        "• <code>/generasi_tutup [konfirmasi]</code> — Menu interaktif penutupan generasi & meluluskan seluruh mahasiswa aktif ke Purna Shishya.",
         "• <code>/setrole [role] @user1 @user2...</code> — Menetapkan peran user spesifik (admin, internal, bem, student, purna, maba, public).",
         "• <code>/setrole purna all</code> — <b>Tutup Generasi:</b> Meluluskan seluruh Shishya & BEM aktif ke Purna Shishya (Alumni) secara massal.",
         "• <code>/setrole purna shishya</code> — Meluluskan hanya Shishya aktif ke Purna.",
-        "• <code>/setrole purna bem</code> — Meluluskan hanya pengurus BEM ke Purna.",
-        "• <code>/tutup_generasi [konfirmasi]</code> — Menu interaktif penutupan generasi (pratinjau jumlah mahasiswa aktif & eksekusi).\n",
+        "• <code>/setrole purna bem</code> — Meluluskan hanya pengurus BEM ke Purna.\n",
         "<b>👤 Manajemen Akun & Migrasi</b>",
         "• <code>/pindah_data [id_lama|@lama] [id_baru|@baru]</code> — Memindahkan seluruh profil, role, saldo Agra, presensi, & tugas dari akun lama ke akun baru.",
         "• <code>/admin_data [id/username]</code> — Mengubah paksa profil user mana pun tanpa persetujuan.",
+        "• <code>/kick [@user|ID]</code> — Mengeluarkan anggota dari grup (mendukung multi-grup di private chat).",
+        "• <code>/kicknot &lt;role1&gt; &lt;role2&gt;...</code> — Mengeluarkan massal anggota grup yang tidak memiliki role target.",
         "• <code>/chat [id/username] [pesan]</code> — Mengirim pesan langsung / media secara polos ke private chat user dari bot.\n",
-        "<b>🎫 Kode Akses & Promosi</b>",
+        "<b>🎫 Kode Akses, Rekrutmen & Promosi</b>",
+        "• <code>/gencode</code> — Menu utama manajemen kode akses standar & Warkat Kehormatan.",
         "• <code>/gencode [jumlah] [role]</code> — Membuat kode akses registrasi baru (default role: student).",
         "• <code>/gencode_avail</code> — Melihat daftar kode akses yang belum diklaim.",
-        "• <code>/gencode_warkat [jumlah]</code> — Membuat Warkat Kehormatan (Jalur Khusus Charya / Bebas Pravesa).",
+        "• <code>/gencode_warkat [jumlah]</code> — Membuat Warkat Kehormatan (Jalur Prakarsha / Svatantra).",
         "• <code>/gencode_warkat_avail</code> — Melihat daftar Warkat Kehormatan yang belum digunakan.",
+        "• <code>/setting_charyarthi</code> — Saklar interaktif buka/tutup pendaftaran Oprec Staf & status tiap divisi.",
+        "• <code>/soal [divisi]</code> — Manajemen bank soal tes esai seleksi calon staf.",
+        "• <code>/acc_charyarthi &lt;uid&gt; [1|2|3]</code> — Menerima pelamar calon staf ke divisi 1, 2, atau 3.",
+        "• <code>/reject_charyarthi &lt;uid&gt;</code> — Menolak pelamar calon staf.",
         "• <code>/promo</code> — Menu pengaturan syarat kata kunci validasi LPM dan link target Story Telegram.",
         "• <code>/ospek_mode [on|off]</code> — Menghidupkan/mematikan rutinitas otomatis kegiatan Ospek Maba.\n",
         "<b>📢 Penyiaran & Komunikasi</b>",
-        "• <code>/pfp [daily|weekly]</code> — Forward post channel ke KEEP channel & statistik harian/mingguan Owner.",
+        "• <code>/pfp [daily|weekly]</code> — Forward post channel ke KEEP channel (+1 Agra reward) & statistik harian/mingguan Owner.",
         "• <code>/broadcast [role|all] [pesan]</code> — Mengirimkan pesan siaran resmi dari bot ke seluruh pengguna sesuai role.",
         "• <code>/trigger</code> — Menu pembuatan dan pengelolaan auto-responder kata kunci bot.\n",
         "<b>📜 Kelulusan & Transkrip Akademik</b>",
@@ -1127,7 +1209,8 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "• <code>/orreset_agra [id/username] [tipe]</code> — Reset mutasi atau saldo Agra spesifik user.\n",
         "<b>⚡ Pemeliharaan Server & Repositori</b>",
         "• <code>/reload</code> — Memuat ulang modul & konfigurasi tanpa mematikan bot.",
-        "• <code>/pull</code> — Menarik pembaruan kode terbaru dari repositori Git secara live.\n",
+        "• <code>/pull</code> — Menarik pembaruan kode terbaru dari repositori Git secara live.",
+        "• <code>/push [pesan]</code> — Melakukan auto-commit & push data/perubahan dari server VPS ke GitHub.\n",
         "<i>Catatan: Seluruh perintah admin standar (/daftar, /presensi, /tagall, /tugas, dll.) juga tetap dapat digunakan oleh Owner.</i>"
     ]
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -1511,6 +1594,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         if action == "hubungi":
             keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Kirim undangan acara.", callback_data="pub:undangan")],
                 [InlineKeyboardButton("Seputar kemitraan dan sejenisnya.", callback_data="pub:medpart")],
                 [InlineKeyboardButton("Menghubungi staf SDM.", callback_data="pub:hrd")],
                 [InlineKeyboardButton("Menghubungi staf Akademik.", callback_data="pub:akademik")],
@@ -1524,6 +1608,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif action == "back":
             row_u = await user_row(conn, db, q.from_user.id)
             profile_u = profile_from_row(row_u) if row_u else {}
+            if row_u and (row_u["onboarding_step"] or "") == "INPUT_CODE":
+                await db.set_onboarding_step(conn, q.from_user.id, None)
+
             buttons = []
             is_open = await is_charyarthi_oprec_open(db, conn)
             if is_open:
@@ -1543,20 +1630,135 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             except Exception as e:
                 log.warning("pub:back edit error: %s", e)
 
-        elif action in ("medpart", "hrd", "akademik"):
-            username = "@dhruvaekagrabot" if action == "medpart" else ("@HRDhruvabot" if action == "hrd" else "@acadhruvabot")
+        elif action in ("undangan", "medpart", "hrd", "akademik"):
+            if action == "undangan":
+                username = "@dhruvaekagrabot"
+            elif action == "medpart":
+                username = "@dhruvamitrabot"
+            elif action == "hrd":
+                username = "@HRDhruvabot"
+            else:
+                username = "@acadhruvabot"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:hubungi")]
+            ])
             try:
-                await q.edit_message_text(f"Silakan menghubungi {username}, ketik /start untuk kembali.")
+                await q.edit_message_text(f"Silakan menghubungi {username}. Klik kembali untuk ke menu sebelumnya.", reply_markup=keyboard)
             except Exception as e:
                 log.warning("pub:action edit error: %s", e)
         elif action == "lainnya":
-            await q.edit_message_text("Silakan ketik pertanyaan Anda. Pesan Anda akan langsung diteruskan ke tim kami.")
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
+            ])
+            try:
+                await q.edit_message_text("Silakan ketik pertanyaan Anda. Pesan Anda akan langsung diteruskan ke tim kami.", reply_markup=keyboard)
+            except Exception as e:
+                log.warning("pub:lainnya edit error: %s", e)
         elif action == "kode":
             conn = _conn(context)
             db = _db(context)
             await db.set_onboarding_step(conn, q.from_user.id, "INPUT_CODE")
-            await q.edit_message_text("Silakan ketikkan kode akses yang Anda terima dari pihak akademik (huruf besar):")
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="pub:back")]
+            ])
+            try:
+                await q.edit_message_text("Silakan ketikkan kode akses yang Anda terima dari pihak akademik (huruf besar):", reply_markup=keyboard)
+            except Exception as e:
+                log.warning("pub:kode edit error: %s", e)
         return
+
+    if data.startswith("gencode:"):
+        await q.answer()
+        if not is_owner(uid):
+            await q.answer("Hanya owner yang berhak mengakses menu ini.", show_alert=True)
+            return
+
+        action = data.split(":")[1]
+        if action == "menu":
+            cur_std = await conn.execute("SELECT COUNT(*) as c FROM access_codes WHERE used_by IS NULL")
+            row_std = await cur_std.fetchone()
+            count_std = int(row_std["c"]) if row_std else 0
+
+            cur_wkt = await conn.execute("SELECT COUNT(*) as c FROM warkat_codes WHERE used_by IS NULL")
+            row_wkt = await cur_wkt.fetchone()
+            count_wkt = int(row_wkt["c"]) if row_wkt else 0
+
+            current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"📦 Kode Standar Tersedia ({count_std})", callback_data="gencode:avail_std")],
+                [InlineKeyboardButton(f"📜 Warkat Kehormatan Tersedia ({count_wkt})", callback_data="gencode:avail_wkt")],
+            ])
+
+            menu_text = (
+                "🎫 <b>Manajemen Kode Akses & Warkat Kehormatan</b>\n\n"
+                f"<b>Status Stok Saat Ini (Generasi {current_gen}):</b>\n"
+                f"• Kode Akses Standar Tersedia: <b>{count_std}</b> kode\n"
+                f"• Warkat Kehormatan Tersedia: <b>{count_wkt}</b> warkat\n\n"
+                "<b>Sub Menu / Perintah Terkait:</b>\n"
+                "• <code>/gencode &lt;jumlah&gt; [role]</code> — Membuat kode akses registrasi baru (default: student).\n"
+                "  <i>Contoh:</i> <code>/gencode 5 student</code> atau <code>/gencode 1 bem</code>\n"
+                "• <code>/gencode_avail</code> — Melihat daftar kode akses standar yang belum diklaim.\n"
+                "• <code>/gencode_warkat [jumlah]</code> (atau <code>/genwarkat</code>) — Membuat Warkat Kehormatan.\n"
+                "  <i>Contoh:</i> <code>/gencode_warkat 3</code>\n"
+                "• <code>/gencode_warkat_avail</code> (atau <code>/genwarkat_avail</code>) — Melihat daftar Warkat Kehormatan yang belum digunakan."
+            )
+            try:
+                await q.edit_message_text(menu_text, reply_markup=keyboard, parse_mode="HTML")
+            except Exception as e:
+                log.warning("gencode:menu edit error: %s", e)
+            return
+
+        elif action == "avail_std":
+            cur = await conn.execute("SELECT code, target_role FROM access_codes WHERE used_by IS NULL ORDER BY created_at DESC")
+            rows = await cur.fetchall()
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="gencode:menu")]
+            ])
+            if not rows:
+                await q.edit_message_text("ℹ️ Tidak ada kode akses standar yang tersedia (semua sudah diklaim).", reply_markup=keyboard)
+                return
+            lines = [f"📦 <b>Terdapat {len(rows)} Kode Akses Standar Belum Diklaim:</b>\n"]
+            for r in rows:
+                lines.append(f"• <code>{r['code']}</code> (Role: <code>{r['target_role']}</code>)")
+            buf = []
+            char_count = 0
+            for l in lines:
+                if char_count + len(l) + 1 > 3800:
+                    buf.append("\n<i>...(terpotong karena batas panjang pesan Telegram)</i>")
+                    break
+                buf.append(l)
+                char_count += len(l) + 1
+            await q.edit_message_text("\n".join(buf), reply_markup=keyboard, parse_mode="HTML")
+            return
+
+        elif action == "avail_wkt":
+            rows = await db.get_available_warkat_codes(conn)
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="gencode:menu")]
+            ])
+            if not rows:
+                await q.edit_message_text("ℹ️ Tidak ada Warkat Kehormatan yang belum digunakan.", reply_markup=keyboard)
+                return
+            current_gen = int(await db.get_setting(conn, "current_generasi", "1"))
+            lines = [f"📜 <b>Terdapat {len(rows)} Warkat Kehormatan Belum Digunakan (Gen {current_gen}):</b>\n"]
+            now = time.time()
+            for r in rows:
+                charya_status = "✅ Aktif" if now <= r["expires_charya"] else "❌ Expired"
+                pravesa_status = "✅ Aktif" if current_gen <= r["max_generasi"] else "❌ Expired"
+                lines.append(
+                    f"• <code>{r['code']}</code> | Charya: {charya_status} | Pravesa: {pravesa_status} (s/d Gen {r['max_generasi']})"
+                )
+            buf = []
+            char_count = 0
+            for l in lines:
+                if char_count + len(l) + 1 > 3800:
+                    buf.append("\n<i>...(terpotong karena batas panjang pesan Telegram)</i>")
+                    break
+                buf.append(l)
+                char_count += len(l) + 1
+            await q.edit_message_text("\n".join(buf), reply_markup=keyboard, parse_mode="HTML")
+            return
 
     if data.startswith("maba:"):
         action = data.split(":")[1]
@@ -5017,8 +5219,8 @@ async def cmd_setrole(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
 
 
-async def cmd_tutup_generasi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Perintah owner /tutup_generasi [konfirmasi] — Meluluskan seluruh shishya aktif ke purna."""
+async def cmd_generasi_tutup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah owner /generasi_tutup [konfirmasi] — Meluluskan seluruh shishya aktif ke purna."""
     if not update.effective_user or not update.message:
         return
     if not is_owner(update.effective_user.id):
@@ -5048,7 +5250,7 @@ async def cmd_tutup_generasi(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"2. SKS semester berjalan akan dibukukan ke <code>accumulated_sks</code>.\n"
             f"3. NIM (<code>student_id</code>) tetap disimpan permanen untuk Transkrip (<code>/transkrip</code>) & Ijazah (<code>/ijazah</code>).\n"
             f"4. Kelas & UKM aktif dibersihkan agar bot siap digunakan untuk generasi berikutnya.\n\n"
-            f"Ketik <code>/tutup_generasi konfirmasi</code> untuk mengeksekusi penutupan generasi.\n"
+            f"Ketik <code>/generasi_tutup konfirmasi</code> untuk mengeksekusi penutupan generasi.\n"
             f"Atau gunakan <code>/setrole purna all</code>.",
             parse_mode="HTML",
         )
@@ -5104,6 +5306,74 @@ async def cmd_tutup_generasi(update: Update, context: ContextTypes.DEFAULT_TYPE)
         lines_summary.append(f"<i>...dan {len(processed) - 35} mahasiswa lainnya.</i>")
 
     await update.message.reply_text("\n".join(lines_summary), parse_mode="HTML")
+
+
+cmd_tutup_generasi = cmd_generasi_tutup
+
+
+async def cmd_generasi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah owner /generasi — Melihat status generasi aktif & panduan sub menu generasi."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang berhak melihat atau mengatur generasi.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+
+    cur_gen = await db.get_setting(conn, "current_generasi", "1")
+    await update.message.reply_text(
+        f"🏛️ <b>Manajemen Generasi Akademik</b>\n\n"
+        f"Status saat ini: <b>Generasi {cur_gen}</b>\n\n"
+        f"<b>Sub Menu / Perintah Terkait:</b>\n"
+        f"• <code>/generasi_atur &lt;nomor&gt;</code> — Mengatur nomor generasi aktif sistem (contoh: <code>/generasi_atur 1</code>).\n"
+        f"• <code>/generasi_tutup [konfirmasi]</code> — Menutup generasi akademik & meluluskan seluruh mahasiswa aktif ke Purna Shishya (Alumni).",
+        parse_mode="HTML",
+    )
+
+
+async def cmd_generasi_atur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah owner /generasi_atur <nomor> — Mengatur nomor generasi aktif di sistem."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_owner(update.effective_user.id):
+        await update.message.reply_text("Hanya owner yang berhak mengatur generasi.")
+        return
+
+    conn = _conn(context)
+    db = _db(context)
+
+    args = context.args or []
+    if not args:
+        cur_gen = await db.get_setting(conn, "current_generasi", "1")
+        await update.message.reply_text(
+            f"ℹ️ <b>Pengaturan Nomor Generasi</b>\n\n"
+            f"Status saat ini: Generasi <b>{cur_gen}</b>\n\n"
+            f"Gunakan: <code>/generasi_atur &lt;nomor&gt;</code>\n"
+            f"<i>Contoh:</i> <code>/generasi_atur 1</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    val_str = args[0].strip()
+    if not val_str.isdigit() or int(val_str) < 1:
+        await update.message.reply_text("❌ Nomor generasi harus berupa angka positif (contoh: <code>/generasi_atur 1</code>).", parse_mode="HTML")
+        return
+
+    new_gen = int(val_str)
+    old_gen = await db.get_setting(conn, "current_generasi", "1")
+    await db.set_setting(conn, "current_generasi", str(new_gen))
+    await update.message.reply_text(
+        f"✅ <b>Nomor Generasi Berhasil Diperbarui!</b>\n\n"
+        f"• Generasi Sebelumnya: <b>{old_gen}</b>\n"
+        f"• Generasi Aktif Sekarang: <b>{new_gen}</b>",
+        parse_mode="HTML",
+    )
+
+
+cmd_setgenerasi = cmd_generasi_atur
+
 
 async def cmd_owner_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
@@ -6495,7 +6765,8 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     uid = update.effective_user.id
-    if not is_owner(uid):
+    row = await user_row(_conn(context), _db(context), uid)
+    if not (is_owner(uid) or (row and row.get("role") == ROLE_OWNER)):
         await update.message.reply_text("Tidak diizinkan. Hanya owner yang dapat melakukan git pull.")
         return
 
@@ -6512,6 +6783,49 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await msg.edit_text(f"Gagal melakukan git pull:\n<pre>{error_output}</pre>", parse_mode="HTML")
     except Exception as e:
         await msg.edit_text(f"Terjadi kesalahan sistem:\n<pre>{str(e)}</pre>", parse_mode="HTML")
+
+
+async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    uid = update.effective_user.id
+    row = await user_row(_conn(context), _db(context), uid)
+    if not (is_owner(uid) or (row and row.get("role") == ROLE_OWNER)):
+        await update.message.reply_text("Tidak diizinkan. Hanya owner yang dapat melakukan git push.")
+        return
+
+    import subprocess
+    msg = await update.message.reply_text("Sedang memeriksa status repositori & melakukan push...")
+    try:
+        # 1. Cek git status apakah ada file yang berubah atau belum ditrack
+        status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True)
+        status_out = status_res.stdout.strip()
+
+        commit_out = ""
+        if status_out:
+            # Ambil custom commit message jika diberikan di perintah: /push [pesan]
+            parts = (update.message.text or "").split(maxsplit=1)
+            commit_msg = parts[1].strip() if len(parts) > 1 and parts[1].strip() else f"sync: auto-sync VPS data ({format_local_time(time.time())})"
+
+            # Stage all changes
+            subprocess.run(["git", "add", "-A"], capture_output=True, text=True, check=True)
+            commit_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True, check=True)
+            commit_out = commit_res.stdout.strip() + "\n"
+
+        # 2. Jalankan git push
+        push_res = subprocess.run(["git", "push"], capture_output=True, text=True, check=True)
+        push_out = push_res.stdout.strip() or push_res.stderr.strip() or "Push berhasil tanpa output tambahan."
+
+        final_output = f"{commit_out}{push_out}".strip()
+        if not final_output:
+            final_output = "Berhasil push, repositori sudah up-to-date."
+
+        await msg.edit_text(f"✅ <b>Git Push Berhasil:</b>\n<pre>{final_output}</pre>", parse_mode="HTML")
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.strip() or e.stdout.strip() or "Terjadi kesalahan yang tidak diketahui."
+        await msg.edit_text(f"❌ <b>Gagal melakukan git push:</b>\n<pre>{error_output}</pre>", parse_mode="HTML")
+    except Exception as e:
+        await msg.edit_text(f"❌ <b>Terjadi kesalahan sistem:</b>\n<pre>{str(e)}</pre>", parse_mode="HTML")
 
 async def build_greeting_help_text(
     conn: aiosqlite.Connection,

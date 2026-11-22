@@ -135,7 +135,9 @@ def test_help_view_and_help_owner():
         full_owner_text = up_ownerhelp.message.reply_text.call_args[0][0]
         assert "Panduan Lengkap Perintah Khusus Owner / Founder" in full_owner_text
         assert "/setrole purna all" in full_owner_text
-        assert "/tutup_generasi" in full_owner_text
+        assert "/generasi_tutup" in full_owner_text
+        assert "/generasi_atur" in full_owner_text
+        assert "/generasi" in full_owner_text
         assert "/pindah_data" in full_owner_text
         assert "/gencode" in full_owner_text
         assert "/owner_reset" in full_owner_text
@@ -251,6 +253,87 @@ def test_export_kelulusan_restricted_to_owner():
             print("  [PASS] Owner allowed to run /export_kelulusan")
 
 
+def test_cmd_push_and_cmd_pull():
+    print("--- 4. Testing /pull & /push commands ---")
+    owner_user = make_mock_user(OWNER_ID, "founder", "Owner")
+    student_user = make_mock_user(3001, "student1", "Student")
+
+    ctx = MagicMock()
+    mock_db = MagicMock()
+    mock_conn = MagicMock()
+    ctx.application.bot_data = {"conn": mock_conn, "db": mock_db}
+
+    async def mock_user_row(conn, db, uid):
+        if uid == OWNER_ID:
+            return {"telegram_id": OWNER_ID, "role": ROLE_OWNER, "profile_json": "{}"}
+        return {"telegram_id": 3001, "role": ROLE_STUDENT, "profile_json": "{}"}
+
+    with unittest_mock_patch("bot.handlers.commands.user_row", side_effect=mock_user_row):
+        # 1. Non-owner /pull -> Rejected
+        up_student_pull = make_mock_update(student_user, "/pull")
+        run_sync(commands.cmd_pull(up_student_pull, ctx))
+        assert "Tidak diizinkan. Hanya owner" in up_student_pull.message.reply_text.call_args[0][0]
+
+        # 2. Non-owner /push -> Rejected
+        up_student_push = make_mock_update(student_user, "/push")
+        run_sync(commands.cmd_push(up_student_push, ctx))
+        assert "Tidak diizinkan. Hanya owner" in up_student_push.message.reply_text.call_args[0][0]
+
+        # 3. Owner /pull -> Calls git pull
+        up_owner_pull = make_mock_update(owner_user, "/pull")
+        mock_pull_msg = MagicMock()
+        mock_pull_msg.edit_text = AsyncMock()
+        up_owner_pull.message.reply_text = AsyncMock(return_value=mock_pull_msg)
+
+        mock_res_pull = MagicMock(stdout="Already up to date.\n")
+        with unittest_mock_patch("subprocess.run", return_value=mock_res_pull):
+            run_sync(commands.cmd_pull(up_owner_pull, ctx))
+            assert "Already up to date." in mock_pull_msg.edit_text.call_args[0][0]
+
+        # 4. Owner /push (clean repo) -> Calls git status & git push
+        up_owner_push = make_mock_update(owner_user, "/push")
+        mock_push_msg = MagicMock()
+        mock_push_msg.edit_text = AsyncMock()
+        up_owner_push.message.reply_text = AsyncMock(return_value=mock_push_msg)
+
+        def mock_subp_run(cmd, **kwargs):
+            if cmd == ["git", "status", "--porcelain"]:
+                return MagicMock(stdout="")
+            elif cmd == ["git", "push"]:
+                return MagicMock(stdout="Everything up-to-date\n", stderr="")
+            return MagicMock(stdout="", stderr="")
+
+        with unittest_mock_patch("subprocess.run", side_effect=mock_subp_run):
+            run_sync(commands.cmd_push(up_owner_push, ctx))
+            assert "Git Push Berhasil" in mock_push_msg.edit_text.call_args[0][0]
+            assert "Everything up-to-date" in mock_push_msg.edit_text.call_args[0][0]
+
+        # 5. Owner /push with dirty repo & custom message -> adds, commits, pushes
+        up_owner_push_dirty = make_mock_update(owner_user, "/push sync kelulusan")
+        mock_push_msg_dirty = MagicMock()
+        mock_push_msg_dirty.edit_text = AsyncMock()
+        up_owner_push_dirty.message.reply_text = AsyncMock(return_value=mock_push_msg_dirty)
+
+        executed_cmds = []
+        def mock_subp_run_dirty(cmd, **kwargs):
+            executed_cmds.append(cmd)
+            if cmd == ["git", "status", "--porcelain"]:
+                return MagicMock(stdout=" M data/graduation_records.json\n")
+            elif cmd[:3] == ["git", "commit", "-m"]:
+                return MagicMock(stdout="[main abc1234] sync kelulusan\n")
+            elif cmd == ["git", "push"]:
+                return MagicMock(stdout="To github.com:user/repo.git\n   abc1234..def5678  main -> main\n", stderr="")
+            return MagicMock(stdout="", stderr="")
+
+        with unittest_mock_patch("subprocess.run", side_effect=mock_subp_run_dirty):
+            run_sync(commands.cmd_push(up_owner_push_dirty, ctx))
+            assert ["git", "status", "--porcelain"] in executed_cmds
+            assert ["git", "add", "-A"] in executed_cmds
+            assert ["git", "commit", "-m", "sync kelulusan"] in executed_cmds
+            assert ["git", "push"] in executed_cmds
+            assert "Git Push Berhasil" in mock_push_msg_dirty.edit_text.call_args[0][0]
+
+
 def main():
     print("==================================================================")
     print("STARTING TEST SUITE: /help, /help_owner & ZIP JSON INCLUSION")
@@ -258,8 +341,9 @@ def main():
     test_help_view_and_help_owner()
     test_export_zip_includes_json()
     test_export_kelulusan_restricted_to_owner()
+    test_cmd_push_and_cmd_pull()
     print("\n==================================================================")
-    print("ALL TESTS PASSED! (3/3 Suites)")
+    print("ALL TESTS PASSED! (4/4 Suites)")
     print("==================================================================")
 
 

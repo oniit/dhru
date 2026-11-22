@@ -56,6 +56,10 @@ class AsyncSqliteMockConn:
         cur = self._raw.execute(sql, params)
         return AsyncSqliteMockCursor(cur)
 
+    async def executemany(self, sql, seq_of_params=()):
+        cur = self._raw.executemany(sql, seq_of_params)
+        return AsyncSqliteMockCursor(cur)
+
     async def commit(self):
         self._raw.commit()
 
@@ -211,8 +215,8 @@ def test_cmd_gencode_warkat_owner(warkat_db):
     assert message.reply_text.called
     reply_text = message.reply_text.call_args[0][0]
     assert "Berhasil Membuat 3 Warkat Kehormatan" in reply_text
-    assert "Masa Berlaku Charya:</b> 60 Hari" in reply_text
-    assert "Masa Berlaku Pravesa:</b> 2 Generasi" in reply_text
+    assert "Masa Berlaku Prakarsha (Staf):</b> 60 Hari" in reply_text
+    assert "Masa Berlaku Svatantra (Pravesa):</b> 2 Generasi" in reply_text
 
     avail = run_sync(db.get_available_warkat_codes(conn))
     assert len(avail) == 3
@@ -264,8 +268,8 @@ def test_handle_input_code_warkat_options(warkat_db):
     assert message.reply_text.called
     text_sent = message.reply_text.call_args[0][0]
     assert "Warkat Kehormatan Terverifikasi!" in text_sent
-    assert "Jalur Khusus Charya" in text_sent
-    assert "Bebas Pravesa" in text_sent
+    assert "Prakarsha" in text_sent
+    assert "Svatantra" in text_sent
     reply_markup = message.reply_text.call_args[1].get("reply_markup")
     assert reply_markup is not None
     # Check buttons
@@ -302,7 +306,7 @@ def test_handle_warkat_callback_pravesa(warkat_db):
 
     assert cb_query.edit_message_text.called
     text = cb_query.edit_message_text.call_args[0][0]
-    assert "Bebas Pravesa" in text
+    assert "Svatantra" in text
     assert "resmi menjadi <b>Shishya (Mahasiswa)</b>" in text
 
     # Verify role updated
@@ -358,10 +362,36 @@ def test_handle_warkat_callback_charya_flow_and_submission(warkat_db):
     # Step 4: Pick Divisi 3 (e.g. d_humas)
     cb_query.data = f"warkat:cdiv3:{code}:d_humas"
     run_sync(handle_warkat_callback(update, context))
-    conf_text = cb_query.edit_message_text.call_args[0][0]
-    assert "Konfirmasi Pendaftaran Jalur Khusus Charya" in conf_text
-    assert "@HRDhruvaBot" in conf_text
+    prompt_r1_text = cb_query.edit_message_text.call_args[0][0]
+    assert "Alasan Pemilihan Divisi" in prompt_r1_text
     assert context.user_data["warkat_flow"]["d3"] == "d_humas"
+
+    # Step 4b: Provide Reason 1 via private message
+    from bot.handlers import messages
+    msg1 = MagicMock(text="Saya menyukai teknologi dan coding")
+    msg1.reply_text = AsyncMock()
+    up_r1 = MagicMock(effective_user=user, message=msg1)
+    run_sync(messages.on_private_message(up_r1, context))
+    assert "Alasan untuk Divisi 1 tersimpan" in msg1.reply_text.call_args[0][0]
+    assert context.user_data["warkat_flow"]["r1"] == "Saya menyukai teknologi dan coding"
+
+    # Step 4c: Provide Reason 2 via private message
+    msg2 = MagicMock(text="Saya punya pengalaman desain grafis")
+    msg2.reply_text = AsyncMock()
+    up_r2 = MagicMock(effective_user=user, message=msg2)
+    run_sync(messages.on_private_message(up_r2, context))
+    assert "Alasan untuk Divisi 2 tersimpan" in msg2.reply_text.call_args[0][0]
+    assert context.user_data["warkat_flow"]["r2"] == "Saya punya pengalaman desain grafis"
+
+    # Step 4d: Provide Reason 3 via private message -> shows confirmation
+    msg3 = MagicMock(text="Saya komunikatif dan aktif berjejaring")
+    msg3.reply_text = AsyncMock()
+    up_r3 = MagicMock(effective_user=user, message=msg3)
+    run_sync(messages.on_private_message(up_r3, context))
+    conf_text = msg3.reply_text.call_args[0][0]
+    assert "Konfirmasi Pendaftaran Jalur Prakarsha" in conf_text
+    assert "@HRDhruvaBot" in conf_text
+    assert context.user_data["warkat_flow"]["r3"] == "Saya komunikatif dan aktif berjejaring"
 
     # Step 5: Submit application
     cb_query.data = f"warkat:csubmit:{code}"
@@ -369,7 +399,7 @@ def test_handle_warkat_callback_charya_flow_and_submission(warkat_db):
         run_sync(handle_warkat_callback(update, context))
 
     submit_text = cb_query.edit_message_text.call_args[0][0]
-    assert "Pendaftaran Jalur Khusus Charya Berhasil Dikirim!" in submit_text
+    assert "Pendaftaran Jalur Prakarsha Berhasil Dikirim!" in submit_text
 
     # Check user role and profile in db
     cur = raw.execute("SELECT role, profile_json FROM users WHERE telegram_id = 888")
@@ -381,6 +411,9 @@ def test_handle_warkat_callback_charya_flow_and_submission(warkat_db):
     assert prof["target_division_1"] == "d_it"
     assert prof["target_division_2"] == "d_medkraf"
     assert prof["target_division_3"] == "d_humas"
+    assert prof["reason_division_1"] == "Saya menyukai teknologi dan coding"
+    assert prof["reason_division_2"] == "Saya punya pengalaman desain grafis"
+    assert prof["reason_division_3"] == "Saya komunikatif dan aktif berjejaring"
     assert prof["application_status"] == "PENDING"
 
     # Verify warkat redeemed
@@ -474,3 +507,66 @@ def test_on_private_message_text_lc_full_name(warkat_db):
     import json
     prof = json.loads(row["profile_json"])
     assert prof["full_name"] == "Budi Santoso"
+
+
+def test_cmd_setgenerasi_owner(warkat_db):
+    """Memastikan owner dapat melihat status dan mengatur nomor generasi aktif."""
+    from bot.handlers.commands import cmd_generasi, cmd_generasi_atur, cmd_setgenerasi
+
+    db, conn, raw = warkat_db
+
+    user = MagicMock(id=999)
+    message = MagicMock()
+    message.reply_text = AsyncMock()
+    update = MagicMock(effective_user=user, message=message)
+    context = MagicMock(args=[])
+    context.application.bot_data = {"conn": conn, "db": db}
+
+    # 1. Non-owner blocked
+    with patch("bot.handlers.commands.is_owner", return_value=False):
+        run_sync(cmd_generasi(update, context))
+    assert "Hanya owner" in message.reply_text.call_args[0][0]
+
+    with patch("bot.handlers.commands.is_owner", return_value=False):
+        run_sync(cmd_generasi_atur(update, context))
+    assert "Hanya owner" in message.reply_text.call_args[0][0]
+
+    # 2. View current generation menu & submenus (owner via /generasi)
+    message.reply_text.reset_mock()
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(cmd_generasi(update, context))
+    rep_menu = message.reply_text.call_args[0][0]
+    assert "Manajemen Generasi Akademik" in rep_menu
+    assert "Status saat ini: <b>Generasi 1</b>" in rep_menu
+    assert "/generasi_atur" in rep_menu
+    assert "/generasi_tutup" in rep_menu
+
+    # 3. /generasi_atur without args shows current status & usage
+    message.reply_text.reset_mock()
+    context.args = []
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(cmd_generasi_atur(update, context))
+    rep_usage = message.reply_text.call_args[0][0]
+    assert "Pengaturan Nomor Generasi" in rep_usage
+    assert "/generasi_atur" in rep_usage
+    assert "1" in rep_usage
+
+    # 4. Set generation to 2 via /generasi_atur (owner)
+    message.reply_text.reset_mock()
+    context.args = ["2"]
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(cmd_generasi_atur(update, context))
+    assert "Nomor Generasi Berhasil Diperbarui" in message.reply_text.call_args[0][0]
+    assert "Generasi Aktif Sekarang: <b>2</b>" in message.reply_text.call_args[0][0]
+
+    val = run_sync(db.get_setting(conn, "current_generasi"))
+    assert val == "2"
+
+    # 5. Reset back to 1 via alias cmd_setgenerasi
+    message.reply_text.reset_mock()
+    context.args = ["1"]
+    with patch("bot.handlers.commands.is_owner", return_value=True):
+        run_sync(cmd_setgenerasi(update, context))
+    assert "Generasi Aktif Sekarang: <b>1</b>" in message.reply_text.call_args[0][0]
+    val1 = run_sync(db.get_setting(conn, "current_generasi"))
+    assert val1 == "1"

@@ -283,12 +283,12 @@ def test_security_guards():
     assert "Hanya owner" in call_args
     print("  [PASS] Non-owner blocked from /setrole purna all")
 
-    # 2. Non-owner blocked from /tutup_generasi
-    up_tg_unauth = make_mock_update(student_user, "/tutup_generasi")
-    run_sync(commands.cmd_tutup_generasi(up_tg_unauth, ctx))
+    # 2. Non-owner blocked from /generasi_tutup
+    up_tg_unauth = make_mock_update(student_user, "/generasi_tutup")
+    run_sync(commands.cmd_generasi_tutup(up_tg_unauth, ctx))
     call_args = up_tg_unauth.message.reply_text.call_args[0][0]
     assert "Hanya owner" in call_args
-    print("  [PASS] Non-owner blocked from /tutup_generasi")
+    print("  [PASS] Non-owner blocked from /generasi_tutup")
 
     # 3. Owner attempts /setrole admin all -> MUST BE REJECTED
     up_exploit = make_mock_update(owner_user, "/setrole admin all")
@@ -497,22 +497,22 @@ def test_command_tutup_generasi_flow():
 
     # Step A: Run without confirmation -> guidance and preview
     ctx.args = []
-    up_preview = make_mock_update(owner_user, "/tutup_generasi")
-    run_sync(commands.cmd_tutup_generasi(up_preview, ctx))
+    up_preview = make_mock_update(owner_user, "/generasi_tutup")
+    run_sync(commands.cmd_generasi_tutup(up_preview, ctx))
     preview_text = up_preview.message.reply_text.call_args[0][0]
     assert "Penutupan Generasi Akademik (Tutup Generasi)" in preview_text
     assert "Saat ini terdapat <b>1</b> mahasiswa aktif" in preview_text
-    assert "/tutup_generasi konfirmasi" in preview_text
-    print("  [PASS] /tutup_generasi without args shows active student count and guidance")
+    assert "/generasi_tutup konfirmasi" in preview_text
+    print("  [PASS] /generasi_tutup without args shows active student count and guidance")
 
     # Step B: Run with confirmation -> executes mass rollover
     ctx.args = ["konfirmasi"]
-    up_exec = make_mock_update(owner_user, "/tutup_generasi konfirmasi")
-    run_sync(commands.cmd_tutup_generasi(up_exec, ctx))
+    up_exec = make_mock_update(owner_user, "/generasi_tutup konfirmasi")
+    run_sync(commands.cmd_generasi_tutup(up_exec, ctx))
     exec_text = up_exec.message.reply_text.call_args[0][0]
     assert "Transisi Massal ke Purna Shishya Selesai" in exec_text
     assert "Galang Pradana" in exec_text
-    print("  [PASS] /tutup_generasi konfirmasi completed mass transition")
+    print("  [PASS] /generasi_tutup konfirmasi completed mass transition")
 
     # Verify user 401 is now purna with NIM intact
     r401 = run_sync(conn.execute("SELECT role, profile_json FROM users WHERE telegram_id = 401"))

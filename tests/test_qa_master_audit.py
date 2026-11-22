@@ -49,6 +49,7 @@ from bot.handlers import (
     games,
     graduation,
     common,
+    messages,
 )
 from telegram import Update, Message, User, Chat, CallbackQuery, MessageEntity
 from telegram.constants import MessageEntityType
@@ -697,12 +698,12 @@ def test_admin_and_owner_controls(db, conn):
     assert "hanya diizinkan untuk mengubah peran ke" in rep_exploit.lower()
     reporter.log_test("/setrole", "Security/Privilege Escalation", "Reject mass non-purna role change", "PASS", "Exploitative mass role change strictly blocked")
 
-    # 6.9 /tutup_generasi (Interactive Confirmation Flow)
-    up_tg_preview = make_mock_update(owner, "/tutup_generasi")
-    run_sync(commands.cmd_tutup_generasi(up_tg_preview, ctx_mass))
+    # 6.9 /generasi_tutup (Interactive Confirmation Flow)
+    up_tg_preview = make_mock_update(owner, "/generasi_tutup")
+    run_sync(commands.cmd_generasi_tutup(up_tg_preview, ctx_mass))
     rep_tg_preview = up_tg_preview.message.reply_text.call_args_list[-1][0][0]
     assert "penutupan generasi akademik" in rep_tg_preview.lower()
-    reporter.log_test("/tutup_generasi", "Happy Path", "Preview active student count and guidance", "PASS", "Confirmation guidance displayed")
+    reporter.log_test("/generasi_tutup", "Happy Path", "Preview active student count and guidance", "PASS", "Confirmation guidance displayed")
 
     # 6.10 /help Owner view equals Admin + /help_owner footer hint
     up_help_owner = make_mock_update(owner, "/help")
@@ -863,8 +864,8 @@ def test_pfp_and_warkat_subsystems(db, conn):
         run_sync(commands.cmd_gencode_warkat(up_gen, ctx_gen))
     rep_gen = up_gen.message.reply_text.call_args_list[-1][0][0]
     assert "Berhasil Membuat 2 Warkat Kehormatan" in rep_gen
-    assert "Masa Berlaku Charya:</b> 60 Hari" in rep_gen
-    assert "Masa Berlaku Pravesa:</b> 2 Generasi" in rep_gen
+    assert "Masa Berlaku Prakarsha (Staf):</b> 60 Hari" in rep_gen
+    assert "Masa Berlaku Svatantra (Pravesa):</b> 2 Generasi" in rep_gen
     reporter.log_test("/gencode_warkat", "Happy Path", "Owner creates dual-expiry warkat codes", "PASS", "2 warkat codes created with 60d / 2gen validity")
 
     # 9.5 /gencode_warkat_avail listing
@@ -887,13 +888,13 @@ def test_pfp_and_warkat_subsystems(db, conn):
     run_sync(handle_input_code(up_input_kode, ctx_input_kode, test_code_charya))
     rep_input = up_input_kode.message.reply_text.call_args_list[-1][0][0]
     assert "Warkat Kehormatan Terverifikasi!" in rep_input
-    assert "Jalur Khusus Charya" in rep_input
-    assert "Bebas Pravesa" in rep_input
+    assert "Prakarsha" in rep_input
+    assert "Svatantra" in rep_input
     kb_input = up_input_kode.message.reply_text.call_args_list[-1][1].get("reply_markup")
     assert kb_input is not None
     reporter.log_test("/kode", "Happy Path", "Verify warkat and render dual-track options", "PASS", "Dual-track selection menu displayed")
 
-    # 9.7 Track 1: Jalur Khusus Charya flow (Div 1 -> Div 2 -> Div 3 -> CV note -> Submit)
+    # 9.7 Track 1: Jalur Prakarsha flow (Div 1 -> Div 2 -> Div 3 -> 3 Reasons -> CV note -> Submit)
     candidate_id = 80002
     candidate = create_test_user(db, conn, candidate_id, "calon_charya", "Citra", ROLE_PUBLIC)
     ctx_candidate = make_mock_context(db, conn, user_data={})
@@ -920,17 +921,32 @@ def test_pfp_and_warkat_subsystems(db, conn):
     assert "Pilihan Divisi 3" in cb_charya.edit_message_text.call_args[0][0]
     assert ctx_candidate.user_data["warkat_flow"]["d2"] == "d_medkraf"
 
-    # Select Div 3
+    # Select Div 3 -> Prompts for reason 1
     cb_charya.data = f"warkat:cdiv3:{test_code_charya}:d_humas"
     run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
-    assert "@HRDhruvaBot" in cb_charya.edit_message_text.call_args[0][0]
+    assert "Alasan Pemilihan Divisi" in cb_charya.edit_message_text.call_args[0][0]
     assert ctx_candidate.user_data["warkat_flow"]["d3"] == "d_humas"
+
+    # Input Reason 1
+    up_r1 = make_mock_update(candidate, "Alasan divisi IT karena hobi ngoding")
+    run_sync(messages.on_private_message(up_r1, ctx_candidate))
+    assert "Alasan untuk Divisi 1 tersimpan" in up_r1.message.reply_text.call_args_list[-1][0][0]
+
+    # Input Reason 2
+    up_r2 = make_mock_update(candidate, "Alasan medkraf karena bisa bikin poster")
+    run_sync(messages.on_private_message(up_r2, ctx_candidate))
+    assert "Alasan untuk Divisi 2 tersimpan" in up_r2.message.reply_text.call_args_list[-1][0][0]
+
+    # Input Reason 3
+    up_r3 = make_mock_update(candidate, "Alasan humas karena suka sosialisasi")
+    run_sync(messages.on_private_message(up_r3, ctx_candidate))
+    assert "Konfirmasi Pendaftaran Jalur Prakarsha" in up_r3.message.reply_text.call_args_list[-1][0][0]
 
     # Submit application
     cb_charya.data = f"warkat:csubmit:{test_code_charya}"
     with patch("bot.handlers.commands.PENDAFTAR_CH_ID", 10091), patch("bot.handlers.commands.SDM_CH_ID", 10092):
         run_sync(commands.handle_warkat_callback(up_cb_charya, ctx_candidate))
-    assert "Pendaftaran Jalur Khusus Charya Berhasil Dikirim!" in cb_charya.edit_message_text.call_args[0][0]
+    assert "Pendaftaran Jalur Prakarsha Berhasil Dikirim!" in cb_charya.edit_message_text.call_args[0][0]
 
     row_c = run_sync(db.get_user(conn, candidate_id))
     assert row_c["role"] == ROLE_CHARYARTHI

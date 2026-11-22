@@ -138,17 +138,17 @@ async def handle_input_code(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await update.message.reply_text(
                 "❌ <b>Warkat Kehormatan Kedaluwarsa</b>\n\n"
                 "Masa berlaku warkat ini telah berakhir untuk kedua jalur:\n"
-                f"• Jalur Khusus Charya (maks. 60 hari): ❌ Kedaluwarsa\n"
-                f"• Bebas Pravesa (maks. Gen {w['max_generasi']}): ❌ Kedaluwarsa (Generasi saat ini: {cur_gen})",
+                f"• Jalur Prakarsha (Staf / maks. 60 hari): ❌ Kedaluwarsa\n"
+                f"• Jalur Svatantra (Pravesa / maks. Gen {w['max_generasi']}): ❌ Kedaluwarsa (Generasi saat ini: {cur_gen})",
                 parse_mode="HTML"
             )
             return
 
         buttons = []
         if charya_valid:
-            buttons.append([InlineKeyboardButton("🏛 Ambil Jalur Khusus Charya (Calon Staf)", callback_data=f"warkat:charya:{code}")])
+            buttons.append([InlineKeyboardButton("🏛 Ambil Jalur Prakarsha (Calon Staf)", callback_data=f"warkat:charya:{code}")])
         if pravesa_valid:
-            buttons.append([InlineKeyboardButton("🎓 Ambil Bebas Pravesa (Langsung Shishya)", callback_data=f"warkat:pravesa:{code}")])
+            buttons.append([InlineKeyboardButton("🎓 Ambil Jalur Svatantra (Bebas Pravesa)", callback_data=f"warkat:pravesa:{code}")])
         buttons.append([InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")])
 
         charya_info = f"✅ Aktif (s/d {format_local_time(w['expires_charya'])})" if charya_valid else "❌ Kedaluwarsa (Maks. 60 Hari)"
@@ -158,14 +158,14 @@ async def handle_input_code(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await update.message.reply_text(
             "📜 <b>Warkat Kehormatan Terverifikasi!</b>\n\n"
             "Selamat! Anda memiliki Warkat Kehormatan Institut Dhruva Ekāgra. "
-            "Warkat ini memberikan hak istimewa untuk memilih salah satu jalur berikut:\n\n"
-            "1. 🏛 <b>Jalur Khusus Charya (Calon Staf)</b>\n"
+            "Warkat ini memberikan hak istimewa untuk memilih salah satu opsi berikut:\n\n"
+            "1. 🏛 <b>Jalur Prakarsha (Calon Staf)</b>\n"
             "   • Bebas tugas promosi & bebas tes esai tertulis.\n"
-            "   • Langsung memilih 3 divisi peminatan.\n"
-            "   • Kirim berkas CV ke bot resmi <b>@HRDhruvaBot</b>.\n"
+            "   • Memilih 3 divisi peminatan beserta pertimbangan alasannya.\n"
+            "   • Mengirimkan berkas CV ke bot resmi <b>@HRDhruvaBot</b>.\n"
             f"   • Status: {charya_info}\n\n"
-            "2. 🎓 <b>Bebas Pravesa (Mahasiswa/Shishya)</b>\n"
-            "   • Langsung diangkat menjadi Shishya (Mahasiswa) tanpa mengikuti Ospek/Pravesa.\n"
+            "2. 🎓 <b>Jalur Svatantra (Bebas Pravesa / Mahasiswa)</b>\n"
+            "   • Langsung diangkat menjadi Shishya (Mahasiswa) tanpa perlu mengikuti kegiatan Ospek.\n"
             f"   • Status: {pravesa_info}\n\n"
             "<i>Silakan tentukan pilihan Anda dengan menekan salah satu tombol di bawah:</i>",
             reply_markup=InlineKeyboardMarkup(buttons),
@@ -607,6 +607,107 @@ async def on_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if step == "INPUT_CODE":
         await handle_input_code(update, context, text)
+        return
+
+    if step.startswith("WARKAT_REASON_1:"):
+        from bot.settings import get_division_label
+        code = step.split(":", 1)[1]
+        r1 = text[:1000].strip()
+        if not r1:
+            await update.message.reply_text("Alasan tidak boleh kosong. Silakan ketikkan alasan Anda memilih divisi ini:")
+            return
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["r1"] = r1
+        context.user_data["warkat_flow"] = flow
+
+        d2_id = flow.get("d2")
+        d2_lbl = get_division_label(d2_id) if d2_id else "-"
+
+        await db.set_onboarding_step(conn, uid, f"WARKAT_REASON_2:{code}")
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")]
+        ])
+        await update.message.reply_text(
+            f"✅ Alasan untuk Divisi 1 tersimpan.\n\n"
+            f"Selanjutnya, silakan ketikkan <b>alasan Anda memilih Divisi 2 ({d2_lbl})</b>:",
+            reply_markup=cancel_kb,
+            parse_mode="HTML"
+        )
+        return
+
+    if step.startswith("WARKAT_REASON_2:"):
+        from bot.settings import get_division_label
+        code = step.split(":", 1)[1]
+        r2 = text[:1000].strip()
+        if not r2:
+            await update.message.reply_text("Alasan tidak boleh kosong. Silakan ketikkan alasan Anda memilih divisi ini:")
+            return
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["r2"] = r2
+        context.user_data["warkat_flow"] = flow
+
+        d3_id = flow.get("d3")
+        d3_lbl = get_division_label(d3_id) if d3_id else "-"
+
+        await db.set_onboarding_step(conn, uid, f"WARKAT_REASON_3:{code}")
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")]
+        ])
+        await update.message.reply_text(
+            f"✅ Alasan untuk Divisi 2 tersimpan.\n\n"
+            f"Terakhir, silakan ketikkan <b>alasan Anda memilih Divisi 3 ({d3_lbl})</b>:",
+            reply_markup=cancel_kb,
+            parse_mode="HTML"
+        )
+        return
+
+    if step.startswith("WARKAT_REASON_3:"):
+        from bot.settings import get_division_label
+        code = step.split(":", 1)[1]
+        r3 = text[:1000].strip()
+        if not r3:
+            await update.message.reply_text("Alasan tidak boleh kosong. Silakan ketikkan alasan Anda memilih divisi ini:")
+            return
+        flow = context.user_data.get("warkat_flow") or {}
+        flow["code"] = code
+        flow["r3"] = r3
+        context.user_data["warkat_flow"] = flow
+
+        await db.set_onboarding_step(conn, uid, None)
+
+        d1_id = flow.get("d1")
+        d2_id = flow.get("d2")
+        d3_id = flow.get("d3")
+        r1 = flow.get("r1") or "-"
+        r2 = flow.get("r2") or "-"
+        d1_lbl = get_division_label(d1_id) if d1_id else "-"
+        d2_lbl = get_division_label(d2_id) if d2_id else "-"
+        d3_lbl = get_division_label(d3_id) if d3_id else "-"
+
+        buttons = [
+            [InlineKeyboardButton("🚀 Saya Sudah Kirim CV & Submit Pendaftaran", callback_data=f"warkat:csubmit:{code}")],
+            [InlineKeyboardButton("🔄 Ubah Pilihan & Alasan", callback_data=f"warkat:charya:{code}")],
+            [InlineKeyboardButton("❌ Batal", callback_data="warkat:cancel")],
+        ]
+
+        await update.message.reply_text(
+            "🏛 <b>Konfirmasi Pendaftaran Jalur Prakarsha</b>\n\n"
+            "<b>Pilihan Divisi & Pertimbangan Alasan:</b>\n"
+            f"1. <b>{d1_lbl}</b>\n"
+            f"   <i>Alasan:</i> {html.escape(r1)}\n\n"
+            f"2. <b>{d2_lbl}</b>\n"
+            f"   <i>Alasan:</i> {html.escape(r2)}\n\n"
+            f"3. <b>{d3_lbl}</b>\n"
+            f"   <i>Alasan:</i> {html.escape(r3)}\n\n"
+            "📄 <b>Pengiriman Berkas CV / Portofolio:</b>\n"
+            "Pendaftar Jalur Prakarsha diwajibkan mengirim berkas CV (PDF/Gambar) ke bot resmi HR Dhruva:\n"
+            "👉 <b>@HRDhruvaBot</b>\n\n"
+            "<i>Jika data sudah sesuai dan Anda sudah mengirimkan berkas CV ke @HRDhruvaBot, silakan klik tombol di bawah untuk menyelesaikan pendaftaran:</i>",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="HTML"
+        )
         return
 
     if step == STEP_KARTU_PHOTO:

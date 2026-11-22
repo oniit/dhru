@@ -3,14 +3,14 @@
 Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna dan alur utamanya.
 
 ## Manajemen Akun & Profil
-- `/start` — Titik masuk utama. Membuat pengguna di DB jika belum ada.
+- `/start` — Titik masuk utama. Membuat pengguna di DB jika belum ada. Bagi pengguna dengan peran publik, menyajikan menu interaktif: pendaftaran akun publik, penggunaan kode akses akademik (`/kode`), menu Hubungi Instansi (Kirim undangan acara ke `@dhruvaekagrabot`, Kemitraan/Medpart ke `@dhruvamitrabot`, SDM ke `@HRDhruvabot`, dan Akademik ke `@acadhruvabot`), serta pertanyaan lainnya dengan tombol kembali pada setiap tingkatan menu.
 - `/help` — Menampilkan daftar panduan perintah sesuai peran pengguna (tampilan Owner diselaraskan dengan Admin dan dilengkapi tautan `/help_owner`).
 - `/profil` — Menampilkan Kartu Profil pengguna (NIM, Jabatan, Poin Agra).
 - `/lengkapi` — Memulai proses pengisian data (_onboarding_) yang belum lengkap.
 - `/ubah` — Meminta perubahan data yang sudah terkunci (masuk ke antrean _pending_).
 - `/maba` — Command untuk mendaftar sebagai Mahasiswa Baru (terutama bagi user publik yang datanya sudah terisi).
 - `/charyarthi` — Memulai formulir pendaftaran calon staf (Chāryārthī) secara interaktif.
-- `/kode [kode]` — Memasukkan kode akses registrasi peran standar atau menukarkan Warkat Kehormatan. Jika menukarkan Warkat Kehormatan, pengguna dapat memilih antara **Jalur Khusus Charya** (langsung memilih 3 divisi, bebas promo & tes tertulis, mengirim berkas CV ke `@HRDhruvaBot`) atau **Bebas Pravesa** (langsung diangkat menjadi Shishya/Mahasiswa tanpa mengikuti Ospek).
+- `/kode [kode]` — Memasukkan kode akses registrasi peran standar atau menukarkan Warkat Kehormatan. Jika menukarkan Warkat Kehormatan, pengguna dapat memilih antara **Jalur Prakarsha** (langsung memilih 3 divisi beserta pertimbangan alasan, bebas promo & tes tertulis, mengirim berkas CV ke `@HRDhruvaBot`) atau **Jalur Svatantra** (langsung diangkat menjadi Shishya/Mahasiswa tanpa mengikuti Ospek).
 - `/cancel` atau `/batal` — Membatalkan proses pengisian data atau interaksi aktif dan kembali ke kondisi awal.
 
 ## Akademik & Kelas
@@ -40,17 +40,18 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
-- `/gencode [jumlah] [role]` — (Hanya Owner) Membuat kode akses registrasi standar (default role: student).
+- `/gencode` — (Hanya Owner) Dashboard dan sub menu manajemen kode akses registrasi standar dan Warkat Kehormatan (dilengkapi tombol interaktif status stok kode). Jika dipanggil dengan argumen `/gencode <jumlah> [role]`, langsung membuat kode akses peran target (default: student).
 - `/gencode_avail` — (Hanya Owner) Melihat daftar kode akses standar yang belum diklaim.
-- `/gencode_warkat [jumlah]` / `/genwarkat` — (Hanya Owner) Membuat Warkat Kehormatan untuk alumni/purnata terpilih. Mendukung dua jalur: Jalur Khusus Charya (masa berlaku 60 hari) dan Bebas Pravesa (masa berlaku hingga 2 generasi).
-- `/gencode_warkat_avail` / `/genwarkat_avail` — (Hanya Owner) Melihat daftar Warkat Kehormatan yang belum digunakan beserta status keaktifan jalur Charya dan Pravesa.
+- `/gencode_warkat [jumlah]` / `/genwarkat` — (Hanya Owner) Membuat Warkat Kehormatan untuk alumni/purnata terpilih. Mendukung dua jalur: Jalur Prakarsha (staf, masa berlaku 60 hari) dan Jalur Svatantra (bebas Pravesa, masa berlaku hingga 2 generasi berikutnya).
+- `/gencode_warkat_avail` / `/genwarkat_avail` — (Hanya Owner) Melihat daftar Warkat Kehormatan yang belum digunakan beserta status keaktifan jalur Prakarsha dan Svatantra.
 - `/help_owner` atau `/ownerhelp` — (Hanya Owner) Menampilkan ensiklopedia panduan lengkap seluruh perintah, wewenang, dan fungsi administratif eksklusif tingkat Founder / Owner.
 - `/chat <@username|ID> <pesan>` — (Hanya Owner) Mengirim pesan atau media secara langsung & polos ke private chat user dari bot. Mendukung lampiran media langsung (caption) atau me-reply media apa pun.
 - `/promo` — (Hanya Owner) Membuka menu pengaturan Syarat Kata LPM dan Link target Story secara dinamis.
 - `/setrole <role> <@username...>` — Menetapkan peran (`admin`, `student`, `purna`, dll) kepada satu atau beberapa pengguna.
 - `/setrole purna <all|shishya|bem|massal|semua>` — (Hanya Owner) Meluluskan seluruh mahasiswa aktif ke **Purna Shishya (Alumni)** secara massal pada saat penutupan generasi. SKS aktif dibukukan permanen ke `accumulated_sks`, NIM (`student_id`) dipertahankan untuk arsip Ijazah & Transkrip, dan kelas/UKM aktif dibersihkan.
-- `/tutup_generasi [konfirmasi]` — (Hanya Owner) Menu dan perintah konfirmasi penutupan generasi akademik untuk mengeksekusi transisi massal seluruh Shishya & BEM ke Purna Shishya.
-- `/tutupgenerasi` — Alias untuk `/tutup_generasi`.
+- `/generasi` — (Hanya Owner) Menampilkan status generasi aktif sistem saat ini beserta panduan sub menu (`/generasi_atur` dan `/generasi_tutup`).
+- `/generasi_atur <nomor>` — (Hanya Owner) Mengatur nomor generasi aktif sistem secara langsung (contoh: `/generasi_atur 1`).
+- `/generasi_tutup [konfirmasi]` — (Hanya Owner) Menu dan perintah konfirmasi penutupan generasi akademik untuk mengeksekusi transisi massal seluruh Shishya & BEM ke Purna Shishya (Alumni).
 - `/kick <@username|ID>` — (Owner/Admin/Sekre) Mengeluarkan target dari grup. Jika dijalankan di dalam grup, langsung mengeluarkan anggota dari grup tersebut. Jika dijalankan via PM (private chat bot), bot akan secara dinamis mengecek keanggotaan target dan hanya menampilkan daftar tombol grup di mana target tersebut benar-benar bergabung.
 - `/kicknot <role1> <role2>...` — (Hanya Owner/Admin di Grup) Mengeluarkan (_mass-kick_) semua anggota di grup yang TIDAK memiliki role yang disebutkan.
 - `/add <role/@username> <jumlah> | <deskripsi>` — Menambahkan/mengurangi Agra secara spesifik ke pengguna atau grup role (contoh: `/add internal 50`).
@@ -60,6 +61,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/orreset_agra <id> <tipe>`: (Owner) Reset balance/history Agra user.
 - `/reload`: (Owner/Admin) Memuat ulang module dinamis, config, dll tanpa me-restart server secara penuh.
 - `/pull`: (Owner/Admin) Menarik pembaruan kode terbaru dari repositori menggunakan perintah `git pull` dan menampilkan log perubahannya.
+- `/push [pesan]`: (Khusus Owner) Melakukan staging (`git add -A`), auto-commit, dan `git push` ke repositori remote untuk menyinkronkan data atau perubahan yang dihasilkan di server VPS ke GitHub (misal: arsip kelulusan, file konfigurasi dinamis) agar dapat ditarik ke lokal.
 - `/ospek_mode [on|off]`: (Hanya Owner) Menghidupkan atau mematikan fitur otomatis kegiatan Ospek Maba (misalnya rutinitas presensi harian otomatis untuk Maba jam 15:00-22:00).
 - `/laporan` & `/daftar` — Mengekspor data rekapitulasi anggota ke dalam bentuk file atau _chat_ (mendukung filter `shishya`, `charya`, `charyarthi`, `pravesi`, `purna`, `publik`, serta filter fakultas, jurusan, kelas, dan ukm). Menyesuaikan otomatis dengan wewenang Dosen/Dekan dan menyertakan staf pada filter fakultas/jurusan.
 - `/detail` — Sama seperti `/daftar` namun menyertakan data Tanggal Lahir dan Muse, diurutkan berdasarkan hari ulang tahun terdekat.
