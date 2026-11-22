@@ -299,7 +299,7 @@ def test_cmd_push_and_cmd_pull():
         def mock_subp_run(cmd, **kwargs):
             if cmd == ["git", "status", "--porcelain"]:
                 return MagicMock(stdout="")
-            elif cmd == ["git", "push"]:
+            elif "push" in cmd:
                 return MagicMock(stdout="Everything up-to-date\n", stderr="")
             return MagicMock(stdout="", stderr="")
 
@@ -319,18 +319,18 @@ def test_cmd_push_and_cmd_pull():
             executed_cmds.append(cmd)
             if cmd == ["git", "status", "--porcelain"]:
                 return MagicMock(stdout=" M data/graduation_records.json\n")
-            elif cmd[:3] == ["git", "commit", "-m"]:
+            elif "commit" in cmd:
                 return MagicMock(stdout="[main abc1234] sync kelulusan\n")
-            elif cmd == ["git", "push"]:
+            elif "push" in cmd:
                 return MagicMock(stdout="To github.com:user/repo.git\n   abc1234..def5678  main -> main\n", stderr="")
             return MagicMock(stdout="", stderr="")
 
         with unittest_mock_patch("subprocess.run", side_effect=mock_subp_run_dirty):
             run_sync(commands.cmd_push(up_owner_push_dirty, ctx))
-            assert ["git", "status", "--porcelain"] in executed_cmds
-            assert ["git", "add", "-A"] in executed_cmds
-            assert ["git", "commit", "-m", "sync kelulusan"] in executed_cmds
-            assert ["git", "push"] in executed_cmds
+            assert any(cmd == ["git", "status", "--porcelain"] for cmd in executed_cmds)
+            assert any(cmd == ["git", "add", "-A"] for cmd in executed_cmds)
+            assert any("commit" in cmd and "sync kelulusan" in cmd for cmd in executed_cmds)
+            assert any("push" in cmd for cmd in executed_cmds)
             assert "Git Push Berhasil" in mock_push_msg_dirty.edit_text.call_args[0][0]
 
 

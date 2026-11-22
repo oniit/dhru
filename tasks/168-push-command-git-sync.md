@@ -6,15 +6,17 @@ Menambahkan perintah `/push [pesan]` (khusus Founder / Owner) yang berfungsi mel
 ## Perubahan Teknis
 - **`bot/handlers/commands.py` (`cmd_push`)**:
   - Validasi otentikasi eksklusif Owner (`is_owner(uid)` atau `role == ROLE_OWNER`).
+  - Eksekusi dipindahkan ke off-thread worker (`_async_to_thread`) dengan timeout terukur agar tidak pernah memblokir asyncio event loop Telegram (mencegah bot terkesan "mati"/freeze).
   - Menjalankan `git status --porcelain` untuk mendeteksi perubahan atau berkas baru.
   - Jika terdapat perubahan:
     - Membaca pesan commit kustom dari argumen (`/push [pesan]`), atau membuat default `sync: auto-sync VPS data (<timestamp>)`.
     - Menjalankan `git add -A`.
-    - Menjalankan `git commit -m "[pesan]"`.
-  - Menjalankan `git push` dan menangkap log output dari git.
-  - Mengedit pesan status menjadi ringkasan hasil commit & push dalam format `<pre>` HTML.
+    - Menjalankan `git commit -m "[pesan]"` dengan fallback `-c user.name=Dhruva Bot` dan `-c user.email=bot@dhruva.internal` agar commit tidak gagal jika server VPS belum menyetel global identity.
+  - Menjalankan `git push` dengan konfigurasi `-c http.postBuffer=524288000` (buffer 500MB) untuk mencegah error `502 Bad Gateway` saat payload data dikirim via HTTPS ke reverse proxy GitHub.
+  - Mendukung otentikasi otomatis jika `GITHUB_TOKEN` disetel di `.env`, dengan sanitasi masking token `***` pada log output agar kredensial aman dari kebocoran ke chat.
   - Menangani error `subprocess.CalledProcessError` dan exception sistem dengan aman.
 - **`bot/handlers/commands.py` (`cmd_pull`)**:
+  - Menggunakan off-thread worker `_async_to_thread` dengan timeout 30s.
   - Diselaraskan otentikasinya dengan `cmd_push` (`is_owner(uid) or role == ROLE_OWNER`).
 - **`bot/handlers/commands.py` (`cmd_help_owner`)**:
   - Menambahkan baris dokumentasi `• /push [pesan]` pada kelompok **Pemeliharaan Server & Repositori**.

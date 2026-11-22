@@ -6761,6 +6761,108 @@ async def cmd_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pass
     os.system("sudo systemctl restart botdhru")
 
+async def _async_to_thread(func, *args, **kwargs):
+    try:
+        return await asyncio.to_thread(func, *args, **kwargs)
+    except RuntimeError as e:
+        if "no running event loop" in str(e):
+            return func(*args, **kwargs)
+        raise
+
+
+def _exec_git_pull() -> str:
+    import subprocess, os
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    res = subprocess.run(
+        ["git", "pull"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+        check=True
+    )
+    return res.stdout.strip() or "Berhasil, namun tidak ada output."
+
+
+def _exec_git_push(commit_msg: str) -> str:
+    import subprocess, os
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    # 1. Cek git status apakah ada file yang berubah atau belum ditrack
+    status_res = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env=env,
+        check=True
+    )
+    status_out = status_res.stdout.strip()
+
+    commit_out = ""
+    if status_out:
+        # Stage all changes
+        subprocess.run(
+            ["git", "add", "-A"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+            check=True
+        )
+        # Commit dengan fallback user.name & user.email agar tidak error jika VPS belum di-config
+        commit_res = subprocess.run(
+            [
+                "git",
+                "-c", "user.name=Dhruva Bot",
+                "-c", "user.email=bot@dhruva.internal",
+                "commit",
+                "-m", commit_msg
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+            check=True
+        )
+        commit_out = commit_res.stdout.strip() + "\n"
+
+    # 2. Jalankan git push (tambahkan buffer 500MB agar tidak error 502 Bad Gateway saat push payload)
+    gh_token = os.getenv("GITHUB_TOKEN", "").strip()
+    push_cmd = ["git", "-c", "http.postBuffer=524288000", "push"]
+
+    if gh_token:
+        # Sisipkan token ke URL jika origin adalah HTTPS GitHub
+        rem_res = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        )
+        rem_url = rem_res.stdout.strip()
+        if "github.com" in rem_url and "@" not in rem_url and rem_url.startswith("https://"):
+            auth_url = rem_url.replace("https://", f"https://{gh_token}@")
+            push_cmd = ["git", "-c", "http.postBuffer=524288000", "push", auth_url, "HEAD"]
+
+    push_res = subprocess.run(
+        push_cmd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
+        check=True
+    )
+    push_out = push_res.stdout.strip() or push_res.stderr.strip() or "Push berhasil tanpa output tambahan."
+
+    final_output = f"{commit_out}{push_out}".strip()
+    if gh_token:
+        final_output = final_output.replace(gh_token, "***")
+    return final_output or "Berhasil push, repositori sudah up-to-date."
+
+
 async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
@@ -6773,10 +6875,7 @@ async def cmd_pull(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     import subprocess
     msg = await update.message.reply_text("Sedang menarik pembaruan...")
     try:
-        result = subprocess.run(["git", "pull"], capture_output=True, text=True, check=True)
-        output = result.stdout.strip()
-        if not output:
-            output = "Berhasil, namun tidak ada output."
+        output = await _async_to_thread(_exec_git_pull)
         await msg.edit_text(f"<pre>{output}</pre>", parse_mode="HTML")
     except subprocess.CalledProcessError as e:
         error_output = e.stderr.strip() or e.stdout.strip() or "Terjadi kesalahan yang tidak diketahui."
@@ -6795,34 +6894,19 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     import subprocess
+    parts = (update.message.text or "").split(maxsplit=1)
+    commit_msg = parts[1].strip() if len(parts) > 1 and parts[1].strip() else f"sync: auto-sync VPS data ({format_local_time(time.time())})"
+
     msg = await update.message.reply_text("Sedang memeriksa status repositori & melakukan push...")
     try:
-        # 1. Cek git status apakah ada file yang berubah atau belum ditrack
-        status_res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True)
-        status_out = status_res.stdout.strip()
-
-        commit_out = ""
-        if status_out:
-            # Ambil custom commit message jika diberikan di perintah: /push [pesan]
-            parts = (update.message.text or "").split(maxsplit=1)
-            commit_msg = parts[1].strip() if len(parts) > 1 and parts[1].strip() else f"sync: auto-sync VPS data ({format_local_time(time.time())})"
-
-            # Stage all changes
-            subprocess.run(["git", "add", "-A"], capture_output=True, text=True, check=True)
-            commit_res = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True, check=True)
-            commit_out = commit_res.stdout.strip() + "\n"
-
-        # 2. Jalankan git push
-        push_res = subprocess.run(["git", "push"], capture_output=True, text=True, check=True)
-        push_out = push_res.stdout.strip() or push_res.stderr.strip() or "Push berhasil tanpa output tambahan."
-
-        final_output = f"{commit_out}{push_out}".strip()
-        if not final_output:
-            final_output = "Berhasil push, repositori sudah up-to-date."
-
+        final_output = await _async_to_thread(_exec_git_push, commit_msg)
         await msg.edit_text(f"✅ <b>Git Push Berhasil:</b>\n<pre>{final_output}</pre>", parse_mode="HTML")
     except subprocess.CalledProcessError as e:
+        import os
+        gh_token = os.getenv("GITHUB_TOKEN", "").strip()
         error_output = e.stderr.strip() or e.stdout.strip() or "Terjadi kesalahan yang tidak diketahui."
+        if gh_token:
+            error_output = error_output.replace(gh_token, "***")
         await msg.edit_text(f"❌ <b>Gagal melakukan git push:</b>\n<pre>{error_output}</pre>", parse_mode="HTML")
     except Exception as e:
         await msg.edit_text(f"❌ <b>Terjadi kesalahan sistem:</b>\n<pre>{str(e)}</pre>", parse_mode="HTML")
