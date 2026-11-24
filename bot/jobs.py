@@ -15,71 +15,94 @@ async def daily_staff_attendance_open(context, opened_by=None):
     conn = context.application.bot_data.get("conn")
     if not db or not conn: return
     
-    if opened_by is None:
-        opened_by = 0
+    try:
+        if not opened_by:
+            from bot.settings import OWNER_ID
+            opened_by = OWNER_ID
+            if not opened_by:
+                cur = await conn.execute("SELECT telegram_id FROM users WHERE role = 'owner' LIMIT 1")
+                r = await cur.fetchone()
+                if r:
+                    opened_by = int(r["telegram_id"])
 
-    existing_sess = await db.get_open_session_for_class(conn, "staff_auto")
-    if existing_sess:
-        print(f"Sesi presensi staff_auto sudah aktif (ID: {existing_sess['id']}), melewati pembuatan sesi baru.")
-        return existing_sess["id"]
+        existing_sess = await db.get_open_session_for_class(conn, "staff_auto")
+        if existing_sess:
+            now = time.time()
+            if now - existing_sess["opened_at"] > 16 * 3600:
+                log.warning("Menutup sesi staff_auto basi (ID: %s) dari hari sebelumnya.", existing_sess["id"])
+                await db.close_attendance_session(conn, existing_sess["id"])
+                from bot.handlers.attendance import refresh_auto_presensi_announcement
+                try:
+                    await refresh_auto_presensi_announcement(context, db, conn, existing_sess["id"])
+                except Exception as e:
+                    log.warning("Gagal refresh pengumuman sesi basi: %s", e)
+            else:
+                log.info("Sesi presensi staff_auto sudah aktif (ID: %s), melewati pembuatan sesi baru.", existing_sess["id"])
+                return existing_sess["id"]
 
-    sid = await db.open_attendance_session(
-        conn,
-        class_id="staff_auto",
-        title="Presensi Harian Staf",
-        opened_by=opened_by,
-        chat_id=PRESENCE_CH_ID,
-    )
-    
-    # Kirim pesan perdana ke channel
-    import asyncio
-    msg = None
-    for attempt in range(3):
-        try:
-            msg = await context.bot.send_message(
-                chat_id=PRESENCE_CH_ID,
-                text="Membuka sesi presensi otomatis...",
-            )
-            await db.set_attendance_announce_message(conn, sid, msg.message_id)
-            break
-        except Exception as e:
-            print(f"Gagal mengirim pesan presensi ke channel (percobaan {attempt+1}):", e)
-            if attempt < 2:
-                await asyncio.sleep(5)
+        sid = await db.open_attendance_session(
+            conn,
+            class_id="staff_auto",
+            title="Presensi Harian Staf",
+            opened_by=opened_by,
+            chat_id=PRESENCE_CH_ID,
+        )
         
-    # Import locally to avoid circular imports if any
-    from bot.handlers.attendance import refresh_auto_presensi_announcement
-    await refresh_auto_presensi_announcement(context, db, conn, sid)
-    
-    staff_ids = await db.get_all_staff_ids(conn)
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{sid}")]])
-    
-    for uid in staff_ids:
-        try:
-            await context.bot.send_message(
-                chat_id=uid,
-                text="🔔 *Presensi Harian Staf*\n\nSilakan klik tombol di bawah ini untuk mencatatkan kehadiran Anda hari ini.",
-                parse_mode="Markdown",
-                reply_markup=kb
-            )
-        except Exception:
-            pass
-        await asyncio.sleep(0.05)
+        # Kirim pesan perdana ke channel
+        import asyncio
+        msg = None
+        for attempt in range(3):
+            try:
+                msg = await context.bot.send_message(
+                    chat_id=PRESENCE_CH_ID,
+                    text="Membuka sesi presensi otomatis...",
+                )
+                await db.set_attendance_announce_message(conn, sid, msg.message_id)
+                break
+            except Exception as e:
+                log.warning("Gagal mengirim pesan presensi ke channel (percobaan %d): %s", attempt + 1, e)
+                if attempt < 2:
+                    await asyncio.sleep(5)
             
-    return sid
+        # Import locally to avoid circular imports if any
+        from bot.handlers.attendance import refresh_auto_presensi_announcement
+        await refresh_auto_presensi_announcement(context, db, conn, sid)
+        
+        staff_ids = await db.get_all_staff_ids(conn)
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Hadir", callback_data=f"sh:{sid}")]])
+        
+        for uid in staff_ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text="🔔 *Presensi Harian Staf*\n\nSilakan klik tombol di bawah ini untuk mencatatkan kehadiran Anda hari ini.",
+                    parse_mode="Markdown",
+                    reply_markup=kb
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(0.05)
+                
+        return sid
+    except Exception as e:
+        log.error("Error in daily_staff_attendance_open: %s", e, exc_info=True)
+        return None
 
 async def daily_staff_attendance_close(context):
     db = context.application.bot_data.get("db")
     conn = context.application.bot_data.get("conn")
     if not db or not conn: return
     
-    sess = await db.get_open_session_for_class(conn, "staff_auto")
-    if not sess: return
-    
-    await db.close_attendance_session(conn, sess["id"])
-    
-    from bot.handlers.attendance import refresh_auto_presensi_announcement
-    await refresh_auto_presensi_announcement(context, db, conn, sess["id"])
+    try:
+        sess = await db.get_open_session_for_class(conn, "staff_auto")
+        if not sess: return
+        
+        await db.close_attendance_session(conn, sess["id"])
+        
+        from bot.handlers.attendance import refresh_auto_presensi_announcement
+        await refresh_auto_presensi_announcement(context, db, conn, sess["id"])
+    except Exception as e:
+        log.error("Error in daily_staff_attendance_close: %s", e, exc_info=True)
 
 
 
@@ -169,8 +192,18 @@ async def daily_maba_attendance_open(context):
 
     existing_sess = await db.get_open_session_for_class(conn, "maba_auto")
     if existing_sess:
-        print(f"Sesi presensi maba_auto sudah aktif (ID: {existing_sess['id']}), melewati pembuatan sesi baru.")
-        return existing_sess["id"]
+        now = time.time()
+        if now - existing_sess["opened_at"] > 16 * 3600:
+            log.warning("Menutup sesi maba_auto basi (ID: %s) dari hari sebelumnya.", existing_sess["id"])
+            await db.close_attendance_session(conn, existing_sess["id"])
+            from bot.handlers.attendance import refresh_maba_presensi_announcement
+            try:
+                await refresh_maba_presensi_announcement(context, db, conn, existing_sess["id"])
+            except Exception as e:
+                log.warning("Gagal refresh pengumuman sesi maba basi: %s", e)
+        else:
+            log.info(f"Sesi presensi maba_auto sudah aktif (ID: {existing_sess['id']}), melewati pembuatan sesi baru.")
+            return existing_sess["id"]
 
     sid = await db.open_attendance_session(
         conn,

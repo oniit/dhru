@@ -116,3 +116,91 @@ async def test_periodic_auto_close_attendance_job():
         await conn.commit()
         await conn.close()
 
+
+@pytest.mark.asyncio
+async def test_daily_staff_attendance_lifecycle_and_stale_recovery():
+    from unittest.mock import AsyncMock, MagicMock
+    from bot.jobs import daily_staff_attendance_open, daily_staff_attendance_close
+    from bot.handlers.attendance import _record_hadir
+    from bot.settings import OWNER_ID
+
+    db = Database()
+    conn = await db.connect()
+
+    # Pastikan test owner ada di database
+    owner_id = OWNER_ID or 999111
+    await db.upsert_user_from_telegram(
+        conn,
+        telegram_id=owner_id,
+        username="test_daily_staff_owner",
+        first_name="Test",
+        last_name="Owner",
+        language_code="id",
+        is_premium=False,
+        is_bot=False,
+        raw_profile={},
+    )
+    await db.set_role(conn, owner_id, "owner")
+
+    context = MagicMock()
+    context.application.bot_data = {"db": db, "conn": conn}
+    mock_msg = MagicMock()
+    mock_msg.message_id = 77777
+    context.bot.send_message = AsyncMock(return_value=mock_msg)
+    context.bot.edit_message_text = AsyncMock()
+
+    created_sids = []
+    try:
+        # 1. Buka sesi via cron (opened_by=None)
+        sid1 = await daily_staff_attendance_open(context, opened_by=None)
+        assert sid1 is not None
+        created_sids.append(sid1)
+
+        sess1 = await db.get_attendance_session(conn, sid1)
+        assert sess1 is not None
+        assert sess1["class_id"] == "staff_auto"
+        assert sess1["closed_at"] is None
+        assert sess1["opened_by"] != 0  # Harus user nyata, bukan 0
+
+        # 2. Verifikasi Owner bisa mencatat kehadiran di staff_auto tanpa terblokir self-attendance guard
+        ok, msg, _ = await _record_hadir(
+            db, conn, sid1, owner_id, "owner", ["staff_auto"], status="hadir"
+        )
+        assert ok is True
+        assert "berhasil" in msg.lower() or "tercatat" in msg.lower()
+
+        # 3. Panggilan ulang saat sesi masih segar (< 16 jam) harus mengembalikan sesi yang sama
+        sid1_repeat = await daily_staff_attendance_open(context, opened_by=None)
+        assert sid1_repeat == sid1
+
+        # 4. Simulasikan sesi basi (stale) dari hari sebelumnya (> 16 jam lalu)
+        now = time.time()
+        await conn.execute("UPDATE attendance_sessions SET opened_at = ? WHERE id = ?", (now - (17 * 3600), sid1))
+        await conn.commit()
+
+        # Buka sesi berikutnya di hari baru -> sesi lama harus otomatis ditutup dan sesi baru dibuka
+        sid2 = await daily_staff_attendance_open(context, opened_by=None)
+        assert sid2 is not None
+        assert sid2 != sid1
+        created_sids.append(sid2)
+
+        # Sesi lama harus sudah ditutup
+        sess1_after = await db.get_attendance_session(conn, sid1)
+        assert sess1_after["closed_at"] is not None
+
+        # Sesi baru harus berstatus aktif
+        sess2 = await db.get_attendance_session(conn, sid2)
+        assert sess2["closed_at"] is None
+
+        # 5. Tutup sesi via cron harian
+        await daily_staff_attendance_close(context)
+        sess2_closed = await db.get_attendance_session(conn, sid2)
+        assert sess2_closed["closed_at"] is not None
+    finally:
+        for sid in created_sids:
+            await conn.execute("DELETE FROM attendance_records WHERE session_id = ?", (sid,))
+            await conn.execute("DELETE FROM attendance_sessions WHERE id = ?", (sid,))
+        await conn.commit()
+        await conn.close()
+
+
