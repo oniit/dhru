@@ -3,6 +3,8 @@ import datetime
 import html
 import time
 import logging
+import asyncio
+import weakref
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from bot.settings import ROOT, BACKUP_CH_ID, PRESENCE_CH_ID, EDITOR_GID
@@ -373,122 +375,378 @@ def is_keep_msg_excluded(msg, bot_id: int | None = None) -> bool:
 
     # 3. Cek teks template spesifik yang dikirim oleh bot ini sendiri
     text_content = (getattr(msg, "text", "") or getattr(msg, "caption", "") or "").lower()
-    if "cek @dhruvaposter" in text_content or "terjadi kesalahan saat mem-forward pesan" in text_content:
+    if (
+        "cek @dhruvaposter" in text_content
+        or "terjadi kesalahan saat mem-forward pesan" in text_content
+        or "seluruh pesan tidak dapat di-forward" in text_content
+    ):
         return True
 
     # Semua pesan lainnya tetap diforward!
     return False
 
 
-async def daily_keep_to_post(context):
-    """channel keep punya settingan 24 jam (post yang sudah diforward otomatis hilang karena jobsnya per 24 jam juga)"""
+_keep_forward_locks: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_fallback_keep_lock: asyncio.Lock | None = None
+
+
+def get_keep_forward_lock() -> asyncio.Lock:
+    """Mengembalikan asyncio.Lock yang terikat aman pada event loop aktif."""
+    global _fallback_keep_lock
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        if _fallback_keep_lock is None:
+            _fallback_keep_lock = asyncio.Lock()
+        return _fallback_keep_lock
+
+    lock = _keep_forward_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _keep_forward_locks[loop] = lock
+    return lock
+
+
+async def _resolve_owner_chat_id(conn) -> int:
+    """Mengambil chat ID private Owner dari settings atau fallback ke tabel users."""
+    from bot.settings import OWNER_ID
+    if OWNER_ID and int(OWNER_ID) != 0:
+        return int(OWNER_ID)
+    if conn:
+        try:
+            cur = await conn.execute("SELECT telegram_id FROM users WHERE role = 'owner' LIMIT 1")
+            row = await cur.fetchone()
+            if row:
+                return int(row["telegram_id"])
+        except Exception:
+            pass
+    return 0
+
+
+def _format_keep_kloter_owner_report(
+    kloter_label: str,
+    pfp_cmd_count: int,
+    pfp_in_posts: int,
+    forwarded_count: int,
+    deleted_count: int,
+    is_manual: bool = False,
+) -> str:
+    """Memformat pesan ringkasan kloter KEEP -> Poster untuk private chat Owner."""
+    diff = pfp_in_posts - forwarded_count
+    if diff > 0:
+        diff_text = f"{diff} post (kemungkinan dihapus manual / tidak diteruskan)"
+    elif diff < 0:
+        diff_text = f"+{-diff} post (tambahan langsung di KEEP di luar /pfp)"
+    else:
+        diff_text = "0 (sesuai)"
+
+    mode_str = " [Manual]" if is_manual else ""
+    lines = [
+        f"📊 <b>Laporan Kloter Keep → Poster ({html.escape(kloter_label)}){mode_str}</b>\n",
+        f"• <b>/pfp berhasil:</b> {pfp_cmd_count}x perintah ({pfp_in_posts} post masuk KEEP)",
+        f"• <b>Terforward ke @DhruvaPoster:</b> {forwarded_count} post",
+        f"• <b>Dihapus dari KEEP:</b> {deleted_count} post",
+        f"• <b>Selisih:</b> {diff_text}",
+    ]
+    return "\n".join(lines)
+
+
+async def execute_keep_to_post(
+    bot,
+    db=None,
+    conn=None,
+    is_manual: bool = False,
+    kloter_label: str | None = None,
+    triggered_by: int | None = None,
+) -> tuple[int, str | None]:
+    """
+    Mem-forward postingan dari KEEP_CH_ID ke POST_CH_ID, lalu menghapus postingan
+    yang telah berhasil diforward dari KEEP_CH_ID agar tidak menumpuk dan mencegah duplikasi posting ulang.
+    Dapat dieksekusi melalui jadwal otomatis (15:00 & 17:59 WIB) maupun command manual (/post_keep).
+    Setelah selesai, menginfokan ringkasan kloter (/pfp berhasil vs post terforward) ke private chat Owner.
+
+    Returns:
+        tuple[int, str | None]: (jumlah pesan sukses diforward, error message jika ada)
+    """
     import logging
     log = logging.getLogger(__name__)
-    
+
     from bot.settings import BOT_TOKEN, API_ID, API_HASH, KEEP_CH_ID, POST_CH_ID
     if not KEEP_CH_ID or not POST_CH_ID or not API_ID or not API_HASH:
-        log.warning("Missing config for KEEP to POST forwarder")
-        return
+        msg = "Missing config for KEEP to POST forwarder (KEEP_CH_ID, POST_CH_ID, API_ID, API_HASH)"
+        log.warning(msg)
+        return 0, msg
 
-    bot_id = int(BOT_TOKEN.split(":")[0]) if BOT_TOKEN and ":" in BOT_TOKEN else None
+    lock = get_keep_forward_lock()
+    if lock.locked():
+        msg = "Proses forward KEEP ke POSTER sedang berjalan oleh tugas lain. Silakan coba beberapa saat lagi."
+        log.warning(msg)
+        return 0, msg
 
-    from pyrogram import Client
-    import asyncio
+    async with lock:
+        bot_id = int(BOT_TOKEN.split(":")[0]) if BOT_TOKEN and ":" in BOT_TOKEN else None
 
-    USERBOT_SESSION = os.environ.get("USERBOT_SESSION", "").strip()
-    
-    if USERBOT_SESSION:
-        app = Client("keep_forwarder", session_string=USERBOT_SESSION, api_id=API_ID, api_hash=API_HASH, in_memory=True)
-    else:
-        # Fallback menggunakan file checker.session (rawan database is locked jika checker.py jalan bersamaan)
-        app = Client("checker", api_id=API_ID, api_hash=API_HASH)
-    
-    try:
-        await app.start()
-    except Exception as e:
-        log.error(f"Failed to start Pyrogram for keep_to_post: {e}")
-        return
+        from pyrogram import Client
+        from pyrogram.errors import FloodWait
+        from bot.timefmt import TZ, get_today_wib
 
-    try:
-        db = context.application.bot_data.get("db")
-        conn = context.application.bot_data.get("conn")
-        last_fwd_id = 0
-        if db and conn:
-            try:
-                last_fwd_id = int(await db.get_setting(conn, "keep_last_fwd_id", "0"))
-            except Exception:
-                pass
+        USERBOT_SESSION = os.environ.get("USERBOT_SESSION", "").strip()
 
-        message_ids = []
-        async for msg in app.get_chat_history(KEEP_CH_ID):
-            # Abaikan pesan notifikasi dan error bot agar tidak ikut ter-forward ke POST_CH_ID
-            if is_keep_msg_excluded(msg, bot_id=bot_id):
-                continue
-            if last_fwd_id and msg.id <= last_fwd_id:
-                continue
-            message_ids.append(msg.id)
-            
-        if not message_ids:
-            return
-            
-        message_ids.reverse()
+        if USERBOT_SESSION:
+            app = Client(
+                "keep_forwarder",
+                session_string=USERBOT_SESSION,
+                api_id=API_ID,
+                api_hash=API_HASH,
+                in_memory=True,
+                no_updates=True,
+            )
+        else:
+            # Fallback menggunakan file checker.session (rawan database is locked jika checker.py jalan bersamaan)
+            app = Client("checker", api_id=API_ID, api_hash=API_HASH, no_updates=True)
 
-        forwarded_count = 0
-        chunk_size = 100
-        for i in range(0, len(message_ids), chunk_size):
-            chunk = message_ids[i:i + chunk_size]
-            try:
-                await app.forward_messages(
-                    chat_id=POST_CH_ID,
-                    from_chat_id=KEEP_CH_ID,
-                    message_ids=chunk
-                )
-                forwarded_count += len(chunk)
-            except Exception as fe:
-                log.warning(f"Batch forward failed ({fe}), falling back to single-message forwarding")
-                for mid in chunk:
+        try:
+            await app.start()
+        except Exception as e:
+            log.error(f"Failed to start Pyrogram for keep_to_post: {e}")
+            return 0, f"Gagal menginisialisasi userbot: {e}"
+
+        try:
+            last_fwd_id = 0
+            last_report_ts = 0.0
+            if db and conn:
+                try:
+                    last_fwd_id = int(await db.get_setting(conn, "keep_last_fwd_id", "0") or 0)
+                except Exception:
+                    pass
+                try:
+                    last_report_ts = float(await db.get_setting(conn, "keep_last_report_ts", "0") or 0)
+                except Exception:
+                    pass
+
+            if last_report_ts <= 0:
+                today_wib = get_today_wib()
+                last_report_ts = datetime.datetime.combine(
+                    today_wib, datetime.time.min, tzinfo=TZ
+                ).timestamp()
+
+            message_ids = []
+            async for msg in app.get_chat_history(KEEP_CH_ID):
+                # History berjalan dari pesan terbaru -> terlama; hentikan scan saat menyentuh last_fwd_id
+                if last_fwd_id and msg.id <= last_fwd_id:
+                    break
+                # Abaikan pesan notifikasi dan error bot agar tidak ikut ter-forward ke POST_CH_ID
+                if is_keep_msg_excluded(msg, bot_id=bot_id):
+                    continue
+                message_ids.append(msg.id)
+
+            # Tandai batas akhir waktu scan KEEP sebelum loop forward/sleep berjalan agar /pfp yang masuk
+            # saat proses forwarding berlangsung tidak salah dihitung ke kloter berjalan.
+            scan_end_ts = time.time()
+
+            forwarded_count = 0
+            deleted_count = 0
+            forwarded_ids = []
+
+            if message_ids:
+                message_ids.reverse()
+                chunk_size = 100
+                for i in range(0, len(message_ids), chunk_size):
+                    chunk = message_ids[i:i + chunk_size]
+                    chunk_forwarded_ids = []
                     try:
                         await app.forward_messages(
                             chat_id=POST_CH_ID,
                             from_chat_id=KEEP_CH_ID,
-                            message_ids=[mid]
+                            message_ids=chunk
                         )
-                        forwarded_count += 1
-                        await asyncio.sleep(0.3)
-                    except Exception as single_e:
-                        log.warning(f"Skipping unforwardable message {mid}: {single_e}")
-            if i + chunk_size < len(message_ids):
-                await asyncio.sleep(2)
+                        forwarded_count += len(chunk)
+                        chunk_forwarded_ids.extend(chunk)
+                    except Exception as fe:
+                        log.warning(f"Batch forward failed ({fe}), falling back to single-message forwarding")
+                        for mid in chunk:
+                            for attempt in range(2):
+                                try:
+                                    await app.forward_messages(
+                                        chat_id=POST_CH_ID,
+                                        from_chat_id=KEEP_CH_ID,
+                                        message_ids=[mid]
+                                    )
+                                    forwarded_count += 1
+                                    chunk_forwarded_ids.append(mid)
+                                    await asyncio.sleep(0.3)
+                                    break
+                                except FloodWait as fw:
+                                    wait_sec = min(int(getattr(fw, "value", 5) or 5) + 1, 30)
+                                    if attempt == 0:
+                                        log.warning(f"FloodWait {wait_sec}s forwarding message {mid}, retrying once")
+                                        await asyncio.sleep(wait_sec)
+                                        continue
+                                    log.warning(f"Skipping message {mid} after FloodWait retry: {fw}")
+                                    break
+                                except Exception as single_e:
+                                    log.warning(f"Skipping unforwardable message {mid}: {single_e}")
+                                    break
 
-        if forwarded_count > 0:
-            log.info(f"Successfully forwarded {forwarded_count} messages.")
-            if db and conn and message_ids:
+                    forwarded_ids.extend(chunk_forwarded_ids)
+
+                    # Hapus pesan yang sudah berhasil diforward dari KEEP_CH_ID agar tidak ter-post ulang
+                    if chunk_forwarded_ids:
+                        deleted_ok = False
+                        try:
+                            del_res = await app.delete_messages(
+                                chat_id=KEEP_CH_ID,
+                                message_ids=chunk_forwarded_ids
+                            )
+                            if isinstance(del_res, int) and not isinstance(del_res, bool) and del_res == 0:
+                                raise RuntimeError("Userbot delete_messages returned 0 affected messages")
+                            deleted_ok = True
+                        except Exception as de:
+                            log.warning(f"Userbot gagal menghapus pesan {chunk_forwarded_ids} dari KEEP_CH_ID ({de}), mencoba fallback via Bot API")
+                            try:
+                                await bot.delete_messages(
+                                    chat_id=KEEP_CH_ID,
+                                    message_ids=chunk_forwarded_ids
+                                )
+                                deleted_ok = True
+                            except Exception as bde:
+                                log.warning(f"Bot API juga gagal menghapus pesan {chunk_forwarded_ids} dari KEEP_CH_ID: {bde}")
+                        if deleted_ok:
+                            deleted_count += len(chunk_forwarded_ids)
+
+                    if i + chunk_size < len(message_ids):
+                        await asyncio.sleep(2)
+
+            if message_ids and forwarded_count == 0:
+                log.error("Failed to forward any messages in keep_to_post.")
                 try:
-                    await db.set_setting(conn, "keep_last_fwd_id", str(max(message_ids)))
+                    await bot.send_message(
+                        chat_id=KEEP_CH_ID,
+                        text="❌ <b>Gagal!</b> Seluruh pesan tidak dapat di-forward.",
+                        parse_mode="HTML"
+                    )
                 except Exception:
                     pass
+                return 0, "Gagal mem-forward pesan (seluruh pesan tidak dapat diteruskan ke poster)."
+
+            if forwarded_count > 0:
+                log.info(f"Successfully forwarded {forwarded_count} messages (deleted={deleted_count}).")
+                if db and conn and forwarded_ids:
+                    try:
+                        await db.set_setting(conn, "keep_last_fwd_id", str(max(forwarded_ids)))
+                    except Exception:
+                        pass
+                try:
+                    tag_manual = " [Manual]" if is_manual else ""
+                    if deleted_count == forwarded_count:
+                        status_desc = f"{forwarded_count} pesan telah diposting ke sana & dibersihkan dari penyimpanan.{tag_manual}"
+                    else:
+                        status_desc = (
+                            f"{forwarded_count} pesan telah diposting ke sana "
+                            f"({deleted_count}/{forwarded_count} dihapus dari penyimpanan).{tag_manual}"
+                        )
+                    await bot.send_message(
+                        chat_id=KEEP_CH_ID,
+                        text=f"✅ <b>Cek @DhruvaPoster</b>, {status_desc}",
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+
+            # Rekap kloter (/pfp berhasil vs post terforward) dan notif private chat Owner
+            report_end_ts = scan_end_ts
+            pfp_cmd_count = 0
+            pfp_in_posts = 0
+            if db and conn:
+                if hasattr(db, "get_pfp_kloter_stats"):
+                    try:
+                        stats = await db.get_pfp_kloter_stats(conn, last_report_ts, report_end_ts)
+                        if isinstance(stats, dict):
+                            pfp_cmd_count = int(stats.get("total_commands", 0) or 0)
+                            pfp_in_posts = int(stats.get("total_posts", 0) or 0)
+                    except Exception as se:
+                        log.warning(f"Gagal mengambil statistik kloter pfp_logs: {se}")
+                try:
+                    await db.set_setting(conn, "keep_last_report_ts", str(report_end_ts))
+                except Exception:
+                    pass
+
+            owner_chat_id = await _resolve_owner_chat_id(conn)
+            should_notify_owner = bool(
+                owner_chat_id
+                and (forwarded_count > 0 or pfp_cmd_count > 0)
+                and (not is_manual or (triggered_by is not None and triggered_by != owner_chat_id))
+            )
+            if should_notify_owner:
+                label = kloter_label or datetime.datetime.now(TZ).strftime("%H:%M WIB")
+                report_text = _format_keep_kloter_owner_report(
+                    kloter_label=label,
+                    pfp_cmd_count=pfp_cmd_count,
+                    pfp_in_posts=pfp_in_posts,
+                    forwarded_count=forwarded_count,
+                    deleted_count=deleted_count,
+                    is_manual=is_manual,
+                )
+                try:
+                    await bot.send_message(
+                        chat_id=owner_chat_id,
+                        text=report_text,
+                        parse_mode="HTML",
+                    )
+                except Exception as oe:
+                    log.warning(f"Gagal mengirim laporan kloter KEEP ke private chat owner ({owner_chat_id}): {oe}")
+
+            return forwarded_count, None
+
+        except Exception as e:
+            import traceback
+            log.error(f"Error in keep_to_post loop: {e}\n{traceback.format_exc()}")
+            return 0, str(e)
+        finally:
+            try:
+                await app.stop()
+            except Exception as stop_e:
+                log.warning(f"Error stopping Pyrogram client in keep_to_post: {stop_e}")
+
+
+async def daily_keep_to_post(context):
+    """Jadwal otomatis kloter forward dari KEEP_CH_ID ke POST_CH_ID."""
+    db = context.application.bot_data.get("db")
+    conn = context.application.bot_data.get("conn")
+    kloter_label = None
+    job = getattr(context, "job", None)
+    if job:
+        data = getattr(job, "data", None)
+        if isinstance(data, dict):
+            kloter_label = data.get("kloter_label")
+        if not kloter_label:
+            jname = getattr(job, "name", "") or ""
+            if "1500" in jname:
+                kloter_label = "15:00 WIB"
+            elif "1759" in jname:
+                kloter_label = "17:59 WIB"
+    _, err = await execute_keep_to_post(
+        context.bot,
+        db,
+        conn,
+        is_manual=False,
+        kloter_label=kloter_label,
+    )
+    if err:
+        owner_chat_id = await _resolve_owner_chat_id(conn)
+        if owner_chat_id:
+            label = kloter_label or "Jadwal Otomatis"
             try:
                 await context.bot.send_message(
-                    chat_id=KEEP_CH_ID,
-                    text=f"✅ <b>Cek @DhruvaPoster</b>, {forwarded_count} pesan di atas telah diforward ke sana.",
-                    parse_mode="HTML"
+                    chat_id=owner_chat_id,
+                    text=(
+                        f"⚠️ <b>Kloter Keep → Poster Gagal ({html.escape(label)})</b>\n\n"
+                        f"• <b>Detail:</b> {html.escape(str(err))}"
+                    ),
+                    parse_mode="HTML",
                 )
-            except Exception: pass
-        else:
-            log.error("Failed to forward any messages in keep_to_post.")
-            try:
-                await context.bot.send_message(
-                    chat_id=KEEP_CH_ID,
-                    text="❌ <b>Gagal!</b> Seluruh pesan tidak dapat di-forward.",
-                    parse_mode="HTML"
-                )
-            except Exception: pass
-                
-    except Exception as e:
-        import traceback
-        log.error(f"Error in keep_to_post loop: {e}\n{traceback.format_exc()}")
-    finally:
-        await app.stop()
+            except Exception as oe:
+                log.warning(f"Gagal mengirim alert error kloter KEEP ke owner ({owner_chat_id}): {oe}")
 
 async def process_promo_queue(context):
     db = context.application.bot_data.get("db")
@@ -617,4 +875,17 @@ def setup_jobs(application: Application):
 
     from bot.settings import KEEP_CH_ID, POST_CH_ID
     if KEEP_CH_ID and POST_CH_ID:
-        jq.run_daily(daily_keep_to_post, datetime.time(hour=15, minute=1, second=0, tzinfo=wib))
+        # Kloter 1: Jam 15:00 WIB
+        jq.run_daily(
+            daily_keep_to_post,
+            datetime.time(hour=15, minute=0, second=0, tzinfo=wib),
+            name="keep_to_post_1500",
+            data={"kloter_label": "15:00 WIB"},
+        )
+        # Kloter 2: Jam 17:59 WIB
+        jq.run_daily(
+            daily_keep_to_post,
+            datetime.time(hour=17, minute=59, second=0, tzinfo=wib),
+            name="keep_to_post_1759",
+            data={"kloter_label": "17:59 WIB"},
+        )

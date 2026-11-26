@@ -18,8 +18,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from bot.database import Database
-from bot.settings import KEEP_CH_ID, OWNER_ID, is_owner
+from bot.database import Database, ROLE_ADMIN, ROLE_INTERNAL, ROLE_OWNER
+from bot.settings import KEEP_CH_ID, OWNER_ID, is_owner, is_admin_elevated
 from bot.timefmt import TZ, get_today_wib
 
 log = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
       - ('TUTOR', None) jika argumen kosong
       - ('DAILY', None) jika 'daily'
       - ('WEEKLY', None) jika 'weekly'
+      - ('POST', None) jika 'post' / 'flush' / 'kirim' / 'forward' / 'manual'
       - ('RANGE', (link1, link2)) jika ada pemisah rentang ('to', '-', 'sampai', 's/d', 'sd')
       - ('SINGLE', link) jika tautan tunggal
       - ('INVALID', None) jika tidak dikenali
@@ -97,6 +98,8 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
         return "DAILY", None
     if low == "weekly":
         return "WEEKLY", None
+    if low in ("post", "flush", "kirim", "forward", "manual"):
+        return "POST", None
 
     parts = re.split(r"\s+(?:to|-|sampai|s/d|sd)\s+", raw, flags=re.IGNORECASE)
     if len(parts) == 2:
@@ -240,17 +243,21 @@ def get_pfp_tutorial_text(is_user_owner: bool) -> tuple[str, InlineKeyboardMarku
 
     if is_user_owner:
         text += (
-            "\n\n👑 <b>Sub Menu Khusus Owner:</b>\n"
+            "\n\n👑 <b>Sub Menu Khusus Owner & Divisi PFP:</b>\n"
             "• <b>PFP Daily:</b> Rekap pengguna yang forward post hari ini beserta jumlahnya.\n"
             "• <b>PFP Weekly:</b> Rekapan ringkas statistik forward 7 hari terakhir.\n"
-            "<i>(Gunakan tombol di bawah atau ketik <code>/pfp daily</code> / <code>/pfp weekly</code>)</i>"
+            "• <b>Post Keep (Manual):</b> Forward langsung postingan KEEP ke @DhruvaPoster & hapus dari penyimpanan (<code>/post_keep</code> atau <code>/pfp post</code>).\n"
+            "<i>(Jadwal kloter otomatis: <b>15:00 WIB</b> dan <b>17:59 WIB</b>)</i>"
         )
         keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton("📊 PFP Daily", callback_data="pfp:daily"),
                     InlineKeyboardButton("📅 PFP Weekly", callback_data="pfp:weekly"),
-                ]
+                ],
+                [
+                    InlineKeyboardButton("🚀 Post Manual (/post_keep)", callback_data="pfp:post"),
+                ],
             ]
         )
         return text, keyboard
@@ -385,6 +392,85 @@ async def get_pfp_weekly_content(conn, db: Database) -> tuple[str, InlineKeyboar
     return "\n".join(lines), keyboard
 
 
+async def is_authorized_pfp_admin(conn, db: Database, uid: int) -> bool:
+    """Mengecek apakah user memiliki wewenang untuk mengeksekusi posting manual PFP (Owner, Admin, atau Divisi PFP)."""
+    if is_owner(uid) or is_admin_elevated(uid):
+        return True
+    if not conn or not db:
+        return False
+    try:
+        user = await db.get_user(conn, uid)
+        if not user:
+            return False
+        role = user["role"]
+        if role in (ROLE_OWNER, ROLE_ADMIN):
+            return True
+        if role == ROLE_INTERNAL:
+            from bot.handlers.common import is_pfp_division_profile, profile_from_row
+            prof = profile_from_row(user)
+            if is_pfp_division_profile(prof):
+                return True
+    except Exception as e:
+        log.warning("Error checking pfp admin authorization for uid %s: %s", uid, e)
+    return False
+
+
+def _format_manual_post_result(forwarded_count: int, err: str | None) -> str:
+    """Memformat pesan hasil eksekusi forward manual KEEP -> POSTER."""
+    if err:
+        return f"❌ <b>Gagal memproses forward manual:</b>\n{html.escape(str(err))}"
+    if forwarded_count > 0:
+        return (
+            f"✅ <b>Forward Manual Berhasil!</b>\n\n"
+            f"• Jumlah: <b>{forwarded_count}</b> post diforward ke <b>@DhruvaPoster</b>\n"
+            f"• Status: Seluruh pesan berhasil dihapus dari channel penyimpanan (KEEP) agar tidak ter-post ulang."
+        )
+    return "ℹ️ <b>Tidak ada pesan baru</b> di channel penyimpanan (KEEP) untuk diforward saat ini."
+
+
+async def cmd_post_keep(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Perintah manual untuk mem-forward postingan dari KEEP_CH_ID ke POST_CH_ID
+    dan langsung menghapusnya dari channel penyimpanan (KEEP).
+    Dapat digunakan kapan saja oleh Owner/Admin/Staff PFP (misal untuk postingan susulan/terlambat).
+    """
+    if not update.effective_user or not update.effective_message:
+        return
+
+    uid = update.effective_user.id
+    conn = _conn(context)
+    db = _db(context)
+
+    if not await is_authorized_pfp_admin(conn, db, uid):
+        await update.effective_message.reply_text(
+            "⛔ Anda tidak memiliki izin untuk menjalankan perintah ini. "
+            "Hanya Owner, Admin, atau Divisi PFP yang dapat mengeksekusi posting manual.",
+            parse_mode="HTML",
+        )
+        return
+
+    status_msg = None
+    try:
+        status_msg = await update.effective_message.reply_text(
+            "⏳ <i>Memeriksa pesan di channel penyimpanan (KEEP) dan memproses forward ke @DhruvaPoster...</i>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        log.warning("Gagal kirim pesan status awal /post_keep: %s", e)
+
+    from bot.jobs import execute_keep_to_post
+    forwarded_count, err = await execute_keep_to_post(context.bot, db, conn, is_manual=True, triggered_by=uid)
+    text = _format_manual_post_result(forwarded_count, err)
+
+    if status_msg:
+        try:
+            await status_msg.edit_text(text, parse_mode="HTML")
+        except Exception:
+            await update.effective_message.reply_text(text, parse_mode="HTML")
+    else:
+        await update.effective_message.reply_text(text, parse_mode="HTML")
+
+
 async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler utama perintah /pfp."""
     if not update.effective_message or not update.effective_user:
@@ -395,6 +481,11 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db = _db(context)
 
     action, data = parse_pfp_args(context.args or [])
+
+    # Sub-perintah: Manual Post (POST)
+    if action == "POST":
+        await cmd_post_keep(update, context)
+        return
 
     # Sub-perintah: Daily
     if action == "DAILY":
@@ -422,7 +513,17 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Tampilkan Tutorial jika tanpa argumen
     if action == "TUTOR":
-        text, kb = get_pfp_tutorial_text(is_owner(uid))
+        owner_flag = is_owner(uid)
+        text, kb = get_pfp_tutorial_text(owner_flag)
+        if not owner_flag and await is_authorized_pfp_admin(conn, db, uid):
+            text += (
+                "\n\n🛠️ <b>Perintah Pengelola (Admin / Divisi PFP):</b>\n"
+                "• Ketik <code>/post_keep</code> atau <code>/pfp post</code> untuk mem-forward postingan di KEEP ke @DhruvaPoster secara manual dan langsung menghapusnya dari penyimpanan.\n"
+                "<i>(Jadwal kloter otomatis: <b>15:00 WIB</b> dan <b>17:59 WIB</b>)</i>"
+            )
+            kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🚀 Post Manual (/post_keep)", callback_data="pfp:post")]]
+            )
         await update.effective_message.reply_text(
             text,
             parse_mode="HTML",
@@ -576,16 +677,45 @@ async def cb_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     uid = update.effective_user.id
-    if not is_owner(uid):
+    conn = _conn(context)
+    db = _db(context)
+    data = query.data or ""
+
+    if data == "pfp:post":
+        if not await is_authorized_pfp_admin(conn, db, uid):
+            await query.answer("⛔ Hanya Owner, Admin, atau Divisi PFP yang dapat mengakses menu ini.", show_alert=True)
+            return
+    elif not is_owner(uid):
         await query.answer("⛔ Hanya owner yang dapat mengakses menu ini.", show_alert=True)
         return
 
-    data = query.data or ""
-    conn = _conn(context)
-    db = _db(context)
-
+    answered = False
     try:
-        if data == "pfp:daily":
+        if data == "pfp:post":
+            await query.answer("⏳ Memproses forward manual...", show_alert=False)
+            answered = True
+            status_msg = None
+            try:
+                status_msg = await query.message.reply_text(
+                    "⏳ <i>Memproses posting manual dari KEEP ke @DhruvaPoster...</i>",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+            from bot.jobs import execute_keep_to_post
+            forwarded_count, err = await execute_keep_to_post(context.bot, db, conn, is_manual=True, triggered_by=uid)
+            text = _format_manual_post_result(forwarded_count, err)
+
+            if status_msg:
+                try:
+                    await status_msg.edit_text(text, parse_mode="HTML")
+                except Exception:
+                    await query.message.reply_text(text, parse_mode="HTML")
+            else:
+                await query.message.reply_text(text, parse_mode="HTML")
+
+        elif data == "pfp:daily":
             text, kb = await get_pfp_daily_content(conn, db)
             await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
         elif data == "pfp:weekly":
@@ -605,7 +735,8 @@ async def cb_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         log.warning("Error in cb_pfp %s: %s", data, e)
     finally:
-        try:
-            await query.answer()
-        except Exception:
-            pass
+        if not answered:
+            try:
+                await query.answer()
+            except Exception:
+                pass

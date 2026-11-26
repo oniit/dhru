@@ -3166,6 +3166,35 @@ class Database:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_pfp_kloter_stats(
+        self,
+        conn: aiosqlite.Connection,
+        start_ts: float,
+        end_ts: float,
+    ) -> dict[str, int]:
+        """
+        Menghitung jumlah perintah /pfp yang berhasil (total_commands) dan total post masuk
+        via /pfp (total_posts) pada rentang waktu kloter tertentu.
+        Memanfaatkan index idx_pfp_logs_created_at.
+        """
+        cur = await conn.execute(
+            """
+            SELECT
+                COUNT(id) AS total_commands,
+                COALESCE(SUM(forwarded_count), 0) AS total_posts
+            FROM pfp_logs
+            WHERE created_at > ? AND created_at <= ?
+            """,
+            (start_ts, end_ts),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {"total_commands": 0, "total_posts": 0}
+        return {
+            "total_commands": int(row["total_commands"] or 0),
+            "total_posts": int(row["total_posts"] or 0),
+        }
+
     async def create_warkat_codes(
         self,
         conn: aiosqlite.Connection,

@@ -248,6 +248,15 @@ def is_acharyata_profile(profile: dict | None) -> bool:
     return "d_pembina" in jabs or "pembina" in jabs or ((profile.get("position") or "").strip() == "pembina")
 
 
+def is_pfp_division_profile(profile: dict | None) -> bool:
+    """Mengembalikan True jika profil termasuk Divisi PFP."""
+    if not profile:
+        return False
+    jabatans = {j.lower() for j in get_user_jabatans(profile)}
+    pos = str(profile.get("position") or "").strip().lower()
+    return "d_pfp" in jabatans or "pfp" in jabatans or pos == "pfp"
+
+
 def lecturer_class_ids(profile: dict | None) -> list[str]:
     if not profile:
         return []

@@ -33,11 +33,12 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
 ## Fitur Penyimpanan & Forward Post (/pfp)
-- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward). Jika pemanggil adalah Owner, menampilkan sub-menu khusus Owner (`pfp daily` & `pfp weekly`).
+- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward). Jika pemanggil adalah Owner/PFP, menampilkan sub-menu khusus Owner (`pfp daily`, `pfp weekly`, serta tombol pintas `Post Manual`).
 - `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`) maupun privat (`t.me/c/12345/123`). Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna.
 - `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus). Memberikan reward +1 Agra per post yang berhasil diforward.
 - `/pfp daily` — (Khusus Owner) Menampilkan rekap pengguna yang berhasil mem-forward postingan hari ini beserta jumlah post yang diforward.
 - `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).
+- `/post_keep` atau `/pfp post` (alias: `/pfp_post`, `/flush_keep`) — (Owner / Admin / Divisi PFP) Mem-forward seluruh postingan yang tertampung di channel penyimpanan (`KEEP_CH_ID`) secara instan ke channel poster (`POST_CH_ID` / `@DhruvaPoster`) dan langsung menghapus postingan tersebut dari channel penyimpanan agar tidak menumpuk dan tidak ter-post ulang pada jadwal berikutnya. Sangat berguna untuk postingan susulan/terlambat di luar jam kloter otomatis (15:00 WIB & 17:59 WIB). Setiap eksekusi kloter otomatis juga mengirimkan laporan perbandingan `/pfp` berhasil vs post terforward ke private chat Owner.
 
 ## Manajemen (Khusus Owner / Admin / Staff Terpilih)
 - `/gencode` — (Hanya Owner) Dashboard dan sub menu manajemen kode akses registrasi standar dan Warkat Kehormatan (dilengkapi tombol interaktif status stok kode). Jika dipanggil dengan argumen `/gencode <jumlah> [role]`, langsung membuat kode akses peran target (default: student).

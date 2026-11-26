@@ -131,6 +131,7 @@ def register_all(application: Application, db: Database) -> None:
     application.add_handler(CallbackQueryHandler(commands.on_kick_callback, pattern="^kick:"))
     
     application.add_handler(CommandHandler("pfp", pfp.cmd_pfp))
+    application.add_handler(CommandHandler(["post_keep", "pfp_post", "flush_keep"], pfp.cmd_post_keep))
     application.add_handler(CallbackQueryHandler(pfp.cb_pfp, pattern="^pfp:"))
     
     application.add_handler(CallbackQueryHandler(commands.on_callback))

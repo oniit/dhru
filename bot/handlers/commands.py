@@ -95,6 +95,7 @@ from .common import (
     render_charyarthi_quiz_view,
     render_charyarthi_quiz_preview_page,
     get_user_jabatans,
+    is_pfp_division_profile,
     presence_allowed_class_ids,
     render_greeting_message,
     sanitize_telegram_html,
@@ -1057,13 +1058,16 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
             "/ijazah — Ijazah Kelulusan Resmi\n"
         )
     if role in (ROLE_OWNER, ROLE_ADMIN, ROLE_INTERNAL):
-        lines.append(
-            "<b>Staf / Pengajar</b>\n"
-            "/tugas — Menu Buka/Kelola Tugas\n"
-            "/kartu — Kartu Pegawai\n"
-            "/foto — Ganti pas foto Pegawai\n"
-            "/kontrak — Kontrak Kerja\n"
-        )
+        staff_lines = [
+            "<b>Staf / Pengajar</b>",
+            "/tugas — Menu Buka/Kelola Tugas",
+            "/kartu — Kartu Pegawai",
+            "/foto — Ganti pas foto Pegawai",
+            "/kontrak — Kontrak Kerja",
+        ]
+        if not can_approve_profile(role, prof) and is_pfp_division_profile(prof):
+            staff_lines.append("<code>/post_keep</code> — Posting manual KEEP ke poster & bersihkan")
+        lines.append("\n".join(staff_lines) + "\n")
     if role != ROLE_PUBLIC:
         lines.append(
             "<b>Komunitas & Agra</b>\n"
@@ -1129,6 +1133,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
                 "<code>/ijazah [nim/nama]</code> — Cetak Ijazah Shishya",
                 "<code>/kick [@user|id]</code> — Keluarkan anggota dari grup",
                 "<code>/setting_charyarthi</code> — Pengaturan pendaftaran calon staf",
+                "<code>/post_keep</code> — Posting manual KEEP ke poster & bersihkan",
                 "",
             ]
         )
@@ -1182,7 +1187,7 @@ async def cmd_help_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "• <code>/acc_charyarthi</code> & <code>/reject_charyarthi</code> — Terima atau tolak pelamar calon staf.",
         "• <code>/promo</code> & <code>/ospek_mode [on|off]</code> — Pengaturan syarat validasi LPM & otomatisasi Ospek.\n",
         "<b>📢 Penyiaran & Komunikasi</b>",
-        "• <code>/pfp [daily|weekly]</code> — Forward post channel (+1 Agra) & statistik harian/mingguan Owner.",
+        "• <code>/pfp [daily|weekly]</code> / <code>/post_keep</code> — Forward post (+1 Agra), statistik PFP, dan posting manual KEEP ke poster & pembersihan.",
         "• <code>/broadcast [role|all] [pesan]</code> — Kirim pesan siaran resmi dari bot ke pengguna.",
         "• <code>/trigger</code> — Menu pembuatan dan pengelolaan auto-reply kata kunci bot.\n",
         "<b>📜 Kelulusan & Transkrip Akademik</b>",
