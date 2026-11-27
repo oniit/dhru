@@ -12,14 +12,15 @@ import json
 import logging
 import re
 import time
+import weakref
 from datetime import datetime, timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import BadRequest
+from telegram.error import BadRequest, RetryAfter
 from telegram.ext import ContextTypes
 
 from bot.database import Database, ROLE_ADMIN, ROLE_INTERNAL, ROLE_OWNER
-from bot.settings import KEEP_CH_ID, OWNER_ID, is_owner, is_admin_elevated
+from bot.settings import KEEP_CH_ID, OWNER_ID, POST_CH_ID, is_owner, is_admin_elevated
 from bot.timefmt import TZ, get_today_wib
 
 log = logging.getLogger(__name__)
@@ -33,6 +34,18 @@ def _conn(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data.get("conn") or context.bot_data.get("conn")
 
 
+_pfp_user_locks_by_loop: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_pfp_user_locks_fallback: dict[int, asyncio.Lock] = {}
+
+
+def _pfp_user_locks() -> dict[int, asyncio.Lock]:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return _pfp_user_locks_fallback
+    return _pfp_user_locks_by_loop.setdefault(loop, {})
+
+
 def parse_telegram_post_link(link: str) -> tuple[str | int, int] | None:
     """
     Mengurai tautan postingan channel Telegram.
@@ -40,20 +53,23 @@ def parse_telegram_post_link(link: str) -> tuple[str | int, int] | None:
     channel_identifier berupa:
       - '@username' untuk channel publik
       - -100xxxxxxxxxx (int) untuk channel privat
-    Mendukung format standar (t.me/...), preview publik (t.me/s/...), dan privat (t.me/c/...).
+    Mendukung format standar (t.me/...), preview publik (t.me/s/...), privat (t.me/c/...),
+    serta tautan topik forum (t.me/c/<id>/<topic_id>/<msg_id>).
     """
     if not link:
         return None
     raw = link.strip().strip("<>()[]\"'`").strip()
+    if any(ch.isspace() for ch in raw):
+        return None
     if "?" in raw:
         raw = raw.split("?", 1)[0]
     if "#" in raw:
         raw = raw.split("#", 1)[0]
     raw = raw.rstrip("/")
 
-    # Channel privat: t.me/c/<channel_id>/<msg_id> atau t.me/s/c/<channel_id>/<msg_id>
-    m_priv = re.search(
-        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?c/(\d+)/(\d+)",
+    # Channel privat: t.me/c/<channel_id>/<msg_id> atau t.me/s/c/<channel_id>/<topic>/<msg_id>
+    m_priv = re.fullmatch(
+        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?c/(\d+)/(?:\d+/)?(\d+)",
         raw,
         re.IGNORECASE,
     )
@@ -62,9 +78,9 @@ def parse_telegram_post_link(link: str) -> tuple[str | int, int] | None:
         msg_id = int(m_priv.group(2))
         return int(f"-100{ch_num}"), msg_id
 
-    # Channel publik: t.me/<channel_username>/<msg_id> atau t.me/s/<channel_username>/<msg_id>
-    m_pub = re.search(
-        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?([a-zA-Z0-9_]+)/(\d+)",
+    # Channel publik: t.me/<channel_username>/<msg_id> atau t.me/s/<channel_username>/<topic>/<msg_id>
+    m_pub = re.fullmatch(
+        r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?([a-zA-Z0-9_]+)/(?:\d+/)?(\d+)",
         raw,
         re.IGNORECASE,
     )
@@ -101,42 +117,68 @@ def parse_pfp_args(args: list[str]) -> tuple[str, any]:
     if low in ("post", "flush", "kirim", "forward", "manual"):
         return "POST", None
 
-    parts = re.split(r"\s+(?:to|-|sampai|s/d|sd)\s+", raw, flags=re.IGNORECASE)
+    parts = re.split(
+        r"\s+(?:to|-|sampai|s/d|sd)\s+|-(?=https?://|www\.|t\.me|telegram\.me)",
+        raw,
+        flags=re.IGNORECASE,
+    )
     if len(parts) == 2:
-        return "RANGE", (parts[0].strip(), parts[1].strip())
+        p1, p2 = parts[0].strip(), parts[1].strip()
+        if any(ch.isspace() for ch in p1) or any(ch.isspace() for ch in p2):
+            return "INVALID", None
+        return "RANGE", (p1, p2)
     elif len(parts) == 1:
-        return "SINGLE", parts[0].strip()
+        tok = parts[0].strip()
+        if any(ch.isspace() for ch in tok):
+            return "INVALID", None
+        return "SINGLE", tok
     else:
         return "INVALID", None
 
 
+def _row_val(row, key: str, default=None):
+    """Membaca kolom dari dict, sqlite3.Row, maupun AiosqliteRowMock secara aman."""
+    if not row:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
 async def _forward_via_userbot_ipc(
-    conn, db: Database, from_chat: str | int, start_id: int, end_id: int, timeout: float = 25.0
+    conn, db: Database, from_chat: str | int, start_id: int, end_id: int, timeout: float | None = None
 ) -> int:
     """Fallback mem-forward pesan menggunakan userbot (checker.py) via IPC."""
     if not conn or not db:
         return 0
+    if timeout is None:
+        span = max(0, end_id - start_id)
+        timeout = min(90.0, max(25.0, 25.0 + span * 0.5))
     try:
         req_id = await db.create_userbot_request(
             conn, "0", f"FORWARD:{from_chat}:{start_id}:{end_id}"
         )
         start_time = time.monotonic()
-        # Polling setiap 1.0 detik hingga maksimal timeout (default 25s)
-        # Menjaga efisiensi kuota Turso dan memberi waktu cukup bagi userbot
+        # Polling setiap 1.0 detik hingga timeout (menjaga efisiensi kuota Turso)
         while time.monotonic() - start_time < timeout:
             await asyncio.sleep(1.0)
             req_row = await db.get_userbot_request(conn, req_id)
             if req_row:
-                status = req_row.get("status")
+                status = _row_val(req_row, "status")
                 if status == "DONE":
-                    res_raw = req_row.get("result", "{}")
+                    res_raw = _row_val(req_row, "result", "{}") or "{}"
                     try:
                         res = json.loads(res_raw)
                         return int(res.get("forwarded", 0))
                     except Exception:
                         return 1
                 elif status == "ERROR":
-                    log.warning("Userbot IPC request %s failed: %s", req_id, req_row.get("result"))
+                    log.warning("Userbot IPC request %s failed: %s", req_id, _row_val(req_row, "result"))
                     break
         log.warning("Userbot IPC request %s timed out after %.1fs", req_id, timeout)
     except Exception as e:
@@ -179,7 +221,6 @@ async def forward_posts_to_keep(
 
     all_ids = list(range(start_id, end_id + 1))
     forwarded_count = 0
-    bot_failed = False
 
     try:
         # Batch forward (Telegram Bot API mendukung hingga 100 ID per panggilan)
@@ -193,24 +234,32 @@ async def forward_posts_to_keep(
     except Exception as fe:
         fe_str = str(fe).lower()
         log.warning("Batch forward failed (%s), trying individual fallback", fe)
-        if "chat not found" in fe_str or "forbidden" in fe_str or "bot was blocked" in fe_str:
-            bot_failed = True
-        else:
+        if not ("chat not found" in fe_str or "forbidden" in fe_str or "bot was blocked" in fe_str):
             for mid in all_ids:
-                try:
-                    await bot.forward_message(
-                        chat_id=keep_ch_id,
-                        from_chat_id=from_chat,
-                        message_id=mid,
-                    )
-                    forwarded_count += 1
-                    await asyncio.sleep(0.15)
-                except Exception as se:
-                    se_str = str(se).lower()
-                    if "chat not found" in se_str or "forbidden" in se_str:
-                        bot_failed = True
+                for attempt in range(2):
+                    try:
+                        await bot.forward_message(
+                            chat_id=keep_ch_id,
+                            from_chat_id=from_chat,
+                            message_id=mid,
+                        )
+                        forwarded_count += 1
+                        await asyncio.sleep(0.15)
                         break
-                    # Abaikan pesan yang terhapus/tidak ada di rentang
+                    except RetryAfter as ra:
+                        if attempt == 0:
+                            await asyncio.sleep(min(int(getattr(ra, "retry_after", 1) or 1) + 1, 30))
+                            continue
+                        break
+                    except Exception as se:
+                        se_str = str(se).lower()
+                        if "chat not found" in se_str or "forbidden" in se_str:
+                            break
+                        break
+                else:
+                    continue
+                if forwarded_count == 0 and any(k in fe_str for k in ("chat not found", "forbidden")):
+                    break
 
     if forwarded_count == 0 and conn and db:
         ipc_count = await _forward_via_userbot_ipc(conn, db, from_chat, start_id, end_id)
@@ -594,80 +643,144 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    status_msg = None
-    try:
-        status_msg = await update.effective_message.reply_text(
-            f"⏳ <i>Sedang mem-forward {total_requested} pesan ke channel penyimpanan...</i>",
+    # Cegah self-loop forwarding dari KEEP_CH_ID maupun POST_CH_ID (@DhruvaPoster)
+    if (
+        channel_id == KEEP_CH_ID
+        or (POST_CH_ID and channel_id == POST_CH_ID)
+        or str(channel_id).lower() == "@dhruvaposter"
+    ):
+        await update.effective_message.reply_text(
+            "⛔ Tautan dari channel penyimpanan (KEEP) atau channel poster (<b>@DhruvaPoster</b>) tidak dapat di-forward ulang via <code>/pfp</code>.",
             parse_mode="HTML",
         )
-    except Exception as e:
-        log.warning("Gagal mengirim pesan status awal /pfp: %s", e)
+        return
 
-    forwarded_count, err = await forward_posts_to_keep(
-        context.bot,
-        conn,
-        db,
-        KEEP_CH_ID,
-        channel_id,
-        start_id,
-        end_id,
-    )
+    user_locks = _pfp_user_locks()
+    u_lock = user_locks.get(uid)
+    if u_lock is None:
+        u_lock = asyncio.Lock()
+        user_locks[uid] = u_lock
+    if u_lock.locked():
+        await update.effective_message.reply_text(
+            "⏳ Permintaan <code>/pfp</code> Anda sebelumnya masih diproses. Mohon tunggu sebentar.",
+            parse_mode="HTML",
+        )
+        return
 
-    if forwarded_count > 0:
-        if conn and db:
-            chat_id = update.effective_chat.id if update.effective_chat else uid
-            await db.log_pfp_forward(
-                conn=conn,
-                user_id=uid,
-                chat_id=chat_id,
-                channel_id=str(channel_id),
-                first_msg_id=start_id,
-                last_msg_id=end_id,
-                forwarded_count=forwarded_count,
-                created_at=time.time(),
-            )
-            # Reward: 1 post = 1 Agra (tanpa batas)
+    async with u_lock:
+        # Cegah duplikasi forward tautan/rentang identik oleh user yang sama dalam kloter berjalan
+        if conn and db and hasattr(conn, "execute"):
             try:
-                await db.add_agra(
-                    conn=conn,
-                    target_id=uid,
-                    actor_id=uid,
-                    amount=forwarded_count,
-                    description=f"Reward forward {forwarded_count} post (/pfp)",
-                    chat_id=chat_id,
-                    message_id=None,
+                since_ts = 0.0
+                if hasattr(db, "get_setting"):
+                    raw_ts = await db.get_setting(conn, "keep_last_report_ts", "0")
+                    if isinstance(raw_ts, (int, float, str)) and str(raw_ts).replace(".", "", 1).isdigit():
+                        since_ts = float(raw_ts)
+                if since_ts <= 0:
+                    today_wib = get_today_wib()
+                    since_ts = datetime.combine(today_wib, datetime.min.time(), tzinfo=TZ).timestamp()
+                dup_cur = await conn.execute(
+                    """
+                    SELECT id FROM pfp_logs
+                    WHERE user_id = ? AND created_at > ? AND channel_id = ? AND first_msg_id = ? AND last_msg_id = ?
+                    LIMIT 1
+                    """,
+                    (uid, since_ts, str(channel_id), start_id, end_id),
                 )
-            except Exception as e:
-                log.warning("Gagal menambahkan Agra untuk pfp forward user %s: %s", uid, e)
+                if await dup_cur.fetchone():
+                    await update.effective_message.reply_text(
+                        "⚠️ Tautan/rentang postingan tersebut sudah pernah Anda forward pada kloter berjalan.",
+                        parse_mode="HTML",
+                    )
+                    return
+            except Exception as dup_e:
+                log.debug("Melewati cek duplikasi pfp_logs: %s", dup_e)
 
-        if total_requested == 1:
-            reply_text = "✅ <b>1 post</b> berhasil diforward ke channel penyimpanan. (<b>+1 Agra</b>)"
-        else:
-            reply_text = (
-                f"✅ Berhasil mem-forward <b>{forwarded_count}</b> dari <b>{total_requested}</b> "
-                f"post ke channel penyimpanan. (<b>+{forwarded_count} Agra</b>)"
+        status_msg = None
+        try:
+            status_msg = await update.effective_message.reply_text(
+                f"⏳ <i>Sedang mem-forward {total_requested} pesan ke channel penyimpanan...</i>",
+                parse_mode="HTML",
             )
-        if status_msg:
-            try:
-                await status_msg.edit_text(reply_text, parse_mode="HTML")
-            except Exception:
+        except Exception as e:
+            log.warning("Gagal mengirim pesan status awal /pfp: %s", e)
+
+        forwarded_count, err = await forward_posts_to_keep(
+            context.bot,
+            conn,
+            db,
+            KEEP_CH_ID,
+            channel_id,
+            start_id,
+            end_id,
+        )
+
+        if forwarded_count > 0:
+            agra_added = False
+            if conn and db:
+                chat_id = update.effective_chat.id if update.effective_chat else uid
+                try:
+                    await db.log_pfp_forward(
+                        conn=conn,
+                        user_id=uid,
+                        chat_id=chat_id,
+                        channel_id=str(channel_id),
+                        first_msg_id=start_id,
+                        last_msg_id=end_id,
+                        forwarded_count=forwarded_count,
+                        created_at=time.time(),
+                    )
+                except Exception as le:
+                    log.warning("Gagal menyimpan pfp_logs user %s: %s", uid, le)
+
+                # Reward: 1 post = 1 Agra (tanpa batas)
+                try:
+                    await db.add_agra(
+                        conn=conn,
+                        target_id=uid,
+                        actor_id=uid,
+                        amount=forwarded_count,
+                        description=f"Reward forward {forwarded_count} post (/pfp)",
+                        chat_id=chat_id,
+                        message_id=None,
+                    )
+                    agra_added = True
+                except Exception as e:
+                    log.warning("Gagal menambahkan Agra untuk pfp forward user %s: %s", uid, e)
+
+            agra_note = (
+                f" (<b>+{forwarded_count if total_requested > 1 else 1} Agra</b>)"
+                if agra_added
+                else "\n<i>⚠️ Catatan: Poin Agra gagal dicatat (pastikan akun sudah /start bot).</i>"
+            )
+            if total_requested == 1:
+                reply_text = f"✅ <b>1 post</b> berhasil diforward ke channel penyimpanan.{agra_note}"
+            else:
+                reply_text = (
+                    f"✅ Berhasil mem-forward <b>{forwarded_count}</b> dari <b>{total_requested}</b> "
+                    f"post ke channel penyimpanan.{agra_note}"
+                )
+            if status_msg:
+                try:
+                    await status_msg.edit_text(reply_text, parse_mode="HTML")
+                except Exception:
+                    await update.effective_message.reply_text(reply_text, parse_mode="HTML")
+            else:
                 await update.effective_message.reply_text(reply_text, parse_mode="HTML")
         else:
-            await update.effective_message.reply_text(reply_text, parse_mode="HTML")
-    else:
-        err_detail = f"\n<i>Detail: {html.escape(str(err))}</i>" if err else ""
-        fail_text = (
-            "❌ <b>Gagal mem-forward post.</b>\n"
-            "Pastikan channel sumber bersifat publik atau bot memiliki izin akses, "
-            f"dan konten tidak dibatasi dari forwarding.{err_detail}"
-        )
-        if status_msg:
-            try:
-                await status_msg.edit_text(fail_text, parse_mode="HTML")
-            except Exception:
+            err_detail = f"\n<i>Detail: {html.escape(str(err))}</i>" if err else ""
+            fail_text = (
+                "❌ <b>Gagal mem-forward post.</b>\n"
+                "Pastikan channel sumber bersifat publik atau bot memiliki izin akses, "
+                f"dan konten tidak dibatasi dari forwarding.{err_detail}"
+            )
+            if status_msg:
+                try:
+                    await status_msg.edit_text(fail_text, parse_mode="HTML")
+                except Exception:
+                    await update.effective_message.reply_text(fail_text, parse_mode="HTML")
+            else:
                 await update.effective_message.reply_text(fail_text, parse_mode="HTML")
-        else:
-            await update.effective_message.reply_text(fail_text, parse_mode="HTML")
 
 
 async def cb_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -34,7 +34,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 
 ## Fitur Penyimpanan & Forward Post (/pfp)
 - `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward). Jika pemanggil adalah Owner/PFP, menampilkan sub-menu khusus Owner (`pfp daily`, `pfp weekly`, serta tombol pintas `Post Manual`).
-- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`) maupun privat (`t.me/c/12345/123`). Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna.
+- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`), privat (`t.me/c/12345/123`), maupun link topik forum (`t.me/c/12345/5/123`), menolak self-loop dari `KEEP_CH_ID`/`POST_CH_ID`/`@DhruvaPoster` dan duplikasi kloter aktif. Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna.
 - `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus). Memberikan reward +1 Agra per post yang berhasil diforward.
 - `/pfp daily` — (Khusus Owner) Menampilkan rekap pengguna yang berhasil mem-forward postingan hari ini beserta jumlah post yang diforward.
 - `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).

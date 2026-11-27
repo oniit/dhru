@@ -2429,6 +2429,7 @@ class Database:
         await conn.execute("UPDATE linked_accounts SET promo_user_id = ? WHERE promo_user_id = ?", (new_id, old_id))
         await conn.execute("UPDATE user_chat_stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
         await conn.execute("UPDATE charyarthi_answers SET telegram_id = ? WHERE telegram_id = ?", (new_id, old_id))
+        await conn.execute("UPDATE pfp_logs SET user_id = ? WHERE user_id = ?", (new_id, old_id))
         
         # 3. Hapus old_id dari users setelah tidak ada lagi tabel yang mereferensikannya
         await conn.execute("DELETE FROM users WHERE telegram_id = ?", (old_id,))
@@ -2701,6 +2702,7 @@ class Database:
             """,
             (chat_id, action, time.time(), time.time())
         )
+        await conn.commit()
         return cur.lastrowid
 
     async def get_userbot_request(self, conn: aiosqlite.Connection, request_id: int) -> aiosqlite.Row | None:

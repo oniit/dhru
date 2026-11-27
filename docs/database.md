@@ -148,8 +148,9 @@ Konfigurasi dinamis bot (*key-value*).
 - Digunakan untuk: `promo_lpm_keyword`, `promo_story_post`, `ospek_mode`, dan `contract_last_seq` (atomic counter penomoran surat kontrak).
 
 ### 15. `userbot_requests`
-Komunikasi antarmuka (IPC) antara `main.py` dan `checker.py` (Pyrogram userbot).
-- `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `chat_id` (TEXT NOT NULL), `action` (TEXT NOT NULL), `status` (TEXT NOT NULL DEFAULT 'PENDING'), `result` (TEXT), `created_at` (REAL), `updated_at` (REAL)
+Komunikasi antarmuka (IPC) antara `main.py` dan `checker.py` (Pyrogram userbot), termasuk aksi `GET_MEMBERS`, `RESOLVE`, `FORWARD`, dan `KEEP_TO_POST`.
+- `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `chat_id` (TEXT NOT NULL), `action` (TEXT NOT NULL), `status` (TEXT NOT NULL DEFAULT 'PENDING' -> 'PROCESSING' -> 'DONE'/'ERROR'), `result` (TEXT), `created_at` (REAL), `updated_at` (REAL)
+- *Index:* `idx_userbot_requests_status` ON `userbot_requests(status)`. Pembuatan permintaan (`create_userbot_request`) langsung mengeksekusi `commit()`, dan pekerja `checker.py` melakukan klaim atomik `PENDING -> PROCESSING`.
 
 ### 16. `user_chat_stats`
 Statistik aktivitas pesan pengguna di grup.
@@ -211,6 +212,7 @@ Tabel pencatatan riwayat eksekusi forward channel post (`/pfp`) yang berhasil di
 - `forwarded_count` (INTEGER NOT NULL): Jumlah total postingan yang berhasil diforward
 - `created_at` (REAL NOT NULL): Timestamp eksekusi perintah (epoch seconds)
 - *Indexes:* `idx_pfp_logs_created_at` ON `pfp_logs(created_at)`, `idx_pfp_logs_user_date` ON `pfp_logs(user_id, created_at)`
+- Saat migrasi akun (`/pindah_data` / `migrate_user_data`), kolom `pfp_logs.user_id` turut dimigrasikan ke `new_id`.
 
 ### 23. `warkat_codes`
 Tabel penyimpanan voucher/kode akses khusus Warkat Kehormatan untuk alumni/purnata terpilih.

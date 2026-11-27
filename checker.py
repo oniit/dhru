@@ -32,6 +32,8 @@ BACKUP_CH_ID = os.getenv("BACKUP_CH_ID", "")
 BACKUP_CH_ID = int(BACKUP_CH_ID) if BACKUP_CH_ID.strip() else 0
 KEEP_CH_ID = os.getenv("KEEP_CH_ID", "")
 KEEP_CH_ID = int(KEEP_CH_ID) if KEEP_CH_ID.strip() else 0
+POST_CH_ID = os.getenv("POST_CH_ID", "")
+POST_CH_ID = int(POST_CH_ID) if POST_CH_ID.strip() else 0
 
 if BACKUP_CH_ID:
     @app.on_message(filters.chat(BACKUP_CH_ID))
@@ -60,6 +62,7 @@ if BACKUP_CH_ID:
                                         log.error(f"Failed to edit message {m.id}: {e}")
 
 async def process_userbot_requests(conn):
+    import json
     try:
         cur = await conn.execute("SELECT * FROM userbot_requests WHERE status = 'PENDING'")
         pending_rows = await cur.fetchall()
@@ -67,13 +70,26 @@ async def process_userbot_requests(conn):
             req_id = row["id"]
             chat_id = row["chat_id"]
             action = row["action"]
-            
-            # Check expiration (if older than 30 seconds, mark as expired)
-            if time.time() - row["created_at"] > 30:
-                await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = 'EXPIRED' WHERE id = ?", (req_id,))
+
+            # Batas kedaluwarsa: 120 detik untuk FORWARD / KEEP_TO_POST, 30 detik untuk lainnya
+            max_age = 120 if (action.startswith("FORWARD:") or action.startswith("KEEP_TO_POST")) else 30
+            if time.time() - row["created_at"] > max_age:
+                await conn.execute(
+                    "UPDATE userbot_requests SET status = 'ERROR', result = 'EXPIRED', updated_at = ? WHERE id = ? AND status = 'PENDING'",
+                    (time.time(), req_id),
+                )
                 await conn.commit()
                 continue
-                
+
+            # Atomic claim lock: PENDING -> PROCESSING agar tidak dieksekusi ganda
+            claim_cur = await conn.execute(
+                "UPDATE userbot_requests SET status = 'PROCESSING', updated_at = ? WHERE id = ? AND status = 'PENDING'",
+                (time.time(), req_id),
+            )
+            await conn.commit()
+            if getattr(claim_cur, "rowcount", 1) == 0:
+                continue
+
             if action == "GET_MEMBERS":
                 log.info(f"Fetching members for chat {chat_id}")
                 try:
@@ -81,14 +97,19 @@ async def process_userbot_requests(conn):
                     async for member in app.get_chat_members(int(chat_id)):
                         if member.user and not member.user.is_bot and not member.user.is_deleted:
                             members.append(member.user.id)
-                    import json
                     result_json = json.dumps(members)
-                    await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'DONE', result = ?, updated_at = ? WHERE id = ?",
+                        (result_json, time.time(), req_id),
+                    )
                     await conn.commit()
                     log.info(f"Fetched {len(members)} members for chat {chat_id}")
                 except Exception as e:
                     log.error(f"Error fetching members for chat {chat_id}: {e}")
-                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'ERROR', result = ?, updated_at = ? WHERE id = ?",
+                        (str(e), time.time(), req_id),
+                    )
                     await conn.commit()
             elif action.startswith("RESOLVE:"):
                 usernames_str = action.split(":", 1)[1]
@@ -98,20 +119,58 @@ async def process_userbot_requests(conn):
                     result_data = {}
                     if usernames:
                         users = await app.get_users(usernames)
-                        # get_users can return a single User or a list of Users
                         if not isinstance(users, list):
                             users = [users]
                         for u in users:
                             if u and u.username:
                                 result_data[u.username.lower()] = u.id
-                    import json
                     result_json = json.dumps(result_data)
-                    await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'DONE', result = ?, updated_at = ? WHERE id = ?",
+                        (result_json, time.time(), req_id),
+                    )
                     await conn.commit()
                     log.info(f"Resolved {len(result_data)} usernames via userbot")
                 except Exception as e:
                     log.error(f"Error resolving usernames via userbot: {e}")
-                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'ERROR', result = ?, updated_at = ? WHERE id = ?",
+                        (str(e), time.time(), req_id),
+                    )
+                    await conn.commit()
+            elif action.startswith("KEEP_TO_POST"):
+                # format: KEEP_TO_POST:<last_fwd_id>:<bot_id>
+                try:
+                    parts = action.split(":")
+                    last_fwd_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+                    bot_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() and int(parts[2]) > 0 else None
+                    if not bot_id and BOT_TOKEN and ":" in BOT_TOKEN:
+                        bot_id = int(BOT_TOKEN.split(":")[0])
+                    target_keep = KEEP_CH_ID or int(os.getenv("KEEP_CH_ID", "0") or 0)
+                    target_post = POST_CH_ID or int(os.getenv("POST_CH_ID", "0") or 0)
+                    if not target_keep or not target_post:
+                        raise ValueError("KEEP_CH_ID atau POST_CH_ID belum dikonfigurasi di checker")
+
+                    from bot.jobs import run_keep_forward_with_client
+                    res_dict = await run_keep_forward_with_client(
+                        app=app,
+                        keep_ch_id=target_keep,
+                        post_ch_id=target_post,
+                        bot_id=bot_id,
+                        last_fwd_id=last_fwd_id,
+                    )
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'DONE', result = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(res_dict), time.time(), req_id),
+                    )
+                    await conn.commit()
+                    log.info(f"Userbot KEEP_TO_POST req {req_id} done: forwarded={res_dict.get('forwarded_count', 0)}")
+                except Exception as e:
+                    log.error(f"Error in userbot KEEP_TO_POST: {e}")
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'ERROR', result = ?, updated_at = ? WHERE id = ?",
+                        (str(e), time.time(), req_id),
+                    )
                     await conn.commit()
             elif action.startswith("FORWARD:"):
                 # format: FORWARD:<from_chat>:<start_id>:<end_id>
@@ -129,7 +188,7 @@ async def process_userbot_requests(conn):
                         start_id = min(p2, p3)
                         end_id = max(p2, p3)
                         m_ids = list(range(start_id, end_id + 1))
-                        
+
                         target_keep = KEEP_CH_ID or int(os.getenv("KEEP_CH_ID", "0"))
                         if not target_keep:
                             raise ValueError("KEEP_CH_ID belum dikonfigurasi di checker")
@@ -144,7 +203,6 @@ async def process_userbot_requests(conn):
                                     from_chat_id=from_chat,
                                     message_ids=chunk
                                 )
-                                # Safely handle list of messages or single message object
                                 if isinstance(res, list):
                                     fwd_count += len(res)
                                 elif res is not None:
@@ -172,14 +230,19 @@ async def process_userbot_requests(conn):
                                         log.debug(f"Userbot skip message {mid}: {se}")
                             if i + chunk_size < len(m_ids):
                                 await asyncio.sleep(1)
-                        import json
                         result_json = json.dumps({"forwarded": fwd_count})
-                        await conn.execute("UPDATE userbot_requests SET status = 'DONE', result = ? WHERE id = ?", (result_json, req_id))
+                        await conn.execute(
+                            "UPDATE userbot_requests SET status = 'DONE', result = ?, updated_at = ? WHERE id = ?",
+                            (result_json, time.time(), req_id),
+                        )
                         await conn.commit()
                         log.info(f"Userbot forwarded {fwd_count} messages for req {req_id}")
                 except Exception as e:
                     log.error(f"Error in userbot FORWARD: {e}")
-                    await conn.execute("UPDATE userbot_requests SET status = 'ERROR', result = ? WHERE id = ?", (str(e), req_id))
+                    await conn.execute(
+                        "UPDATE userbot_requests SET status = 'ERROR', result = ?, updated_at = ? WHERE id = ?",
+                        (str(e), time.time(), req_id),
+                    )
                     await conn.commit()
         return len(pending_rows)
     except Exception as e:
