@@ -2855,6 +2855,8 @@ class Database:
 
     # --- LPM Promo & Linked Accounts ---
     async def add_linked_account(self, conn: aiosqlite.Connection, main_user_id: int, promo_user_id: int) -> bool:
+        if main_user_id == promo_user_id:
+            return False
         try:
             now = time.time()
             await conn.execute(
@@ -2874,19 +2876,29 @@ class Database:
 
     async def get_linked_accounts(self, conn: aiosqlite.Connection, main_user_id: int) -> list[int]:
         cur = await conn.execute(
-            "SELECT promo_user_id FROM linked_accounts WHERE main_user_id = ?",
+            "SELECT promo_user_id FROM linked_accounts WHERE main_user_id = ? ORDER BY created_at ASC, promo_user_id ASC",
             (main_user_id,)
         )
         rows = await cur.fetchall()
-        return [r["promo_user_id"] for r in rows]
+        return [int(r["promo_user_id"]) for r in rows]
 
     async def get_main_account_by_linked(self, conn: aiosqlite.Connection, promo_user_id: int) -> int | None:
         cur = await conn.execute(
-            "SELECT main_user_id FROM linked_accounts WHERE promo_user_id = ?",
+            "SELECT main_user_id FROM linked_accounts WHERE promo_user_id = ? ORDER BY created_at ASC, main_user_id ASC LIMIT 1",
             (promo_user_id,)
         )
         row = await cur.fetchone()
-        return row["main_user_id"] if row else None
+        return int(row["main_user_id"]) if row else None
+
+    async def remove_linked_account(
+        self, conn: aiosqlite.Connection, main_user_id: int, promo_user_id: int
+    ) -> bool:
+        cur = await conn.execute(
+            "DELETE FROM linked_accounts WHERE main_user_id = ? AND promo_user_id = ?",
+            (main_user_id, promo_user_id),
+        )
+        await conn.commit()
+        return self._rowcount(cur) > 0
 
     async def add_promo_verification(self, conn: aiosqlite.Connection, user_id: int, link: str, promo_type: str = 'lpm', status: str = 'PENDING') -> int:
         now = time.time()

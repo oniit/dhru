@@ -27,15 +27,16 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/menfess` — Membuka menu pengiriman pesan rahasia (menfess) ke pengguna lain dengan biaya Agra, serta melihat history.
 - `/menfess_read <id>` — Membaca detail pesan menfess dari history.
 - `/manosraya` — Mengirim aspirasi, kritik, atau saran anonim (Yaksa Open Arms) ke sistem/Dhruva. Tanpa biaya Agra (Tersedia Senin-Jumat, 10.00-22.00 WIB).
-- `/link_kerja` — Membuat kode OTP untuk menautkan "Akun Kerja" (akun promosi).
-- `/cek_akun_kerja` — Melihat daftar akun kerja yang sudah ditautkan.
+- `/link_kerja` — Membuat kode OTP untuk menautkan "Akun Kerja" (akun promosi & PFP).
+- `/cek_akun_kerja` — Melihat daftar akun kerja yang sudah ditautkan (atau status Akun Utama bila dipanggil dari Akun Kerja) beserta tombol putuskan tautan.
+- `/unlink_kerja [id|@username]` — Memutuskan tautan Akun Kerja secara mandiri (oleh Akun Utama maupun Akun Kerja).
 - `/lpm <link>` — Men-submit link pesan promosi dari grup publik untuk divalidasi dan mendapatkan reward Agra.
 - `/story <link>` — Men-submit link Story Telegram yang berisi repost _channel post_ untuk divalidasi dan mendapatkan reward Agra.
 
 ## Fitur Penyimpanan & Forward Post (/pfp)
-- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward). Jika pemanggil adalah Owner/PFP, menampilkan sub-menu khusus Owner (`pfp daily`, `pfp weekly`, serta tombol pintas `Post Manual`).
-- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`), privat (`t.me/c/12345/123`), maupun link topik forum (`t.me/c/12345/5/123`), menolak self-loop dari `KEEP_CH_ID`/`POST_CH_ID`/`@DhruvaPoster` dan duplikasi kloter aktif. Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna.
-- `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus). Memberikan reward +1 Agra per post yang berhasil diforward.
+- `/pfp` — Menampilkan panduan/tutor pemakaian perintah `/pfp` beserta informasi reward (+1 Agra per post yang berhasil diforward) dan status Akun Kerja bila tertaut. Jika pemanggil adalah Owner/PFP, menampilkan sub-menu khusus Owner (`pfp daily`, `pfp weekly`, serta tombol pintas `Post Manual`).
+- `/pfp <link>` — Mem-forward 1 postingan channel Telegram ke channel penyimpanan (`KEEP_CH_ID`). Mendukung link publik (`t.me/channel/123`), privat (`t.me/c/12345/123`), maupun link topik forum (`t.me/c/12345/5/123`), menolak self-loop dari `KEEP_CH_ID`/`POST_CH_ID`/`@DhruvaPoster` dan duplikasi kloter aktif. Setiap post yang berhasil diforward otomatis memberikan +1 Agra ke pengguna (atau langsung ke **Akun Utama** jika perintah dijalankan dari **Akun Kerja** yang ditautkan via `/link_kerja`).
+- `/pfp <link_awal> to <link_akhir>` — Mem-forward rentang postingan channel Telegram secara berurutan dan massal (maksimal 100 postingan sekaligus). Memberikan reward +1 Agra per post yang berhasil diforward (otomatis masuk ke Akun Utama bila dijalankan melalui Akun Kerja).
 - `/pfp daily` — (Khusus Owner) Menampilkan rekap pengguna yang berhasil mem-forward postingan hari ini beserta jumlah post yang diforward.
 - `/pfp weekly` — (Khusus Owner) Menampilkan ringkasan statistik forward harian selama 7 hari terakhir (jumlah pengguna unik dan total post).
 - `/post_keep` atau `/pfp post` (alias: `/pfp_post`, `/flush_keep`) — (Owner / Admin / Divisi PFP) Mem-forward seluruh postingan yang tertampung di channel penyimpanan (`KEEP_CH_ID`) secara instan ke channel poster (`POST_CH_ID` / `@DhruvaPoster`) dan langsung menghapus postingan tersebut dari channel penyimpanan agar tidak menumpuk dan tidak ter-post ulang pada jadwal berikutnya. Sangat berguna untuk postingan susulan/terlambat di luar jam kloter otomatis (15:00 WIB & 17:59 WIB). Setiap eksekusi kloter otomatis juga mengirimkan laporan perbandingan `/pfp` berhasil vs post terforward ke private chat Owner.
@@ -118,6 +119,7 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 ## Promosi & Verifikasi
 - `/lpm <link>` — Mengirimkan link pesan promosi di grup publik untuk divalidasi sistem (memberikan reward +1 Agra jika valid).
 - `/story <link>` — Mengirimkan link bukti repost Story Telegram untuk divalidasi.
-- `/link_kerja` — Menghasilkan kode OTP untuk menautkan akun cadangan (Akun Kerja) ke akun utama.
-- `/cek_akun_kerja` — Melihat daftar akun kerja yang tertaut ke akun utama.
+- `/link_kerja` — Menghasilkan kode OTP untuk menautkan akun cadangan (Akun Kerja) ke akun utama untuk keperluan `/lpm`, `/story`, dan `/pfp`.
+- `/cek_akun_kerja` — Melihat daftar akun kerja yang tertaut ke akun utama (atau status akun utama bila dipanggil dari akun kerja) serta tombol untuk memutuskan tautan.
+- `/unlink_kerja [id|@username]` — Memutuskan tautan Akun Kerja dari akun utama.
 - `/promo` — (Owner) Membuka menu konfigurasi syarat kata kunci LPM dan link postingan Story.

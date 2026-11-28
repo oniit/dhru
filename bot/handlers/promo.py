@@ -1,4 +1,5 @@
 import html
+import inspect
 import logging
 import random
 import re
@@ -13,26 +14,131 @@ from bot.database import Database
 log = logging.getLogger(__name__)
 
 # Temporary in-memory store for OTPs
-# Format: { "PROMO-XYZ": {"main_user_id": 12345, "expires_at": 1700000000} }
+# Format: { "KERJA-XYZ123": {"main_user_id": 12345, "expires_at": 1700000000} }
 OTP_STORE: dict[str, dict] = {}
+
+
+def _db(context: ContextTypes.DEFAULT_TYPE) -> Database | None:
+    bot_data = getattr(context, "bot_data", None) or {}
+    app = getattr(context, "application", None)
+    app_data = (getattr(app, "bot_data", None) or {}) if app else {}
+    return bot_data.get("db") or app_data.get("db")
+
+
+def _conn(context: ContextTypes.DEFAULT_TYPE):
+    bot_data = getattr(context, "bot_data", None) or {}
+    app = getattr(context, "application", None)
+    app_data = (getattr(app, "bot_data", None) or {}) if app else {}
+    return bot_data.get("conn") or app_data.get("conn")
+
+
+def _row_field(row, key: str, default=None):
+    if not row:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        val = row[key]
+        return val if val is not None else default
+    except Exception:
+        return default
+
+
+def _format_linked_user_label(row, uid: int) -> str:
+    if not row:
+        return f"<code>{uid}</code>"
+    fn = str(_row_field(row, "first_name", "") or "").strip()
+    un = str(_row_field(row, "username", "") or "").strip().lstrip("@")
+    if fn and un:
+        return f"<b>{html.escape(fn)}</b> (@{html.escape(un)}) — <code>{uid}</code>"
+    if un:
+        return f"@{html.escape(un)} — <code>{uid}</code>"
+    if fn:
+        return f"<b>{html.escape(fn)}</b> — <code>{uid}</code>"
+    return f"<code>{uid}</code>"
+
+
+async def _ensure_user_row_exists(conn, db: Database | None, tg_user) -> None:
+    if not conn or not db or not tg_user:
+        return
+    try:
+        res_get = db.get_user(conn, tg_user.id)
+        if not inspect.isawaitable(res_get):
+            return
+        existing = await res_get
+        if existing:
+            return
+        if not hasattr(db, "upsert_user_from_telegram"):
+            return
+        raw = {
+            "id": tg_user.id,
+            "is_bot": bool(getattr(tg_user, "is_bot", False)),
+            "first_name": getattr(tg_user, "first_name", None),
+            "last_name": getattr(tg_user, "last_name", None),
+            "username": getattr(tg_user, "username", None),
+            "language_code": getattr(tg_user, "language_code", None),
+        }
+        res_up = db.upsert_user_from_telegram(
+            conn,
+            telegram_id=tg_user.id,
+            username=getattr(tg_user, "username", None),
+            first_name=getattr(tg_user, "first_name", None),
+            last_name=getattr(tg_user, "last_name", None),
+            language_code=getattr(tg_user, "language_code", None),
+            is_premium=bool(getattr(tg_user, "is_premium", False)),
+            is_bot=bool(getattr(tg_user, "is_bot", False)),
+            raw_profile={k: v for k, v in raw.items() if v is not None},
+        )
+        if inspect.isawaitable(res_up):
+            await res_up
+    except Exception as e:
+        log.debug("Gagal memastikan baris user %s: %s", getattr(tg_user, "id", "?"), e)
+
 
 def generate_otp() -> str:
     return "KERJA-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
+
 async def link_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_chat or not update.effective_user or not update.message:
+        return
     if update.effective_chat.type != "private":
         await update.message.reply_text("Silakan gunakan perintah ini di chat pribadi (DM).")
         return
 
     main_user_id = update.effective_user.id
-    
-    # Cleanup expired OTPs (optional, but good practice)
+    db = _db(context)
+    conn = _conn(context)
+
+    if db and conn:
+        await _ensure_user_row_exists(conn, db, update.effective_user)
+        if hasattr(db, "get_main_account_by_linked"):
+            try:
+                res_m = db.get_main_account_by_linked(conn, main_user_id)
+                if inspect.isawaitable(res_m):
+                    existing_main = await res_m
+                    if isinstance(existing_main, int) and not isinstance(existing_main, bool) and existing_main != main_user_id:
+                        await update.message.reply_text(
+                            "❌ <b>Akun Ini Sudah Menjadi Akun Kerja</b>\n\n"
+                            f"Akun ini sudah tertaut sebagai Akun Kerja milik Akun Utama (<code>{existing_main}</code>), "
+                            "sehingga tidak dapat menautkan akun kerja lain.\n\n"
+                            "<i>Jalankan /link_kerja dari Akun Utamamu, atau putuskan tautan terlebih dahulu lewat /cek_akun_kerja.</i>",
+                            parse_mode="HTML",
+                        )
+                        return
+            except Exception as e:
+                log.debug("Melewati cek parent akun kerja di /link_kerja: %s", e)
+
+    # Cleanup expired OTPs
     now = time.time()
     expired = [k for k, v in OTP_STORE.items() if v["expires_at"] < now]
     for k in expired:
         OTP_STORE.pop(k, None)
 
     code = generate_otp()
+    while code in OTP_STORE:
+        code = generate_otp()
+
     OTP_STORE[code] = {
         "main_user_id": main_user_id,
         "expires_at": now + 600  # valid for 10 minutes
@@ -40,33 +146,208 @@ async def link_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     text = (
         "🔗 <b>Tautkan Akun Kerja</b>\n\n"
-        "Untuk menautkan akun kerjamu (akun promosi), ikuti langkah ini:\n"
+        "Untuk menautkan akun kerjamu (akun promosi / PFP), ikuti langkah ini:\n"
         "1. Start bot ini di akun kerjamu.\n"
-        f"2. Kirimkan pesan berisi kode di bawah ini ke bot ini secara langsung (DM):\n\n"
+        "2. Kirimkan pesan berisi kode di bawah ini ke bot ini secara langsung (DM):\n\n"
         f"<code>{code}</code>\n\n"
+        "<i>💡 Setelah tertaut, reward Agra dari promosi (<code>/lpm</code>, <code>/story</code>) maupun forward <code>/pfp</code> "
+        "via akun kerja akan masuk ke Akun Utama ini.</i>\n\n"
         "<b>(Kode ini hanya berlaku selama 10 menit)</b>"
     )
     await update.message.reply_text(text, parse_mode="HTML")
 
+
+async def _build_cek_akun_kerja_view(conn, db: Database, uid: int) -> tuple[str, InlineKeyboardMarkup | None]:
+    linked_accounts = await db.get_linked_accounts(conn, uid)
+    if linked_accounts:
+        lines = ["📋 <b>Daftar Akun Kerjamu yang Terdaftar:</b>\n"]
+        buttons = []
+        for idx, acc_id in enumerate(linked_accounts, start=1):
+            acc_row = None
+            try:
+                res_u = db.get_user(conn, acc_id)
+                if inspect.isawaitable(res_u):
+                    acc_row = await res_u
+            except Exception:
+                acc_row = None
+            label = _format_linked_user_label(acc_row, acc_id)
+            lines.append(f"{idx}. {label}")
+            short_un = str(_row_field(acc_row, "username", "") or "").strip()
+            btn_tag = f"@{short_un}" if short_un else str(acc_id)
+            buttons.append([InlineKeyboardButton(f"❌ Putuskan #{idx} ({btn_tag})", callback_data=f"unlink_kerja:main:{acc_id}")])
+
+        lines.append(
+            "\nJika kamu menggunakan salah satu akun di atas untuk menyebar link promosi (<code>/lpm</code> / <code>/story</code>) "
+            "atau mem-forward post (<code>/pfp</code>), saldo Agra akan tetap masuk ke akun utama ini."
+        )
+        return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+    parent_main_id = None
+    if hasattr(db, "get_main_account_by_linked"):
+        try:
+            res_p = db.get_main_account_by_linked(conn, uid)
+            if inspect.isawaitable(res_p):
+                parent_main_id = await res_p
+        except Exception:
+            parent_main_id = None
+
+    if isinstance(parent_main_id, int) and not isinstance(parent_main_id, bool) and parent_main_id != uid:
+        main_row = None
+        try:
+            res_mu = db.get_user(conn, parent_main_id)
+            if inspect.isawaitable(res_mu):
+                main_row = await res_mu
+        except Exception:
+            main_row = None
+        main_lbl = _format_linked_user_label(main_row, parent_main_id)
+        text = (
+            "🔗 <b>Status Akun Kerja</b>\n\n"
+            f"Akun ini sedang tertaut sebagai <b>Akun Kerja</b> dari Akun Utama:\n"
+            f"• {main_lbl}\n\n"
+            "Setiap forward <code>/pfp</code> (dan link promosi yang diklaim akun utama) akan tercatat serta menambah saldo Agra ke Akun Utama tersebut."
+        )
+        kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔓 Putuskan Tautan dari Akun Utama", callback_data=f"unlink_kerja:self:{parent_main_id}")]]
+        )
+        return text, kb
+
+    return "Kamu belum menautkan akun kerja apa pun. Gunakan /link_kerja untuk menautkan.", None
+
+
 async def cek_akun_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
     if update.effective_chat and update.effective_chat.type != "private":
         await update.message.reply_text("Perintah ini hanya dapat digunakan di chat pribadi bot.")
         return
-    db: Database = context.bot_data["db"]
-    conn = context.bot_data["conn"]
+    db = _db(context)
+    conn = _conn(context)
+    if not db or not conn:
+        await update.message.reply_text("⚠️ Database belum siap.")
+        return
     main_user_id = update.effective_user.id
-    
-    linked_accounts = await db.get_linked_accounts(conn, main_user_id)
-    if not linked_accounts:
-        await update.message.reply_text("Kamu belum menautkan akun kerja apa pun. Gunakan /link_kerja untuk menautkan.")
+
+    text, kb = await _build_cek_akun_kerja_view(conn, db, main_user_id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+async def unlink_kerja_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if update.effective_chat and update.effective_chat.type != "private":
+        await update.message.reply_text("Perintah ini hanya dapat digunakan di chat pribadi bot.")
         return
 
-    text = "📋 <b>Daftar Akun Kerjamu yang Terdaftar:</b>\n\n"
-    for idx, acc_id in enumerate(linked_accounts, start=1):
-        text += f"{idx}. <code>{acc_id}</code>\n"
-    text += "\nJika kamu menggunakan salah satu akun di atas untuk menyebar link promosi, saldo Agra akan tetap masuk ke akun utama ini."
-    
-    await update.message.reply_text(text, parse_mode="HTML")
+    db = _db(context)
+    conn = _conn(context)
+    if not db or not conn:
+        await update.message.reply_text("⚠️ Database belum siap.")
+        return
+
+    uid = update.effective_user.id
+    args = context.args or []
+
+    if args:
+        raw_target = args[0].strip()
+        target_id: int | None = None
+        if raw_target.isdigit():
+            target_id = int(raw_target)
+        elif raw_target.startswith("@"):
+            u_row = await db.get_user_by_username_or_id(conn, raw_target)
+            if u_row:
+                target_id = int(u_row["telegram_id"])
+        if not target_id:
+            await update.message.reply_text(
+                "❌ Format tidak valid atau akun tidak ditemukan.\n"
+                "Gunakan: <code>/unlink_kerja &lt;ID|@username&gt;</code> atau ketik <code>/cek_akun_kerja</code>.",
+                parse_mode="HTML",
+            )
+            return
+
+        removed = await db.remove_linked_account(conn, uid, target_id)
+        if removed:
+            await update.message.reply_text(
+                f"✅ Tautan Akun Kerja <code>{target_id}</code> berhasil diputuskan.",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                f"ℹ️ Akun <code>{target_id}</code> tidak tercatat sebagai Akun Kerja milik Anda.",
+                parse_mode="HTML",
+            )
+        return
+
+    text, kb = await _build_cek_akun_kerja_view(conn, db, uid)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+async def unlink_kerja_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not update.effective_user:
+        return
+
+    if update.effective_chat and update.effective_chat.type != "private":
+        await query.answer("Gunakan fitur ini di chat pribadi bot.", show_alert=True)
+        return
+
+    db = _db(context)
+    conn = _conn(context)
+    if not db or not conn:
+        await query.answer("Database belum terhubung.", show_alert=True)
+        return
+
+    uid = update.effective_user.id
+    data = query.data or ""
+    parts = data.split(":")
+    if len(parts) != 3 or not parts[2].isdigit():
+        await query.answer("Permintaan tidak valid.", show_alert=True)
+        return
+
+    mode = parts[1]
+    other_id = int(parts[2])
+
+    if mode == "main":
+        removed = await db.remove_linked_account(conn, uid, other_id)
+        if not removed:
+            await query.answer("Akun kerja tersebut sudah tidak tertaut.", show_alert=True)
+        else:
+            await query.answer("✅ Tautan akun kerja diputuskan.")
+            try:
+                await context.bot.send_message(
+                    chat_id=other_id,
+                    text=f"ℹ️ Tautan Akun Kerja dengan Akun Utama (<code>{uid}</code>) telah diputuskan.",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+        text, kb = await _build_cek_akun_kerja_view(conn, db, uid)
+        try:
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+    elif mode == "self":
+        removed = await db.remove_linked_account(conn, other_id, uid)
+        if not removed:
+            await query.answer("Tautan akun kerja sudah tidak aktif.", show_alert=True)
+            return
+        await query.answer("✅ Tautan diputuskan.")
+        try:
+            await context.bot.send_message(
+                chat_id=other_id,
+                text=f"ℹ️ Akun Kerja (<code>{uid}</code>) telah memutuskan tautannya dari akun utamamu.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        try:
+            await query.edit_message_text(
+                "✅ Tautan akun ini dari Akun Utama berhasil diputuskan.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+    else:
+        await query.answer()
 
 async def _safe_edit_or_reply(msg, text: str, parse_mode: str = "HTML") -> None:
     try:
@@ -394,10 +675,10 @@ async def lpm_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 async def handle_otp_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Catches OTP codes sent by promo accounts."""
-    if not update.message or not update.message.text:
+    """Catches OTP codes sent by promo/work accounts."""
+    if not update.message or not update.message.text or not update.effective_user or not update.effective_chat:
         return
-        
+
     if update.effective_chat.type != "private":
         return
 
@@ -405,45 +686,140 @@ async def handle_otp_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if text.startswith("KERJA-") and len(text) == 12:
         now = time.time()
         otp_data = OTP_STORE.get(text)
-        
+
         if not otp_data:
-            await update.message.reply_text("❌ Kode OTP tidak valid atau salah ketik.")
+            await update.message.reply_text(
+                "❌ Kode OTP tidak valid, sudah digunakan, atau sudah kedaluwarsa.\n"
+                "Silakan minta kode baru dengan <code>/link_kerja</code> di akun utama.",
+                parse_mode="HTML",
+            )
             return
-            
+
         if otp_data["expires_at"] < now:
             await update.message.reply_text("❌ Kode OTP sudah kedaluwarsa. Silakan minta ulang di akun utama.")
             OTP_STORE.pop(text, None)
             return
-            
+
         main_user_id = otp_data["main_user_id"]
         promo_user_id = update.effective_user.id
-        
+
         if main_user_id == promo_user_id:
             await update.message.reply_text("❌ Kamu mengirim kode dari akun utama yang sama. Harus dikirim dari akun kerja.")
             return
 
-        db: Database = context.bot_data["db"]
-        conn = context.bot_data["conn"]
-        
+        db = _db(context)
+        conn = _conn(context)
+        if not db or not conn:
+            await update.message.reply_text("⚠️ Database belum siap, silakan coba sesaat lagi.")
+            return
+
+        # Pastikan kedua akun memiliki baris pada tabel users (menjaga Foreign Key)
+        await _ensure_user_row_exists(conn, db, update.effective_user)
+        main_row = None
+        if hasattr(db, "get_user"):
+            try:
+                res_mr = db.get_user(conn, main_user_id)
+                if inspect.isawaitable(res_mr):
+                    main_row = await res_mr
+            except Exception:
+                main_row = None
+        if hasattr(db, "get_user") and main_row is None:
+            await update.message.reply_text(
+                "❌ Data akun utama tidak ditemukan di database.\n"
+                "Pastikan akun utama sudah menekan /start di bot ini.",
+                parse_mode="HTML",
+            )
+            return
+
+        # Cek 1: Satu Akun Kerja hanya boleh tertaut ke satu Akun Utama
+        if hasattr(db, "get_main_account_by_linked"):
+            try:
+                res_em = db.get_main_account_by_linked(conn, promo_user_id)
+                if inspect.isawaitable(res_em):
+                    existing_main = await res_em
+                    if isinstance(existing_main, int) and not isinstance(existing_main, bool):
+                        if existing_main == main_user_id:
+                            OTP_STORE.pop(text, None)
+                            await update.message.reply_text("ℹ️ Akun ini sudah ditautkan ke akun utama tersebut sebelumnya.")
+                            return
+                        await update.message.reply_text(
+                            "❌ Akun ini sudah tertaut sebagai Akun Kerja milik akun utama lain.\n"
+                            "Satu Akun Kerja hanya dapat ditautkan ke satu Akun Utama (putuskan tautan lama di <code>/cek_akun_kerja</code> terlebih dahulu).",
+                            parse_mode="HTML",
+                        )
+                        return
+            except Exception as e:
+                log.debug("Melewati cek existing_main pada handle_otp_message: %s", e)
+
+        # Cek 2: Cegah rantai/siklus (Akun Utama tidak boleh berstatus Akun Kerja, dan Akun Kerja tidak boleh memiliki Akun Kerja sendiri)
+        if hasattr(db, "get_main_account_by_linked"):
+            try:
+                res_mm = db.get_main_account_by_linked(conn, main_user_id)
+                if inspect.isawaitable(res_mm):
+                    main_as_work = await res_mm
+                    if isinstance(main_as_work, int) and not isinstance(main_as_work, bool) and main_as_work != main_user_id:
+                        OTP_STORE.pop(text, None)
+                        await update.message.reply_text(
+                            "❌ Akun pembuat kode OTP sudah tertaut sebagai Akun Kerja milik akun lain, sehingga tidak dapat memiliki Akun Kerja."
+                        )
+                        return
+            except Exception:
+                pass
+
+        if hasattr(db, "get_linked_accounts"):
+            try:
+                res_pl = db.get_linked_accounts(conn, promo_user_id)
+                if inspect.isawaitable(res_pl):
+                    promo_own_workers = await res_pl
+                    if isinstance(promo_own_workers, list) and len(promo_own_workers) > 0:
+                        await update.message.reply_text(
+                            "❌ Akun ini sudah terdaftar sebagai Akun Utama yang memiliki Akun Kerja sendiri, "
+                            "sehingga tidak dapat ditautkan sebagai Akun Kerja akun lain."
+                        )
+                        return
+            except Exception:
+                pass
+
+        # Konsumsi OTP secara atomik sebelum insert ke DB agar tidak dipakai ganda secara konkuren
+        OTP_STORE.pop(text, None)
+
         success = await db.add_linked_account(conn, main_user_id, promo_user_id)
         if success:
+            if hasattr(db, "set_onboarding_step"):
+                try:
+                    res_step = db.set_onboarding_step(conn, promo_user_id, None)
+                    if inspect.isawaitable(res_step):
+                        await res_step
+                except Exception:
+                    pass
+
             await update.message.reply_text(
                 "✅ <b>Berhasil!</b> Akun ini sekarang tertaut sebagai Akun Kerja.\n\n"
-                "Mulai sekarang, semua link promosi yang dikirim oleh akun ini bisa diklaim menggunakan akun utama."
+                "Mulai sekarang, link promosi (<code>/lpm</code> / <code>/story</code>) maupun forward <code>/pfp</code> "
+                "yang dijalankan melalui akun ini akan terhubung dan saldo Agra-nya otomatis masuk ke Akun Utama.",
+                parse_mode="HTML",
+            )
+            promo_label = _format_linked_user_label(
+                {
+                    "first_name": getattr(update.effective_user, "first_name", None),
+                    "username": getattr(update.effective_user, "username", None),
+                },
+                promo_user_id,
             )
             # Notifikasi ke akun utama
             try:
                 await context.bot.send_message(
                     chat_id=main_user_id,
-                    text=f"✅ Akun kerja dengan ID <code>{promo_user_id}</code> berhasil ditautkan ke akun utamamu!",
-                    parse_mode="HTML"
+                    text=(
+                        f"✅ Akun kerja {promo_label} berhasil ditautkan ke akun utamamu!\n\n"
+                        "Sekarang akun kerja tersebut bisa langsung digunakan untuk <code>/pfp</code> maupun promosi <code>/lpm</code> / <code>/story</code>."
+                    ),
+                    parse_mode="HTML",
                 )
             except Exception as e:
                 log.error(f"Gagal mengirim notif ke akun utama: {e}")
         else:
             await update.message.reply_text("❌ Akun ini sudah ditautkan ke akun utama tersebut sebelumnya.")
-            
-        OTP_STORE.pop(text, None)
 
 async def promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     from bot.settings import OWNER_ID
@@ -577,14 +953,19 @@ async def story_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def setup_promo_handlers(application) -> None:
     application.add_handler(CommandHandler("link_kerja", link_kerja_cmd))
     application.add_handler(CommandHandler("cek_akun_kerja", cek_akun_kerja_cmd))
+    application.add_handler(CommandHandler("unlink_kerja", unlink_kerja_cmd))
     application.add_handler(CommandHandler("lpm", lpm_cmd))
     application.add_handler(CommandHandler("story", story_cmd))
     application.add_handler(CommandHandler("promo", promo_cmd))
+    application.add_handler(CallbackQueryHandler(unlink_kerja_callback, pattern="^unlink_kerja:"))
     application.add_handler(CallbackQueryHandler(promo_callback, pattern="^promo_set_"))
-    
-    # Filter only text messages that start with KERJA-
+
+    # Filter only private text messages that match KERJA-XXXXXX
     application.add_handler(
-        MessageHandler(filters.TEXT & filters.Regex(r"(?i)^KERJA-[A-Z0-9]{6}$"), handle_otp_message),
+        MessageHandler(
+            filters.TEXT & filters.ChatType.PRIVATE & filters.Regex(r"(?i)^\s*KERJA-[A-Z0-9]{6}\s*$"),
+            handle_otp_message,
+        ),
         group=1
     )
     

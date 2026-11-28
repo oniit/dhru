@@ -1040,6 +1040,7 @@ def help_for_role(role: str, profile: dict | None = None) -> str:
         "/ubah — Ajukan perubahan (disetujui admin)",
         "/kode [kode] — Tukar Kode Akses / Warkat Kehormatan",
         "/pfp — Forward post channel ke KEEP channel (+1 Agra)",
+        "/link_kerja / /cek_akun_kerja — Tautkan & cek Akun Kerja (LPM & PFP)",
         "",
     ]
     if role == ROLE_PUBLIC:

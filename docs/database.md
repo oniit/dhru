@@ -140,9 +140,11 @@ Riwayat pengiriman pesan rahasia (menfess) dan Agra gift.
 - `created_at` (REAL NOT NULL)
 
 ### 13. `promo_verifications` & `linked_accounts`
-Verifikasi promosi (LPM / Story) dan akun kerja/klon.
+Verifikasi promosi (LPM / Story) dan relasi Akun Kerja (digunakan pada `/lpm`, `/story`, serta `/pfp`).
 - `promo_verifications`: `id`, `user_id`, `link`, `status`, `promo_type`, `created_at`
 - `linked_accounts`: `main_user_id`, `promo_user_id`, `created_at`
+  - Lookup balik `get_main_account_by_linked` menggunakan index `idx_linked_accounts_promo` dengan pengurutan deterministik (`ORDER BY created_at ASC, main_user_id ASC LIMIT 1`).
+  - Penautan baru memvalidasi relasi 1-ke-N (1 Akun Kerja maksimal 1 Akun Utama, anti-rantai/siklus) dan mendukung pemutusan tautan lewat `remove_linked_account`.
 
 ### 14. `bot_settings`
 Konfigurasi dinamis bot (*key-value*).
@@ -206,7 +208,7 @@ Tabel cermin (*mirroring*) cloud remote untuk data kelulusan, nilai mata kuliah,
 ### 22. `pfp_logs`
 Tabel pencatatan riwayat eksekusi forward channel post (`/pfp`) yang berhasil diforward ke `KEEP_CH_ID`.
 - `id` (INTEGER PRIMARY KEY AUTOINCREMENT)
-- `user_id` (INTEGER NOT NULL): ID Telegram pengguna yang mengeksekusi perintah
+- `user_id` (INTEGER NOT NULL): ID Telegram pemilik kredit perintah (Akun Utama bila dieksekusi oleh Akun Kerja yang tertaut; pelacakan aktor eksekusi tercatat pada `agra_ledger.actor_telegram_id`)
 - `chat_id` (INTEGER NOT NULL): ID chat/grup tempat perintah dikirim
 - `channel_id` (TEXT NOT NULL): Username atau ID channel sumber
 - `first_msg_id` (INTEGER NOT NULL): ID postingan awal yang diforward

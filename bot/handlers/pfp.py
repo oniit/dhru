@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import inspect
 import json
 import logging
 import re
@@ -287,7 +288,8 @@ def get_pfp_tutorial_text(is_user_owner: bool) -> tuple[str, InlineKeyboardMarku
         "• Setiap 1 post yang berhasil diforward otomatis mendapatkan <b>+1 Agra</b>.\n"
         "• Tautan awal dan akhir harus berasal dari channel yang sama.\n"
         "• Maksimal forward 100 post dalam sekali perintah.\n"
-        "• Mendukung link publik (<code>t.me/channel/123</code>) dan privat (<code>t.me/c/12345/123</code>)."
+        "• Mendukung link publik (<code>t.me/channel/123</code>) dan privat (<code>t.me/c/12345/123</code>).\n"
+        "• Mendukung <b>Akun Kerja</b>: jika akun ini ditautkan lewat <code>/link_kerja</code>, reward Agra & log <code>/pfp</code> otomatis masuk ke Akun Utama."
     )
 
     if is_user_owner:
@@ -520,6 +522,56 @@ async def cmd_post_keep(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.effective_message.reply_text(text, parse_mode="HTML")
 
 
+async def resolve_pfp_credit_user_id(
+    conn, db: Database | None, actor_uid: int
+) -> tuple[int, bool]:
+    """
+    Menentukan pemilik kredit /pfp (Agra & pfp_logs).
+    Jika actor_uid terdaftar sebagai Akun Kerja di `linked_accounts`, kembalikan (main_user_id, True).
+    Jika tidak (atau tabel/akun utama tidak tersedia), kembalikan (actor_uid, False).
+    """
+    if not conn or not db or not hasattr(db, "get_main_account_by_linked"):
+        return actor_uid, False
+    try:
+        res_main = db.get_main_account_by_linked(conn, actor_uid)
+        if not inspect.isawaitable(res_main):
+            return actor_uid, False
+        main_uid = await res_main
+        if not isinstance(main_uid, int) or isinstance(main_uid, bool) or main_uid == actor_uid:
+            return actor_uid, False
+
+        # Pastikan Akun Utama benar-benar ada di tabel users agar insert agra_ledger tidak gagal FK
+        if hasattr(db, "get_user"):
+            res_user = db.get_user(conn, main_uid)
+            if inspect.isawaitable(res_user):
+                main_row = await res_user
+                if not main_row:
+                    log.warning(
+                        "Akun utama %s untuk akun kerja %s tidak ditemukan di tabel users; fallback ke actor_uid",
+                        main_uid,
+                        actor_uid,
+                    )
+                    return actor_uid, False
+
+        # Cegah rantai/siklus bila ada data historis bermasalah
+        if hasattr(db, "get_linked_accounts"):
+            res_own = db.get_linked_accounts(conn, actor_uid)
+            if inspect.isawaitable(res_own):
+                own_linked = await res_own
+                if isinstance(own_linked, list) and len(own_linked) > 0:
+                    log.warning(
+                        "Konflik linked_accounts: akun %s memiliki akun kerja sendiri namun juga tertaut ke %s",
+                        actor_uid,
+                        main_uid,
+                    )
+                    return actor_uid, False
+
+        return int(main_uid), True
+    except Exception as e:
+        log.debug("Melewati resolusi akun kerja untuk user %s: %s", actor_uid, e)
+        return actor_uid, False
+
+
 async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler utama perintah /pfp."""
     if not update.effective_message or not update.effective_user:
@@ -572,6 +624,12 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             kb = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🚀 Post Manual (/post_keep)", callback_data="pfp:post")]]
+            )
+        _, is_work_account = await resolve_pfp_credit_user_id(conn, db, uid)
+        if is_work_account:
+            text += (
+                "\n\n🔗 <b>Status Akun Kerja:</b> Akun ini sedang tertaut ke Akun Utama. "
+                "Setiap forward <code>/pfp</code> dan reward Agra otomatis masuk ke Akun Utama."
             )
         await update.effective_message.reply_text(
             text,
@@ -655,43 +713,70 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    credit_uid, is_work_account = await resolve_pfp_credit_user_id(conn, db, uid)
+
     user_locks = _pfp_user_locks()
-    u_lock = user_locks.get(uid)
+    u_lock = user_locks.get(credit_uid)
     if u_lock is None:
         u_lock = asyncio.Lock()
-        user_locks[uid] = u_lock
+        user_locks[credit_uid] = u_lock
     if u_lock.locked():
-        await update.effective_message.reply_text(
-            "⏳ Permintaan <code>/pfp</code> Anda sebelumnya masih diproses. Mohon tunggu sebentar.",
-            parse_mode="HTML",
+        busy_msg = (
+            "⏳ Permintaan <code>/pfp</code> Anda (atau akun tertaut Anda) sebelumnya masih diproses. Mohon tunggu sebentar."
+            if is_work_account
+            else "⏳ Permintaan <code>/pfp</code> Anda sebelumnya masih diproses. Mohon tunggu sebentar."
         )
+        await update.effective_message.reply_text(busy_msg, parse_mode="HTML")
         return
 
     async with u_lock:
-        # Cegah duplikasi forward tautan/rentang identik oleh user yang sama dalam kloter berjalan
+        # Cegah duplikasi forward tautan/rentang identik oleh user (atau akun tertautnya) dalam kloter berjalan
         if conn and db and hasattr(conn, "execute"):
             try:
                 since_ts = 0.0
                 if hasattr(db, "get_setting"):
                     raw_ts = await db.get_setting(conn, "keep_last_report_ts", "0")
-                    if isinstance(raw_ts, (int, float, str)) and str(raw_ts).replace(".", "", 1).isdigit():
-                        since_ts = float(raw_ts)
+                    if isinstance(raw_ts, (int, float, str)):
+                        try:
+                            since_ts = float(raw_ts)
+                        except (TypeError, ValueError):
+                            since_ts = 0.0
                 if since_ts <= 0:
                     today_wib = get_today_wib()
                     since_ts = datetime.combine(today_wib, datetime.min.time(), tzinfo=TZ).timestamp()
-                dup_cur = await conn.execute(
-                    """
-                    SELECT id FROM pfp_logs
-                    WHERE user_id = ? AND created_at > ? AND channel_id = ? AND first_msg_id = ? AND last_msg_id = ?
-                    LIMIT 1
-                    """,
-                    (uid, since_ts, str(channel_id), start_id, end_id),
-                )
-                if await dup_cur.fetchone():
-                    await update.effective_message.reply_text(
-                        "⚠️ Tautan/rentang postingan tersebut sudah pernah Anda forward pada kloter berjalan.",
-                        parse_mode="HTML",
+                if is_work_account:
+                    dup_cur = await conn.execute(
+                        """
+                        SELECT id FROM pfp_logs
+                        WHERE user_id IN (?, ?) AND created_at > ? AND channel_id = ?
+                          AND (
+                            (first_msg_id = ? AND last_msg_id = ?)
+                            OR (first_msg_id <= ? AND last_msg_id >= ? AND forwarded_count >= (last_msg_id - first_msg_id + 1))
+                          )
+                        LIMIT 1
+                        """,
+                        (credit_uid, uid, since_ts, str(channel_id), start_id, end_id, start_id, end_id),
                     )
+                else:
+                    dup_cur = await conn.execute(
+                        """
+                        SELECT id FROM pfp_logs
+                        WHERE user_id = ? AND created_at > ? AND channel_id = ?
+                          AND (
+                            (first_msg_id = ? AND last_msg_id = ?)
+                            OR (first_msg_id <= ? AND last_msg_id >= ? AND forwarded_count >= (last_msg_id - first_msg_id + 1))
+                          )
+                        LIMIT 1
+                        """,
+                        (credit_uid, since_ts, str(channel_id), start_id, end_id, start_id, end_id),
+                    )
+                if await dup_cur.fetchone():
+                    dup_msg = (
+                        "⚠️ Tautan/rentang postingan tersebut sudah pernah Anda forward melalui Akun Utama atau Akun Kerja pada kloter berjalan."
+                        if is_work_account
+                        else "⚠️ Tautan/rentang postingan tersebut sudah pernah Anda forward pada kloter berjalan."
+                    )
+                    await update.effective_message.reply_text(dup_msg, parse_mode="HTML")
                     return
             except Exception as dup_e:
                 log.debug("Melewati cek duplikasi pfp_logs: %s", dup_e)
@@ -722,7 +807,7 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 try:
                     await db.log_pfp_forward(
                         conn=conn,
-                        user_id=uid,
+                        user_id=credit_uid,
                         chat_id=chat_id,
                         channel_id=str(channel_id),
                         first_msg_id=start_id,
@@ -731,28 +816,42 @@ async def cmd_pfp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         created_at=time.time(),
                     )
                 except Exception as le:
-                    log.warning("Gagal menyimpan pfp_logs user %s: %s", uid, le)
+                    log.warning("Gagal menyimpan pfp_logs user %s (actor %s): %s", credit_uid, uid, le)
 
-                # Reward: 1 post = 1 Agra (tanpa batas)
+                # Reward: 1 post = 1 Agra (tanpa batas), masuk ke Akun Utama jika via Akun Kerja
                 try:
+                    agra_desc = (
+                        f"Reward forward {forwarded_count} post (/pfp via Akun Kerja {uid})"
+                        if is_work_account
+                        else f"Reward forward {forwarded_count} post (/pfp)"
+                    )
                     await db.add_agra(
                         conn=conn,
-                        target_id=uid,
+                        target_id=credit_uid,
                         actor_id=uid,
                         amount=forwarded_count,
-                        description=f"Reward forward {forwarded_count} post (/pfp)",
+                        description=agra_desc,
                         chat_id=chat_id,
                         message_id=None,
                     )
                     agra_added = True
                 except Exception as e:
-                    log.warning("Gagal menambahkan Agra untuk pfp forward user %s: %s", uid, e)
+                    log.warning("Gagal menambahkan Agra untuk pfp forward user %s (actor %s): %s", credit_uid, uid, e)
 
-            agra_note = (
-                f" (<b>+{forwarded_count if total_requested > 1 else 1} Agra</b>)"
-                if agra_added
-                else "\n<i>⚠️ Catatan: Poin Agra gagal dicatat (pastikan akun sudah /start bot).</i>"
+            is_private_chat = bool(
+                update.effective_chat and getattr(update.effective_chat, "type", None) == "private"
             )
+            if agra_added:
+                if is_work_account:
+                    target_lbl = f"Akun Utama (<code>{credit_uid}</code>)" if is_private_chat else "Akun Utama tertaut"
+                    agra_note = f" (<b>+{forwarded_count} Agra</b> masuk ke {target_lbl})"
+                else:
+                    agra_note = f" (<b>+{forwarded_count if total_requested > 1 else 1} Agra</b>)"
+            else:
+                if is_work_account:
+                    agra_note = "\n<i>⚠️ Catatan: Poin Agra gagal dicatat (pastikan Akun Utama sudah /start bot).</i>"
+                else:
+                    agra_note = "\n<i>⚠️ Catatan: Poin Agra gagal dicatat (pastikan akun sudah /start bot).</i>"
             if total_requested == 1:
                 reply_text = f"✅ <b>1 post</b> berhasil diforward ke channel penyimpanan.{agra_note}"
             else:
