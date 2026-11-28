@@ -77,7 +77,7 @@ async def mulai_caksoria(update: Update, context: ContextTypes.DEFAULT_TYPE, db,
         "valid_words": valid_words,
         "entries": [],   # list [{"uid": str, "name": str, "diff": float, "text": str, "matches_keyword": bool, "emoji": str}]
         "user_ids": [],   # list [str] memastikan 1 user hanya dinilai 1x (jawaban pertama)
-        "started_by": update.effective_user.id
+        "started_by": update.effective_user.id if update.effective_user else None
     }
     
     await db.start_game_session(conn, chat_id, "caksoria", setting_name or "default", initial_state)
@@ -204,6 +204,7 @@ async def job_end_caksoria(context: ContextTypes.DEFAULT_TYPE):
         
         await db.update_game_session_state(conn, session_id, state)
         await db.end_game_session(conn, session_id)
+        context.bot_data.setdefault("active_game_chats", set()).discard(chat_id)
         
     await context.bot.send_message(
         chat_id=chat_id,

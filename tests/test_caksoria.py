@@ -91,6 +91,7 @@ async def test_caksoria_user_scenario_matching_and_timing():
         msg_start = MagicMock(spec=Message)
         msg_start.reply_text = AsyncMock()
         up_start = MagicMock(spec=Update)
+        up_start.effective_user = create_mock_user(999, "starter", "Starter")
         up_start.effective_chat = MagicMock(spec=Chat, id=chat_id)
         up_start.message = msg_start
         

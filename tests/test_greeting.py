@@ -14,6 +14,15 @@ from bot.handlers import commands
 from bot.handlers import messages
 
 
+@pytest.fixture(autouse=True)
+def _restore_owner_id():
+    orig_owner_id = bot.settings.OWNER_ID
+    try:
+        yield
+    finally:
+        bot.settings.OWNER_ID = orig_owner_id
+
+
 def run_sync(coro):
     """Drive pure async coroutines that only await AsyncMocks without asyncio event loop sockets."""
     try:
