@@ -1241,6 +1241,9 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         is_target_lookup = True
 
     row = await user_row(conn, db, target_id)
+    if is_target_lookup and not row:
+        await update.message.reply_text("User tidak ditemukan.")
+        return
     profile = profile_from_row(row)
     agra = await db.agra_total(conn, target_id) if row else 0
     requester_prof = profile_from_row(requester_row) if requester_row else {}
@@ -6249,6 +6252,7 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     parts = text.split(maxsplit=1)
     
     target_ids = []
+    seen_fallbacks: dict[str, int] = {}
     
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         target_ids.append((update.message.reply_to_message.from_user.id, "Reply"))
@@ -6268,13 +6272,26 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 # Coba cari di group_seen_users
                 if arg.startswith("@"):
                     username = arg.lstrip("@").lower()
+                    if not username:
+                        target_ids.append((None, arg))
+                        continue
                     cur = await conn.execute(
-                        "SELECT telegram_id FROM group_seen_users WHERE lower(username) = ?",
+                        """
+                        SELECT telegram_id, MAX(last_seen_at) AS last_seen
+                        FROM group_seen_users
+                        WHERE lower(username) = ?
+                        GROUP BY telegram_id
+                        ORDER BY last_seen DESC
+                        LIMIT 2
+                        """,
                         (username,)
                     )
-                    seen_row = await cur.fetchone()
-                    if seen_row:
-                        target_ids.append((seen_row["telegram_id"], arg))
+                    seen_rows = await cur.fetchall()
+                    if len(seen_rows) == 1:
+                        target_ids.append((seen_rows[0]["telegram_id"], arg))
+                    elif len(seen_rows) > 1:
+                        target_ids.append((None, arg))
+                        seen_fallbacks[username] = int(seen_rows[0]["telegram_id"])
                     else:
                         target_ids.append((None, arg))
                 else:
@@ -6284,31 +6301,63 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ Target tidak ditemukan. Gunakan: /kick @username, ID Telegram, atau reply pesannya.")
         return
         
-    unresolved_usernames = [arg for tid, arg in target_ids if not tid and arg and arg.startswith("@")]
+    unresolved_usernames = [
+        arg for tid, arg in target_ids if not tid and arg and arg.startswith("@") and arg.lstrip("@")
+    ]
     if unresolved_usernames:
-        action_payload = "RESOLVE:" + ",".join([u.lstrip("@") for u in unresolved_usernames])
         try:
-            req_id = await db.create_userbot_request(conn, "0", action_payload)
-            import asyncio, json
-            resolved_dict = {}
-            for _ in range(10): # wait max 5 seconds
-                await asyncio.sleep(0.5)
-                req_row = await db.get_userbot_request(conn, req_id)
-                if req_row and req_row["status"] == "DONE":
-                    resolved_dict = json.loads(req_row["result"])
-                    break
-                elif req_row and req_row["status"] == "ERROR":
-                    break
+            if hasattr(db, "resolve_usernames_via_ipc"):
+                resolved_dict = await db.resolve_usernames_via_ipc(
+                    conn, unresolved_usernames, max_wait_seconds=5.0
+                )
+            else:
+                action_payload = "RESOLVE:" + ",".join([u.lstrip("@") for u in unresolved_usernames])
+                req_id = await db.create_userbot_request(conn, "0", action_payload)
+                resolved_dict = {}
+                for _ in range(10): # wait max 5 seconds
+                    await asyncio.sleep(0.5)
+                    req_row = await db.get_userbot_request(conn, req_id)
+                    if req_row and req_row["status"] == "DONE":
+                        resolved_dict = json.loads(req_row["result"])
+                        break
+                    elif req_row and req_row["status"] == "ERROR":
+                        break
             
             if resolved_dict:
+                cleaned_resolved = {
+                    str(k).lstrip("@").lower(): int(v)
+                    for k, v in resolved_dict.items()
+                    if v is not None
+                }
+                cleared_any = False
                 for i in range(len(target_ids)):
                     tid, arg = target_ids[i]
                     if not tid and arg and arg.startswith("@"):
                         username = arg.lstrip("@").lower()
-                        if username in resolved_dict:
-                            target_ids[i] = (resolved_dict[username], arg)
+                        if username in cleaned_resolved:
+                            resolved_tid = cleaned_resolved[username]
+                            target_ids[i] = (resolved_tid, arg)
+                            if username in seen_fallbacks and hasattr(db, "_clear_stale_username"):
+                                await db._clear_stale_username(
+                                    conn,
+                                    resolved_tid,
+                                    username,
+                                    clear_users=True,
+                                    clear_group_seen=True,
+                                )
+                                cleared_any = True
+                if cleared_any:
+                    await conn.commit()
         except Exception:
             pass
+
+    if seen_fallbacks:
+        for i in range(len(target_ids)):
+            tid, arg = target_ids[i]
+            if not tid and arg and arg.startswith("@"):
+                username = arg.lstrip("@").lower()
+                if username in seen_fallbacks:
+                    target_ids[i] = (seen_fallbacks[username], arg)
         
     valid_targets = []
     not_found = []

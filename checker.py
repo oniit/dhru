@@ -118,12 +118,30 @@ async def process_userbot_requests(conn):
                 try:
                     result_data = {}
                     if usernames:
-                        users = await app.get_users(usernames)
+                        try:
+                            users = await app.get_users(usernames)
+                        except Exception:
+                            users = []
+                            for uname in usernames:
+                                try:
+                                    u_single = await app.get_users(uname)
+                                    if isinstance(u_single, list):
+                                        users.extend(u_single)
+                                    elif u_single:
+                                        users.append(u_single)
+                                except Exception:
+                                    pass
                         if not isinstance(users, list):
                             users = [users]
                         for u in users:
-                            if u and u.username:
+                            if not u:
+                                continue
+                            if getattr(u, "username", None):
                                 result_data[u.username.lower()] = u.id
+                            for un_obj in (getattr(u, "usernames", None) or []):
+                                un_val = getattr(un_obj, "username", None)
+                                if un_val:
+                                    result_data[un_val.lower()] = u.id
                     result_json = json.dumps(result_data)
                     await conn.execute(
                         "UPDATE userbot_requests SET status = 'DONE', result = ?, updated_at = ? WHERE id = ?",

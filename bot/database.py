@@ -722,6 +722,81 @@ class Database:
         await conn.commit()
         return conn
 
+    async def _clear_stale_username(
+        self,
+        conn: aiosqlite.Connection,
+        telegram_id: int,
+        username: str | None,
+        *,
+        now: float | None = None,
+        clear_users: bool = True,
+        clear_group_seen: bool = False,
+    ) -> int:
+        """Clear stale username on other telegram_id rows when a user holds it."""
+        clean_un = (username or "").strip().lstrip("@").lower()
+        if not clean_un:
+            return 0
+        cleared = 0
+        if clear_users:
+            ts = now if now is not None else time.time()
+            cur = await conn.execute(
+                "UPDATE users SET username = NULL, updated_at = ? WHERE lower(username) = ? AND telegram_id != ?",
+                (ts, clean_un, telegram_id),
+            )
+            cleared += self._rowcount(cur)
+        if clear_group_seen:
+            cur_gs = await conn.execute(
+                "UPDATE group_seen_users SET username = NULL WHERE lower(username) = ? AND telegram_id != ?",
+                (clean_un, telegram_id),
+            )
+            cleared += self._rowcount(cur_gs)
+        return cleared
+
+    async def resolve_usernames_via_ipc(
+        self,
+        conn: aiosqlite.Connection,
+        usernames: list[str],
+        *,
+        max_wait_seconds: float = 5.0,
+        poll_interval: float = 0.5,
+    ) -> dict[str, int]:
+        """Resolve @usernames globally via userbot IPC (userbot_requests)."""
+        cleaned = list(
+            dict.fromkeys(
+                u.strip().lstrip("@").lower()
+                for u in usernames
+                if u and u.strip().lstrip("@")
+            )
+        )
+        if not cleaned:
+            return {}
+        try:
+            req_id = await self.create_userbot_request(
+                conn, "0", "RESOLVE:" + ",".join(cleaned)
+            )
+            steps = max(1, int(max_wait_seconds / poll_interval))
+            for _ in range(steps):
+                await asyncio.sleep(poll_interval)
+                req_row = await self.get_userbot_request(conn, req_id)
+                if not req_row:
+                    continue
+                status = req_row["status"]
+                if status == "DONE":
+                    raw = req_row["result"] or "{}"
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        return {
+                            str(k).lower().lstrip("@"): int(v)
+                            for k, v in parsed.items()
+                            if v is not None
+                        }
+                    return {}
+                if status == "ERROR":
+                    return {}
+        except Exception as e:
+            log.warning("Gagal query IPC userbot saat resolve %s: %s", cleaned, e)
+        return {}
+
     async def upsert_user_from_telegram(
         self,
         conn: aiosqlite.Connection,
@@ -786,6 +861,15 @@ class Database:
                     now,
                 ),
             )
+        if username:
+            await self._clear_stale_username(
+                conn,
+                telegram_id,
+                username,
+                now=now,
+                clear_users=True,
+                clear_group_seen=True,
+            )
         await conn.commit()
 
     async def sync_user_basic_info(
@@ -796,21 +880,65 @@ class Database:
         first_name: str | None,
         last_name: str | None,
     ) -> None:
+        now = time.time()
         cur = await conn.execute(
             "SELECT username, first_name, last_name FROM users WHERE telegram_id = ?",
             (telegram_id,)
         )
         row = await cur.fetchone()
         if not row:
+            if username:
+                cleared = await self._clear_stale_username(
+                    conn,
+                    telegram_id,
+                    username,
+                    now=now,
+                    clear_users=True,
+                    clear_group_seen=False,
+                )
+                if cleared > 0:
+                    await self._clear_stale_username(
+                        conn,
+                        telegram_id,
+                        username,
+                        now=now,
+                        clear_users=False,
+                        clear_group_seen=True,
+                    )
+                    await conn.commit()
             return
-            
-        if (row["username"] != username or
-            row["first_name"] != first_name or
-            row["last_name"] != last_name):
+
+        username_changed = (row["username"] or "").lower() != (username or "").lower()
+        info_changed = (
+            row["username"] != username
+            or row["first_name"] != first_name
+            or row["last_name"] != last_name
+        )
+        cleared = 0
+        if username:
+            cleared = await self._clear_stale_username(
+                conn,
+                telegram_id,
+                username,
+                now=now,
+                clear_users=True,
+                clear_group_seen=username_changed,
+            )
+            if cleared > 0 and not username_changed:
+                await self._clear_stale_username(
+                    conn,
+                    telegram_id,
+                    username,
+                    now=now,
+                    clear_users=False,
+                    clear_group_seen=True,
+                )
+        if info_changed:
             await conn.execute(
                 "UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = ? WHERE telegram_id = ?",
-                (username, first_name, last_name, time.time(), telegram_id)
+                (username, first_name, last_name, now, telegram_id)
             )
+        if info_changed or cleared > 0:
             await conn.commit()
 
     async def get_user(self, conn: aiosqlite.Connection, telegram_id: int) -> aiosqlite.Row | None:
@@ -1443,17 +1571,77 @@ class Database:
     ) -> list[int]:
         if not usernames:
             return []
-        lowered = [u.lower().lstrip("@") for u in usernames]
+        lowered = list(
+            dict.fromkeys(
+                u.strip().lstrip("@").lower()
+                for u in usernames
+                if u and u.strip().lstrip("@")
+            )
+        )
+        if not lowered:
+            return []
         placeholders = ",".join("?" * len(lowered))
         cur = await conn.execute(
             f"""
-            SELECT telegram_id FROM users
+            SELECT telegram_id, lower(username) AS uname
+            FROM users
             WHERE lower(username) IN ({placeholders})
+            ORDER BY updated_at DESC, created_at DESC, telegram_id DESC
             """,
             lowered,
         )
         rows = await cur.fetchall()
-        return [int(r["telegram_id"]) for r in rows]
+
+        candidates: dict[str, list[int]] = {}
+        for r in rows:
+            uname = str(r["uname"] or "").lower()
+            if uname:
+                candidates.setdefault(uname, []).append(int(r["telegram_id"]))
+
+        conflicted = [uname for uname, tids in candidates.items() if len(tids) > 1]
+        resolved_ipc: dict[str, int] = {}
+        if conflicted:
+            resolved_ipc = await self.resolve_usernames_via_ipc(conn, conflicted)
+            if resolved_ipc:
+                now = time.time()
+                for uname, real_tid in resolved_ipc.items():
+                    await self._clear_stale_username(
+                        conn,
+                        real_tid,
+                        uname,
+                        now=now,
+                        clear_users=True,
+                        clear_group_seen=True,
+                    )
+                await conn.commit()
+
+        out: list[int] = []
+        seen_ids: set[int] = set()
+        for uname in lowered:
+            tids = candidates.get(uname, [])
+            if not tids:
+                continue
+            chosen: int | None = None
+            if len(tids) > 1 and uname in resolved_ipc:
+                real_tid = resolved_ipc[uname]
+                if real_tid in tids:
+                    chosen = real_tid
+                else:
+                    real_user = await self.get_user(conn, real_tid)
+                    if real_user:
+                        if (real_user["username"] or "").lower() != uname:
+                            await conn.execute(
+                                "UPDATE users SET username = ?, updated_at = ? WHERE telegram_id = ?",
+                                (uname, time.time(), real_tid),
+                            )
+                            await conn.commit()
+                        chosen = real_tid
+            else:
+                chosen = tids[0]
+            if chosen is not None and chosen not in seen_ids:
+                seen_ids.add(chosen)
+                out.append(chosen)
+        return out
 
     async def reset_academic_period(self, conn: aiosqlite.Connection) -> dict[str, int]:
         """
@@ -1546,6 +1734,15 @@ class Database:
                 now,
             ),
         )
+        if username:
+            await self._clear_stale_username(
+                conn,
+                telegram_id,
+                username,
+                now=now,
+                clear_users=False,
+                clear_group_seen=True,
+            )
         await conn.commit()
 
     async def list_group_seen_user_ids(
@@ -2342,13 +2539,58 @@ class Database:
     async def get_user_by_username_or_id(
         self, conn: aiosqlite.Connection, query: str
     ) -> aiosqlite.Row | None:
+        query = (query or "").strip()
         if query.startswith("@"):
             username = query.lstrip("@").lower()
+            if not username:
+                return None
             cur = await conn.execute(
-                "SELECT * FROM users WHERE lower(username) = ?",
+                """
+                SELECT * FROM users
+                WHERE lower(username) = ?
+                ORDER BY updated_at DESC, created_at DESC, telegram_id DESC
+                LIMIT 2
+                """,
                 (username,)
             )
-            return await cur.fetchone()
+            rows = await cur.fetchall()
+            if not rows:
+                return None
+            if len(rows) == 1:
+                return rows[0]
+
+            resolved_ipc = await self.resolve_usernames_via_ipc(conn, [username])
+            if username in resolved_ipc:
+                real_tid = resolved_ipc[username]
+                now = time.time()
+                await self._clear_stale_username(
+                    conn,
+                    real_tid,
+                    username,
+                    now=now,
+                    clear_users=True,
+                    clear_group_seen=True,
+                )
+                for r in rows:
+                    if int(r["telegram_id"]) == real_tid:
+                        await conn.commit()
+                        return r
+                real_user = await self.get_user(conn, real_tid)
+                if real_user:
+                    if (real_user["username"] or "").lower() != username:
+                        await conn.execute(
+                            "UPDATE users SET username = ?, updated_at = ? WHERE telegram_id = ?",
+                            (username, now, real_tid),
+                        )
+                        await conn.commit()
+                        real_user = await self.get_user(conn, real_tid)
+                    else:
+                        await conn.commit()
+                    return real_user
+                await conn.commit()
+                return None
+
+            return rows[0]
         elif query.isdigit():
             return await self.get_user(conn, int(query))
         return None
@@ -2433,7 +2675,16 @@ class Database:
         
         # 3. Hapus old_id dari users setelah tidak ada lagi tabel yang mereferensikannya
         await conn.execute("DELETE FROM users WHERE telegram_id = ?", (old_id,))
-        
+
+        if username_final:
+            await self._clear_stale_username(
+                conn,
+                new_id,
+                username_final,
+                clear_users=True,
+                clear_group_seen=True,
+            )
+
         await conn.commit()
         return True
 

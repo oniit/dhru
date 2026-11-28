@@ -717,6 +717,19 @@ async def get_active_charyarthi_divisions(db, conn) -> list[tuple[str, str]]:
     return active_divs
 
 
+def _row_val(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        if key in row.keys():
+            return row[key]
+    except Exception:
+        pass
+    return default
+
+
 async def resolve_target_user(
     conn: aiosqlite.Connection,
     db: Database,
@@ -741,54 +754,74 @@ async def resolve_target_user(
         tid = int(target_arg)
         u = await db.get_user(conn, tid)
         if u:
-            un = f"@{u['username']}" if u.get("username") else f"ID {tid}"
-            name = u.get("first_name") or un
+            uname_val = _row_val(u, "username")
+            un = f"@{uname_val}" if uname_val else f"ID {tid}"
+            name = _row_val(u, "first_name") or un
             return tid, f"{name} ({un})"
         return tid, f"ID {tid}"
 
     # 2. Username
     clean_un = target_arg.lstrip("@").lower()
+    if not clean_un:
+        return None, target_arg
     
     # 2a. Tabel users
     u = await db.get_user_by_username_or_id(conn, f"@{clean_un}")
-    if not u:
-        cur = await conn.execute("SELECT * FROM users WHERE lower(username) = ?", (clean_un,))
-        u = await cur.fetchone()
-        
     if u:
-        name = u.get("first_name") or f"@{u.get('username', clean_un)}"
-        return u["telegram_id"], f"{name} (@{u.get('username', clean_un)})"
+        uname_val = _row_val(u, "username") or clean_un
+        name = _row_val(u, "first_name") or f"@{uname_val}"
+        return int(u["telegram_id"]), f"{name} (@{uname_val})"
 
     # 2b. Tabel group_seen_users
     try:
         cur = await conn.execute(
-            "SELECT telegram_id, first_name, username FROM group_seen_users WHERE lower(username) = ? LIMIT 1",
+            """
+            SELECT telegram_id, MAX(first_name) AS first_name, MAX(username) AS username, MAX(last_seen_at) AS last_seen
+            FROM group_seen_users
+            WHERE lower(username) = ?
+            GROUP BY telegram_id
+            ORDER BY last_seen DESC
+            LIMIT 2
+            """,
             (clean_un,)
         )
-        seen_row = await cur.fetchone()
-        if seen_row:
-            name = seen_row.get("first_name") or f"@{clean_un}"
-            return seen_row["telegram_id"], f"{name} (@{clean_un})"
+        seen_rows = await cur.fetchall()
+        if seen_rows:
+            chosen_seen = seen_rows[0]
+            if len(seen_rows) > 1 and hasattr(db, "resolve_usernames_via_ipc"):
+                resolved_ipc = await db.resolve_usernames_via_ipc(conn, [clean_un])
+                if clean_un in resolved_ipc:
+                    real_tid = resolved_ipc[clean_un]
+                    if hasattr(db, "_clear_stale_username"):
+                        await db._clear_stale_username(
+                            conn,
+                            real_tid,
+                            clean_un,
+                            clear_users=True,
+                            clear_group_seen=True,
+                        )
+                        await conn.commit()
+                    match_row = next(
+                        (r for r in seen_rows if int(r["telegram_id"]) == real_tid),
+                        None,
+                    )
+                    if match_row:
+                        chosen_seen = match_row
+                    else:
+                        return real_tid, f"@{clean_un} (ID {real_tid})"
+            name = _row_val(chosen_seen, "first_name") or f"@{clean_un}"
+            return int(chosen_seen["telegram_id"]), f"{name} (@{clean_un})"
     except Exception:
         pass
 
     # 2c. Fallback IPC Userbot
-    try:
-        req_id = await db.create_userbot_request(conn, "0", f"RESOLVE:{clean_un}")
-        for _ in range(10):  # Tunggu maksimal 5 detik
-            await asyncio.sleep(0.5)
-            req_row = await db.get_userbot_request(conn, req_id)
-            if req_row and req_row["status"] == "DONE":
-                res_dict = json.loads(req_row["result"])
-                if clean_un in res_dict:
-                    resolved_id = int(res_dict[clean_un])
-                    return resolved_id, f"@{clean_un} (ID {resolved_id})"
-                break
-            elif req_row and req_row["status"] == "ERROR":
-                break
-    except Exception as e:
-        import logging
-        logging.getLogger("bot").warning("Gagal query IPC userbot saat resolve: %s", e)
+    if hasattr(db, "resolve_usernames_via_ipc"):
+        resolved_ipc = await db.resolve_usernames_via_ipc(
+            conn, [clean_un], max_wait_seconds=5.0
+        )
+        if clean_un in resolved_ipc:
+            resolved_id = resolved_ipc[clean_un]
+            return resolved_id, f"@{clean_un} (ID {resolved_id})"
 
     return None, target_arg
 

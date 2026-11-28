@@ -60,6 +60,7 @@ Menyimpan data akun utama dan profil JSON *schema-less*.
   - `ttd_file_id` (str): Telegram photo file ID spesimen tanda tangan digital.
 - `raw_profile_json` (TEXT), `onboarding_step` (TEXT): State onboarding per-user
 - `created_at` (REAL), `updated_at` (REAL): Timestamp pembuatan/pembaruan
+- **Konsistensi Username**: Setiap pembaruan `username` non-kosong (`upsert_user_from_telegram`, `sync_user_basic_info`, `migrate_user_data`) otomatis mengosongkan (`NULL`) `username` usang pada baris `telegram_id` lain melalui index `idx_users_username_lower`. Lookup (`find_ids_by_usernames`, `get_user_by_username_or_id`) membatasi hasil 1 ID per `@username` dan melakukan disambiguasi IPC `RESOLVE:` jika terjadi konflik historis.
 
 ### 2. `profile_change_requests` & `profile_request_mod_messages`
 Menampung pengajuan perubahan profil sensitif oleh user yang memerlukan persetujuan admin/owner.
@@ -123,6 +124,7 @@ Manajemen penugasan dan pengumpulan jawaban tugas.
 Pelacakan anggota grup yang pernah terlihat oleh bot.
 - `chat_id` (INTEGER NOT NULL), `telegram_id` (INTEGER NOT NULL), `username` (TEXT), `first_name` (TEXT), `last_name` (TEXT), `is_bot` (INTEGER), `last_seen_at` (REAL)
 - `PRIMARY KEY (chat_id, telegram_id)`
+- Pembaruan `touch_group_seen_user` turut mengosongkan `username` usang milik `telegram_id` lain melalui `idx_group_seen_username_lower`, dan lookup oleh `resolve_target_user` / `cmd_kick` mengurutkan `last_seen_at DESC` serta mendisambiguasi konflik via IPC.
 
 ### 11. `game_settings`, `game_sessions`, & `group_game_permissions`
 Manajemen mini-game obrolan (Kata Rahasia, Tahan Dulu, dll).
