@@ -123,3 +123,13 @@ Dokumen ini merangkum perintah yang dapat dipanggil (_command_) oleh pengguna da
 - `/cek_akun_kerja` — Melihat daftar akun kerja yang tertaut ke akun utama (atau status akun utama bila dipanggil dari akun kerja) serta tombol untuk memutuskan tautan.
 - `/unlink_kerja [id|@username]` — Memutuskan tautan Akun Kerja dari akun utama.
 - `/promo` — (Owner) Membuka menu konfigurasi syarat kata kunci LPM dan link postingan Story.
+
+## Standalone PTY Terminal Bot (`terminal_bot.py`)
+Perintah-perintah berikut hanya berjalan di bot terpisah `terminal_bot.py` (`TERMINAL_BOT_TOKEN`) dan khusus `OWNER_ID` / `TERMINAL_OWNER_IDS` di private chat:
+- Pesan teks biasa — Dikirim langsung ke stdin shell PTY diikuti Enter (termasuk balasan prompt interaktif seperti `[y/N]`, REPL, dll).
+- `/start` atau `/help` — Memulai/memeriksa sesi PTY dan menampilkan ringkasan perintah.
+- `/secret <teks>` (alias `/pass`) — Mengirim password/input sensitif ke PTY lalu langsung menghapus pesan input di chat.
+- `/raw <teks>` — Mengirim teks mentah ke PTY tanpa newline di akhir.
+- `/send <teks>` — Mengirim teks apa adanya + Enter (berguna untuk teks yang diawali `/` yang bentrok dengan perintah bot).
+- `/ctrlc` (`/c`), `/ctrld` (`/d`), `/ctrlz` (`/z`), `/enter`, `/tab`, `/esc` — Mengirim sinyal kontrol dan tombol khusus ke PTY (juga tersedia via tombol inline pada pesan output aktif).
+- `/status`, `/resize <cols> <rows>`, `/reset` (`/restart_shell`) — Memantau status PID/uptime PTY, mengubah ukuran terminal, atau me-restart sesi shell.
